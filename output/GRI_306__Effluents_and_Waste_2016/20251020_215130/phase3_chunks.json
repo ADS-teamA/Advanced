@@ -1,0 +1,1558 @@
+{
+  "document_id": "GRI 306_ Effluents and Waste 2016",
+  "chunking_stats": {
+    "layer1_count": 1,
+    "layer2_count": 35,
+    "layer3_count": 45,
+    "total_chunks": 81,
+    "layer3_avg_size": 177.77777777777777,
+    "layer3_min_size": 12,
+    "layer3_max_size": 494,
+    "sac_avg_overhead": 151.0
+  },
+  "layer1": [
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed",
+      "raw_content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "layer": 1,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": null,
+        "parent_chunk_id": null,
+        "page_number": 0,
+        "char_start": 0,
+        "char_end": 150,
+        "section_title": null,
+        "section_path": null,
+        "section_level": 0,
+        "section_depth": 0
+      }
+    }
+  ],
+  "layer2": [
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_1",
+      "content": "EFFECTIVE DATE: 1 JULY 2018",
+      "raw_content": "EFFECTIVE DATE: 1 JULY 2018",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_1",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_1",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 1,
+        "char_start": 0,
+        "char_end": 27,
+        "section_title": "GRI 306: Effluents and Waste 2016",
+        "section_path": "GRI 306: Effluents and Waste 2016",
+        "section_level": 1,
+        "section_depth": 1
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_2",
+      "content": "TOPIC STANDARD",
+      "raw_content": "TOPIC STANDARD",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_2",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_2",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 1,
+        "char_start": 27,
+        "char_end": 41,
+        "section_title": "GRI 306: Effluents and Waste 2016",
+        "section_path": "GRI 306: Effluents and Waste 2016",
+        "section_level": 1,
+        "section_depth": 1
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_3",
+      "content": "# Summary\n\nGRI 306: Effluents and Waste 2016 content has been replaced by newer GRI Standards, specifically GRI 303, indicating an update to reporting standards.",
+      "raw_content": "The main contents of GRI 306: Effluents and Waste 2016 have been superseded by the GRI Standards GRI 303:",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_3",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_3",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 2,
+        "char_start": 41,
+        "char_end": 146,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+      "content": "# Summary\n\nGRI Standard for water, effluents, and waste reporting effective July 1, 2018. Developed by Global Sustainability Standards Board through m",
+      "raw_content": "Water and Effluents 2018 and GRI 306: Waste 2020 . This content has been blacked out in this Standard. However, the spills-related content in Disclosure 306-3 Significant spills of GRI 306: Effluents and Waste 2016 remains in effect. In its 2023-2025 Work Program, the Global Sustainability Standards Board has identified the development of a GRI Standard for spills and leaks as a priority project for commencement. Effective date This Standard is effective for reports or other materials published on or after 1 July 2018 Responsibility This Standard is issued by the Global Sustainability Standards Board (GSSB). Any feedback on the GRI Standards can be submitted to gssbsecretariat@globalreporting.org for the consideration of the GSSB. Due Process This Standard was developed in the public interest and in accordance with the requirements of the GSSB Due Process Protocol. It has been developed using multi-stakeholder expertise, and with regard to authoritative intergovernmental instruments and widely held expectations of organizations relating to social, environmental, and economic responsibilities. Legal liability This document, designed to promote sustainability reporting, has been developed by the Global Sustainability Standards Board (GSSB) through a unique multi-stakeholder consultative process involving representatives from organizations and report information users from around the world. While the GRI Supervisory Board, Management Board, and GSSB encourage the use of the GRI Sustainability Reporting Standards (GRI Standards) and related Interpretations by all organizations, the preparation and publication of reports based fully or partially on the GRI Standards and related Interpretations are the full responsibility of those producing them. Neither the GRI Supervisory Board, Management Board, GSSB, nor Stichting Global Reporting Initiative (GRI) can assume responsibility for any consequences or damages resulting directly or indirectly from the use of the GRI Standards and related Interpretations in the preparation of reports, or the use of reports based on the GRI Standards and related Interpretations. Copyright and trademark notice This document is copyright-protected by Stichting Global Reporting Initiative (GRI). The reproduction and distribution of this document for information and/or use in preparing a sustainability report is permitted without prior permission from GRI. However, neither this document nor any extract from it may be reproduced, stored, translated, or transferred in any form or by any means (electronic, mechanical, photocopied, recorded, or otherwise) for any other purpose without prior written permission from GRI. Global Reporting Initiative, GRI and logo, GSSB and logo, and GRI Sustainability Reporting Standards (GRI Standards) and logo are trademarks of Stichting Global Reporting Initiative. © 2024 GRI. All rights reserved.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_5",
+      "content": "ISBN 978-90-8866-109-9",
+      "raw_content": "ISBN 978-90-8866-109-9",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_5",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_5",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 2,
+        "char_start": 3044,
+        "char_end": 3066,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_6",
+      "content": "# Summary\n\nGRI 306 standard covering effluents and waste management, including disclosures on water discharge quality, waste disposal methods, spills,",
+      "raw_content": "Introduction, 1 = 4. GRI 306: Effluents and Waste, 1 = 6. 2. Topic disclosures, 1 = 8. Disclosure 306-1 Water discharge by quality and destination, 1 = 8. Disclosure 306-2 Waste by type and disposal method, 1 = 9. Disclosure 306-3 Significant spills, 1 = 10. Disclosure 306-4 Transport of hazardous waste, 1 = 11. Disclosure 306-5 Water bodies affected by water discharges and/or runoff, 1 = 12. Glossary, 1 = 13. Bibliography, 1 = 14",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_6",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_6",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 3,
+        "char_start": 3066,
+        "char_end": 3500,
+        "section_title": "Content",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Content",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_7",
+      "content": "# Summary\n\nGRI Standards define the environmental dimension of sustainability as an organization's impacts on the natural environment and resources.",
+      "raw_content": "In the context of the GRI Standards, the environmental dimension of sustainability concerns an organization's impacts",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_7",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_7",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 3500,
+        "char_end": 3617,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_8",
+      "content": "# Summary\n\nThis section addresses the impact on natural systems, covering land, air, water, and ecosystems in both living and non-living environments.",
+      "raw_content": "on living and non-living natural systems, including land, air, water, and ecosystems.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_8",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_8",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 3617,
+        "char_end": 3702,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_9",
+      "content": "# Summary\n\nGRI 306 standard addresses effluents and waste management, covering water discharges, waste generation, treatment, and disposal practices.",
+      "raw_content": "GRI 306 addresses the topic of effluents and waste. This includes water discharges; the generation, treatment and",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_9",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_9",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 3702,
+        "char_end": 3815,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_10",
+      "content": "# Summary\n\nEnvironmental hazards including waste disposal and chemical/oil spills pose significant contamination risks requiring proper management and",
+      "raw_content": "disposal of waste; and spills of chemicals, oils, fuels, and other substances.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_10",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_10",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 3815,
+        "char_end": 3893,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_11",
+      "content": "# Summary\n\nWater discharge impacts depend on three factors: quantity, quality, and destination of the discharge.",
+      "raw_content": "The impacts of water discharges vary depending on the quantity, quality, and destination of the discharge. The",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_11",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_11",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 3893,
+        "char_end": 4003,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_12",
+      "content": "# Summary\n\nUnmanaged discharge of effluents containing high levels of chemicals and nutrients, particularly nitrogen and phosphorus, poses environmental concerns.",
+      "raw_content": "unmanaged discharge of effluents with a high chemical or nutrient load (principally nitrogen, phosphorous, or",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_12",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_12",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4003,
+        "char_end": 4112,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_13",
+      "content": "potassium) can affect aquatic habitats, the quality of an available water supply, and an organization's relationship with...",
+      "raw_content": "potassium) can affect aquatic habitats, the quality of an available water supply, and an organization's relationship with",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_13",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_13",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4112,
+        "char_end": 4233,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_14",
+      "content": "communities and other water users.",
+      "raw_content": "communities and other water users.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_14",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_14",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4233,
+        "char_end": 4267,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_15",
+      "content": "# Summary\n\nWaste generation, treatment, disposal, and improper transportation can cause harm to the environment and human health.",
+      "raw_content": "The generation, treatment and disposal of waste - including its improper transportation - can also pose harm to",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_15",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_15",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4267,
+        "char_end": 4378,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_16",
+      "content": "# Summary\n\nWaste transportation to countries with inadequate infrastructure poses significant risks to human health and environmental protection.",
+      "raw_content": "human health and the environment. This is of particular concern if waste is transported to countries lacking the",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_16",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_16",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4378,
+        "char_end": 4490,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_17",
+      "content": "infrastructure and regulations to handle it.",
+      "raw_content": "infrastructure and regulations to handle it.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_17",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_17",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4490,
+        "char_end": 4534,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_18",
+      "content": "# Summary\n\nChemical, oil, and fuel spills threaten soil, water, air, biodiversity, and human health through environmental contamination.",
+      "raw_content": "Spills of chemicals, oils, and fuels, among other substances, can potentially affect soil, water, air, biodiversity, and human health.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_18",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_18",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4534,
+        "char_end": 4668,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_19",
+      "content": "# Summary\n\nBasel and Ramsar Conventions cover these concepts through key international instruments addressing environmental protection and resource management.",
+      "raw_content": "These concepts are covered by the Basel and Ramsar Conventions, and in key instruments of the International",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_19",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_19",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4668,
+        "char_end": 4775,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_20",
+      "content": "Maritime Organization: see References.",
+      "raw_content": "Maritime Organization: see References.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_20",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_20",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4775,
+        "char_end": 4813,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_21",
+      "content": "# Summary\n\nThis Standard's disclosures reveal organizational impacts related to effluents and waste management practices.",
+      "raw_content": "The disclosures in this Standard can provide information about an organization's impacts related to effluents and",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_21",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_21",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4813,
+        "char_end": 4926,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_22",
+      "content": "waste, and how it manages these impacts.",
+      "raw_content": "waste, and how it manages these impacts.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_22",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_22",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4926,
+        "char_end": 4966,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_23",
+      "content": "GRI 306: Effluents and Waste",
+      "raw_content": "GRI 306: Effluents and Waste",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_23",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_23",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 5,
+        "char_start": 4966,
+        "char_end": 4994,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_24",
+      "content": "# Summary\n\nOrganizations must report their management approach for handling effluents and waste, including expenditures on treatment, disposal, and cleanup costs.",
+      "raw_content": "1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS, 1 = 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS. 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS, 2 = 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS. GUIDANCE, 1 = . GUIDANCE, 2 = the reporting organization. , 1 = can also disclose expenditures on:. , 2 = can also disclose expenditures on:. , 1 = treatment and disposal of waste; •. , 2 = treatment and disposal of waste; •. , 1 = clean-up costs, including costs for remediation of spills as specified in Disclosure 306-3. •. , 2 = clean-up costs, including costs for remediation of spills as specified in Disclosure 306-3. •",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_24",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_24",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 7,
+        "char_start": 4994,
+        "char_end": 5852,
+        "section_title": "GRI 306: Effluents and Waste",
+        "section_path": "306 > GRI 306: Effluents and Waste",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_25",
+      "content": "2. Topic disclosures",
+      "raw_content": "2. Topic disclosures",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_25",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_25",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 7,
+        "char_start": 5852,
+        "char_end": 5872,
+        "section_title": "GRI 306: Effluents and Waste",
+        "section_path": "306 > GRI 306: Effluents and Waste",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_26",
+      "content": "# Summary\n\nOrganizations must disclose information about significant spills, including details on incidents, impacts, and response measures taken to a",
+      "raw_content": "The reporting organization shall report the following information:",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_26",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_26",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 10,
+        "char_start": 5872,
+        "char_end": 5938,
+        "section_title": "Disclosure 306-3 Significant spills",
+        "section_path": "306 > 2. Topic disclosures > Disclosure 306-3 Significant spills",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_27",
+      "content": "**Summary:**\n\nOrganizations must disclose total significant spills, their volume, location, material type (oil, fuel, waste, chemicals), and environme",
+      "raw_content": "- a. Total number and total volume of recorded significant spills.\n- b. The following additional information for each spill that was reported in the organization's financial statements:\n- i. Location of spill;\n- ii. Volume of spill;\n- iii. Material of spill, categorized by: oil spills (soil or water surfaces), fuel spills (soil or water surfaces), spills of wastes (soil or water surfaces), spills of chemicals (mostly soil or water surfaces), and other (to be specified by the organization).\n- c. Impacts of significant spills.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_27",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_27",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 10,
+        "char_start": 5938,
+        "char_end": 6468,
+        "section_title": "Disclosure 306-3 Significant spills",
+        "section_path": "306 > 2. Topic disclosures > Disclosure 306-3 Significant spills",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_28",
+      "content": "# Summary\n\nGlossary provides standardized definitions for terms used in GRI Standards that organizations must apply when implementing these standards.",
+      "raw_content": "This glossary provides definitions for terms used in this Standard. The organization is required to apply these definitions when using the GRI Standards.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_28",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_28",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 13,
+        "char_start": 6468,
+        "char_end": 6621,
+        "section_title": "Glossary",
+        "section_path": "306 > Glossary",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_29",
+      "content": "# Summary\n\nThis glossary provides term definitions for GRI Standards, with underlined defined terms. Undefined terms use common, widely understood definitions.",
+      "raw_content": "The definitions included in this glossary may contain terms that are further defined in the complete GRI Standards Glossary . All defined terms are underlined. If a term is not defined in this glossary or in the complete GRI Standards Glossary , definitions that are commonly used and understood apply.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_29",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_29",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 13,
+        "char_start": 6621,
+        "char_end": 6923,
+        "section_title": "Glossary",
+        "section_path": "306 > Glossary",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_30",
+      "content": "# Summary\n\nA significant spill is one that appears in an organization's financial statements due to resulting liabilities or is formally recorded as a",
+      "raw_content": "spill that is included in the organization's financial statements, for example due to resulting liabilities, or is recorded as a spill by the organization",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_30",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_30",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 13,
+        "char_start": 6923,
+        "char_end": 7077,
+        "section_title": "significant spill",
+        "section_path": "306 > Glossary > significant spill",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_31",
+      "content": "# Summary\n\nAccidental release of hazardous substances that can harm human health, land, vegetation, water bodies, and groundwater.",
+      "raw_content": "accidental release of a hazardous substance that can affect human health, land, vegetation, waterbodies, and groundwater",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_31",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_31",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 13,
+        "char_start": 7077,
+        "char_end": 7197,
+        "section_title": "spill",
+        "section_path": "306 > Glossary > spill",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_32",
+      "content": "Bibliography",
+      "raw_content": "Bibliography",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_32",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_32",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 13,
+        "char_start": 7197,
+        "char_end": 7209,
+        "section_title": "spill",
+        "section_path": "306 > Glossary > spill",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_33",
+      "content": "# Summary\n\nFour international conventions regulate hazardous waste transport, marine pollution, and wetland protection globally through the Basel, Lon",
+      "raw_content": "1. Basel Convention, 'Ban Amendment to the Basel Convention on the Control of Transboundary Movements of Hazardous Wastes and their Disposal', 1995.\n2. International Maritime Organization (IMO) Convention, 'Convention on the Prevention of Marine Pollution by Dumping of Wastes and Other Matter' (London Convention), 1972.\n3. International Maritime Organization (IMO) Convention, 'International Convention for the Prevention of Pollution from Ships (Marpol)', 1973, as modified by the Protocol of 1978.\n4. Ramsar Convention, 'The Convention on Wetlands of International Importance especially as Waterfowl Habitat', 1994.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_33",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_33",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 14,
+        "char_start": 7209,
+        "char_end": 7828,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_34",
+      "content": "Other relevant references:",
+      "raw_content": "Other relevant references:",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_34",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_34",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 14,
+        "char_start": 7828,
+        "char_end": 7854,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_35",
+      "content": "# Summary\n\nIUCN Red List of Threatened Species database provides authoritative information on species conservation status, accessed via http://www.iucnredlist.org/.",
+      "raw_content": "5. International Union for Conservation of Nature (IUCN), Red List of Threatened Species, http://www.iucnredlist.org/, accessed on 1 September 2016.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_35",
+        "layer": 2,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_35",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L1",
+        "page_number": 14,
+        "char_start": 7854,
+        "char_end": 8002,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    }
+  ],
+  "layer3": [
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_1_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed EFFECTIVE DATE: 1 JULY 2018",
+      "raw_content": "EFFECTIVE DATE: 1 JULY 2018",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_1_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_1",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_1",
+        "page_number": 1,
+        "char_start": 0,
+        "char_end": 27,
+        "section_title": "GRI 306: Effluents and Waste 2016",
+        "section_path": "GRI 306: Effluents and Waste 2016",
+        "section_level": 1,
+        "section_depth": 1
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_2_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed TOPIC STANDARD",
+      "raw_content": "TOPIC STANDARD",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_2_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_2",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_2",
+        "page_number": 1,
+        "char_start": 27,
+        "char_end": 41,
+        "section_title": "GRI 306: Effluents and Waste 2016",
+        "section_path": "GRI 306: Effluents and Waste 2016",
+        "section_level": 1,
+        "section_depth": 1
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_3_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed The main contents of GRI 306: Effluents and Waste 2016 have been superseded by the GRI Standards GRI 303:",
+      "raw_content": "The main contents of GRI 306: Effluents and Waste 2016 have been superseded by the GRI Standards GRI 303:",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_3_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_3",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_3",
+        "page_number": 2,
+        "char_start": 41,
+        "char_end": 146,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed Water and Effluents 2018 and GRI 306: Waste 2020 . This content has been blacked out in this Standard. However, the spills-related content in Disclosure 306-3 Significant spills of GRI 306: Effluents and Waste 2016 remains in effect. In its 2023-2025 Work Program, the Global Sustainability Standards Board has identified the development of a GRI Standard for spills and leaks as a priority project for commencement",
+      "raw_content": "Water and Effluents 2018 and GRI 306: Waste 2020 . This content has been blacked out in this Standard. However, the spills-related content in Disclosure 306-3 Significant spills of GRI 306: Effluents and Waste 2016 remains in effect. In its 2023-2025 Work Program, the Global Sustainability Standards Board has identified the development of a GRI Standard for spills and leaks as a priority project for commencement",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_1",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . Effective date This Standard is effective for reports or other materials published on or after 1 July 2018 Responsibility This Standard is issued by the Global Sustainability Standards Board (GSSB). Any feedback on the GRI Standards can be submitted to gssbsecretariat@globalreporting.org for the consideration of the GSSB. Due Process This Standard was developed in the public interest and in accordance with the requirements of the GSSB Due Process Protocol",
+      "raw_content": ". Effective date This Standard is effective for reports or other materials published on or after 1 July 2018 Responsibility This Standard is issued by the Global Sustainability Standards Board (GSSB). Any feedback on the GRI Standards can be submitted to gssbsecretariat@globalreporting.org for the consideration of the GSSB. Due Process This Standard was developed in the public interest and in accordance with the requirements of the GSSB Due Process Protocol",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_1",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_2",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . It has been developed using multi-stakeholder expertise, and with regard to authoritative intergovernmental instruments and widely held expectations of organizations relating to social, environmental, and economic responsibilities",
+      "raw_content": ". It has been developed using multi-stakeholder expertise, and with regard to authoritative intergovernmental instruments and widely held expectations of organizations relating to social, environmental, and economic responsibilities",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_2",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_3",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . Legal liability This document, designed to promote sustainability reporting, has been developed by the Global Sustainability Standards Board (GSSB) through a unique multi-stakeholder consultative process involving representatives from organizations and report information users from around the world",
+      "raw_content": ". Legal liability This document, designed to promote sustainability reporting, has been developed by the Global Sustainability Standards Board (GSSB) through a unique multi-stakeholder consultative process involving representatives from organizations and report information users from around the world",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_3",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_4",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . While the GRI Supervisory Board, Management Board, and GSSB encourage the use of the GRI Sustainability Reporting Standards (GRI Standards) and related Interpretations by all organizations, the preparation and publication of reports based fully or partially on the GRI Standards and related Interpretations are the full responsibility of those producing them",
+      "raw_content": ". While the GRI Supervisory Board, Management Board, and GSSB encourage the use of the GRI Sustainability Reporting Standards (GRI Standards) and related Interpretations by all organizations, the preparation and publication of reports based fully or partially on the GRI Standards and related Interpretations are the full responsibility of those producing them",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_4",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_5",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . Neither the GRI Supervisory Board, Management Board, GSSB, nor Stichting Global Reporting Initiative (GRI) can assume responsibility for any consequences or damages resulting directly or indirectly from the use of the GRI Standards and related Interpretations in the preparation of reports, or the use of reports based on the GRI Standards and related Interpretations. Copyright and trademark notice This document is copyright-protected by Stichting Global Reporting Initiative (GRI)",
+      "raw_content": ". Neither the GRI Supervisory Board, Management Board, GSSB, nor Stichting Global Reporting Initiative (GRI) can assume responsibility for any consequences or damages resulting directly or indirectly from the use of the GRI Standards and related Interpretations in the preparation of reports, or the use of reports based on the GRI Standards and related Interpretations. Copyright and trademark notice This document is copyright-protected by Stichting Global Reporting Initiative (GRI)",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_5",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_6",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . The reproduction and distribution of this document for information and/or use in preparing a sustainability report is permitted without prior permission from GRI. However, neither this document nor any extract from it may be reproduced, stored, translated, or transferred in any form or by any means (electronic, mechanical, photocopied, recorded, or otherwise) for any other purpose without prior written permission from GRI",
+      "raw_content": ". The reproduction and distribution of this document for information and/or use in preparing a sustainability report is permitted without prior permission from GRI. However, neither this document nor any extract from it may be reproduced, stored, translated, or transferred in any form or by any means (electronic, mechanical, photocopied, recorded, or otherwise) for any other purpose without prior written permission from GRI",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_6",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_7",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . Global Reporting Initiative, GRI and logo, GSSB and logo, and GRI Sustainability Reporting Standards (GRI Standards) and logo are trademarks of Stichting Global Reporting Initiative. © 2024 GRI. All rights reserved.",
+      "raw_content": ". Global Reporting Initiative, GRI and logo, GSSB and logo, and GRI Sustainability Reporting Standards (GRI Standards) and logo are trademarks of Stichting Global Reporting Initiative. © 2024 GRI. All rights reserved.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_4_chunk_7",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_4",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_4",
+        "page_number": 2,
+        "char_start": 146,
+        "char_end": 3044,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_5_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed ISBN 978-90-8866-109-9",
+      "raw_content": "ISBN 978-90-8866-109-9",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_5_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_5",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_5",
+        "page_number": 2,
+        "char_start": 3044,
+        "char_end": 3066,
+        "section_title": "Topic Standard",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Topic Standard",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_6_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed Introduction, 1 = 4. GRI 306: Effluents and Waste, 1 = 6. 2. Topic disclosures, 1 = 8. Disclosure 306-1 Water discharge by quality and destination, 1 = 8. Disclosure 306-2 Waste by type and disposal method, 1 = 9. Disclosure 306-3 Significant spills, 1 = 10. Disclosure 306-4 Transport of hazardous waste, 1 = 11. Disclosure 306-5 Water bodies affected by water discharges and/or runoff, 1 = 12. Glossary, 1 = 13. Bibliography, 1 = 14",
+      "raw_content": "Introduction, 1 = 4. GRI 306: Effluents and Waste, 1 = 6. 2. Topic disclosures, 1 = 8. Disclosure 306-1 Water discharge by quality and destination, 1 = 8. Disclosure 306-2 Waste by type and disposal method, 1 = 9. Disclosure 306-3 Significant spills, 1 = 10. Disclosure 306-4 Transport of hazardous waste, 1 = 11. Disclosure 306-5 Water bodies affected by water discharges and/or runoff, 1 = 12. Glossary, 1 = 13. Bibliography, 1 = 14",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_6_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_6",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_6",
+        "page_number": 3,
+        "char_start": 3066,
+        "char_end": 3500,
+        "section_title": "Content",
+        "section_path": "306 > GRI 306: Effluents and Waste 2016 > Content",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_7_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed In the context of the GRI Standards, the environmental dimension of sustainability concerns an organization's impacts",
+      "raw_content": "In the context of the GRI Standards, the environmental dimension of sustainability concerns an organization's impacts",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_7_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_7",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_7",
+        "page_number": 5,
+        "char_start": 3500,
+        "char_end": 3617,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_8_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed on living and non-living natural systems, including land, air, water, and ecosystems.",
+      "raw_content": "on living and non-living natural systems, including land, air, water, and ecosystems.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_8_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_8",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_8",
+        "page_number": 5,
+        "char_start": 3617,
+        "char_end": 3702,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_9_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed GRI 306 addresses the topic of effluents and waste. This includes water discharges; the generation, treatment and",
+      "raw_content": "GRI 306 addresses the topic of effluents and waste. This includes water discharges; the generation, treatment and",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_9_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_9",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_9",
+        "page_number": 5,
+        "char_start": 3702,
+        "char_end": 3815,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_10_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed disposal of waste; and spills of chemicals, oils, fuels, and other substances.",
+      "raw_content": "disposal of waste; and spills of chemicals, oils, fuels, and other substances.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_10_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_10",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_10",
+        "page_number": 5,
+        "char_start": 3815,
+        "char_end": 3893,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_11_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed The impacts of water discharges vary depending on the quantity, quality, and destination of the discharge. The",
+      "raw_content": "The impacts of water discharges vary depending on the quantity, quality, and destination of the discharge. The",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_11_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_11",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_11",
+        "page_number": 5,
+        "char_start": 3893,
+        "char_end": 4003,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_12_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed unmanaged discharge of effluents with a high chemical or nutrient load (principally nitrogen, phosphorous, or",
+      "raw_content": "unmanaged discharge of effluents with a high chemical or nutrient load (principally nitrogen, phosphorous, or",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_12_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_12",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_12",
+        "page_number": 5,
+        "char_start": 4003,
+        "char_end": 4112,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_13_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed potassium) can affect aquatic habitats, the quality of an available water supply, and an organization's relationship with",
+      "raw_content": "potassium) can affect aquatic habitats, the quality of an available water supply, and an organization's relationship with",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_13_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_13",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_13",
+        "page_number": 5,
+        "char_start": 4112,
+        "char_end": 4233,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_14_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed communities and other water users.",
+      "raw_content": "communities and other water users.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_14_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_14",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_14",
+        "page_number": 5,
+        "char_start": 4233,
+        "char_end": 4267,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_15_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed The generation, treatment and disposal of waste - including its improper transportation - can also pose harm to",
+      "raw_content": "The generation, treatment and disposal of waste - including its improper transportation - can also pose harm to",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_15_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_15",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_15",
+        "page_number": 5,
+        "char_start": 4267,
+        "char_end": 4378,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_16_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed human health and the environment. This is of particular concern if waste is transported to countries lacking the",
+      "raw_content": "human health and the environment. This is of particular concern if waste is transported to countries lacking the",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_16_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_16",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_16",
+        "page_number": 5,
+        "char_start": 4378,
+        "char_end": 4490,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_17_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed infrastructure and regulations to handle it.",
+      "raw_content": "infrastructure and regulations to handle it.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_17_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_17",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_17",
+        "page_number": 5,
+        "char_start": 4490,
+        "char_end": 4534,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_18_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed Spills of chemicals, oils, and fuels, among other substances, can potentially affect soil, water, air, biodiversity, and human health.",
+      "raw_content": "Spills of chemicals, oils, and fuels, among other substances, can potentially affect soil, water, air, biodiversity, and human health.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_18_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_18",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_18",
+        "page_number": 5,
+        "char_start": 4534,
+        "char_end": 4668,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_19_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed These concepts are covered by the Basel and Ramsar Conventions, and in key instruments of the International",
+      "raw_content": "These concepts are covered by the Basel and Ramsar Conventions, and in key instruments of the International",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_19_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_19",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_19",
+        "page_number": 5,
+        "char_start": 4668,
+        "char_end": 4775,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_20_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed Maritime Organization: see References.",
+      "raw_content": "Maritime Organization: see References.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_20_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_20",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_20",
+        "page_number": 5,
+        "char_start": 4775,
+        "char_end": 4813,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_21_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed The disclosures in this Standard can provide information about an organization's impacts related to effluents and",
+      "raw_content": "The disclosures in this Standard can provide information about an organization's impacts related to effluents and",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_21_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_21",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_21",
+        "page_number": 5,
+        "char_start": 4813,
+        "char_end": 4926,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_22_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed waste, and how it manages these impacts.",
+      "raw_content": "waste, and how it manages these impacts.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_22_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_22",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_22",
+        "page_number": 5,
+        "char_start": 4926,
+        "char_end": 4966,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_23_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed GRI 306: Effluents and Waste",
+      "raw_content": "GRI 306: Effluents and Waste",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_23_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_23",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_23",
+        "page_number": 5,
+        "char_start": 4966,
+        "char_end": 4994,
+        "section_title": "D. Background context",
+        "section_path": "306 > Introduction > D. Background context",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_24_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS, 1 = 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS. 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS, 2 = 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS. GUIDANCE, 1 = . GUIDANCE, 2 = the reporting organization",
+      "raw_content": "1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS, 1 = 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS. 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS, 2 = 1.1 The reporting organization shall report its management approach for effluents and waste REQUIREMENTS. GUIDANCE, 1 = . GUIDANCE, 2 = the reporting organization",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_24_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_24",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_24",
+        "page_number": 7,
+        "char_start": 4994,
+        "char_end": 5852,
+        "section_title": "GRI 306: Effluents and Waste",
+        "section_path": "306 > GRI 306: Effluents and Waste",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_24_chunk_1",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed . , 1 = can also disclose expenditures on:. , 2 = can also disclose expenditures on:. , 1 = treatment and disposal of waste; •. , 2 = treatment and disposal of waste; •. , 1 = clean-up costs, including costs for remediation of spills as specified in Disclosure 306-3. •. , 2 = clean-up costs, including costs for remediation of spills as specified in Disclosure 306-3. •",
+      "raw_content": ". , 1 = can also disclose expenditures on:. , 2 = can also disclose expenditures on:. , 1 = treatment and disposal of waste; •. , 2 = treatment and disposal of waste; •. , 1 = clean-up costs, including costs for remediation of spills as specified in Disclosure 306-3. •. , 2 = clean-up costs, including costs for remediation of spills as specified in Disclosure 306-3. •",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_24_chunk_1",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_24",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_24",
+        "page_number": 7,
+        "char_start": 4994,
+        "char_end": 5852,
+        "section_title": "GRI 306: Effluents and Waste",
+        "section_path": "306 > GRI 306: Effluents and Waste",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_25_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed 2. Topic disclosures",
+      "raw_content": "2. Topic disclosures",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_25_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_25",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_25",
+        "page_number": 7,
+        "char_start": 5852,
+        "char_end": 5872,
+        "section_title": "GRI 306: Effluents and Waste",
+        "section_path": "306 > GRI 306: Effluents and Waste",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_26_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed The reporting organization shall report the following information:",
+      "raw_content": "The reporting organization shall report the following information:",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_26_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_26",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_26",
+        "page_number": 10,
+        "char_start": 5872,
+        "char_end": 5938,
+        "section_title": "Disclosure 306-3 Significant spills",
+        "section_path": "306 > 2. Topic disclosures > Disclosure 306-3 Significant spills",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_27_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed - a. Total number and total volume of recorded significant spills.\n- b. The following additional information for each spill that was reported in the organization's financial statements:\n- i. Location of spill;\n- ii. Volume of spill;\n- iii. Material of spill, categorized by: oil spills (soil or water surfaces), fuel spills (soil or water surfaces), spills of wastes (soil or water surfaces), spills of chemicals (mostly soil or water surfaces), and other (to be specified by the organization).",
+      "raw_content": "- a. Total number and total volume of recorded significant spills.\n- b. The following additional information for each spill that was reported in the organization's financial statements:\n- i. Location of spill;\n- ii. Volume of spill;\n- iii. Material of spill, categorized by: oil spills (soil or water surfaces), fuel spills (soil or water surfaces), spills of wastes (soil or water surfaces), spills of chemicals (mostly soil or water surfaces), and other (to be specified by the organization).",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_27_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_27",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_27",
+        "page_number": 10,
+        "char_start": 5938,
+        "char_end": 6468,
+        "section_title": "Disclosure 306-3 Significant spills",
+        "section_path": "306 > 2. Topic disclosures > Disclosure 306-3 Significant spills",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_27_chunk_1",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed - c. Impacts of significant spills.",
+      "raw_content": "- c. Impacts of significant spills.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_27_chunk_1",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_27",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_27",
+        "page_number": 10,
+        "char_start": 5938,
+        "char_end": 6468,
+        "section_title": "Disclosure 306-3 Significant spills",
+        "section_path": "306 > 2. Topic disclosures > Disclosure 306-3 Significant spills",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_28_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed This glossary provides definitions for terms used in this Standard. The organization is required to apply these definitions when using the GRI Standards.",
+      "raw_content": "This glossary provides definitions for terms used in this Standard. The organization is required to apply these definitions when using the GRI Standards.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_28_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_28",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_28",
+        "page_number": 13,
+        "char_start": 6468,
+        "char_end": 6621,
+        "section_title": "Glossary",
+        "section_path": "306 > Glossary",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_29_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed The definitions included in this glossary may contain terms that are further defined in the complete GRI Standards Glossary . All defined terms are underlined. If a term is not defined in this glossary or in the complete GRI Standards Glossary , definitions that are commonly used and understood apply.",
+      "raw_content": "The definitions included in this glossary may contain terms that are further defined in the complete GRI Standards Glossary . All defined terms are underlined. If a term is not defined in this glossary or in the complete GRI Standards Glossary , definitions that are commonly used and understood apply.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_29_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_29",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_29",
+        "page_number": 13,
+        "char_start": 6621,
+        "char_end": 6923,
+        "section_title": "Glossary",
+        "section_path": "306 > Glossary",
+        "section_level": 2,
+        "section_depth": 2
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_30_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed spill that is included in the organization's financial statements, for example due to resulting liabilities, or is recorded as a spill by the organization",
+      "raw_content": "spill that is included in the organization's financial statements, for example due to resulting liabilities, or is recorded as a spill by the organization",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_30_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_30",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_30",
+        "page_number": 13,
+        "char_start": 6923,
+        "char_end": 7077,
+        "section_title": "significant spill",
+        "section_path": "306 > Glossary > significant spill",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_31_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed accidental release of a hazardous substance that can affect human health, land, vegetation, waterbodies, and groundwater",
+      "raw_content": "accidental release of a hazardous substance that can affect human health, land, vegetation, waterbodies, and groundwater",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_31_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_31",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_31",
+        "page_number": 13,
+        "char_start": 7077,
+        "char_end": 7197,
+        "section_title": "spill",
+        "section_path": "306 > Glossary > spill",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_32_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed Bibliography",
+      "raw_content": "Bibliography",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_32_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_32",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_32",
+        "page_number": 13,
+        "char_start": 7197,
+        "char_end": 7209,
+        "section_title": "spill",
+        "section_path": "306 > Glossary > spill",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_33_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed 1. Basel Convention, 'Ban Amendment to the Basel Convention on the Control of Transboundary Movements of Hazardous Wastes and their Disposal', 1995.\n2. International Maritime Organization (IMO) Convention, 'Convention on the Prevention of Marine Pollution by Dumping of Wastes and Other Matter' (London Convention), 1972.",
+      "raw_content": "1. Basel Convention, 'Ban Amendment to the Basel Convention on the Control of Transboundary Movements of Hazardous Wastes and their Disposal', 1995.\n2. International Maritime Organization (IMO) Convention, 'Convention on the Prevention of Marine Pollution by Dumping of Wastes and Other Matter' (London Convention), 1972.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_33_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_33",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_33",
+        "page_number": 14,
+        "char_start": 7209,
+        "char_end": 7828,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_33_chunk_1",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed 3. International Maritime Organization (IMO) Convention, 'International Convention for the Prevention of Pollution from Ships (Marpol)', 1973, as modified by the Protocol of 1978.\n4. Ramsar Convention, 'The Convention on Wetlands of International Importance especially as Waterfowl Habitat', 1994.",
+      "raw_content": "3. International Maritime Organization (IMO) Convention, 'International Convention for the Prevention of Pollution from Ships (Marpol)', 1973, as modified by the Protocol of 1978.\n4. Ramsar Convention, 'The Convention on Wetlands of International Importance especially as Waterfowl Habitat', 1994.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_33_chunk_1",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_33",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_33",
+        "page_number": 14,
+        "char_start": 7209,
+        "char_end": 7828,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_34_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed Other relevant references:",
+      "raw_content": "Other relevant references:",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_34_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_34",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_34",
+        "page_number": 14,
+        "char_start": 7828,
+        "char_end": 7854,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    },
+    {
+      "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_35_chunk_0",
+      "content": "GRI 306: Effluents and Waste 2016 standard, effective July 1, 2018, addresses water discharges, waste management, and chemical spills. Mostly supersed 5. International Union for Conservation of Nature (IUCN), Red List of Threatened Species, http://www.iucnredlist.org/, accessed on 1 September 2016.",
+      "raw_content": "5. International Union for Conservation of Nature (IUCN), Red List of Threatened Species, http://www.iucnredlist.org/, accessed on 1 September 2016.",
+      "metadata": {
+        "chunk_id": "GRI 306_ Effluents and Waste 2016_L3_sec_35_chunk_0",
+        "layer": 3,
+        "document_id": "GRI 306_ Effluents and Waste 2016",
+        "section_id": "sec_35",
+        "parent_chunk_id": "GRI 306_ Effluents and Waste 2016_L2_sec_35",
+        "page_number": 14,
+        "char_start": 7854,
+        "char_end": 8002,
+        "section_title": "Authoritative instruments:",
+        "section_path": "306 > Bibliography > Authoritative instruments:",
+        "section_level": 3,
+        "section_depth": 3
+      }
+    }
+  ]
+}

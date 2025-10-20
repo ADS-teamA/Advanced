@@ -44,7 +44,14 @@ env/
 .ipynb_checkpoints
 
 # Output directories (large files)
-output/
+# Allow GRI 306 example output
+!output/GRI_306__Effluents_and_Waste_2016/
+
+# Ignore other outputs
+output/*
+!output/GRI_306__Effluents_and_Waste_2016
+
+# Ignore FAISS indices (can be regenerated)
 *.faiss
 *.index
 
