@@ -1,0 +1,49 @@
+# Evidence-Based RAG Pipeline Configuration
+# Based on PIPELINE.md and 4 research papers
+#
+# Research References:
+# - LegalBench-RAG (Pipitone & Alami, 2024)
+# - Summary-Augmented Chunking (Reuter et al., 2024)
+# - Multi-Layer Embeddings (Lima, 2024)
+# - NLI for Legal Contracts (Narendra et al., 2024)
+
+preprocessing:
+  pdf_processor_type: pypdf2  # 'pypdf2' or 'ocr' (future)
+  enable_ocr: false
+  normalize_whitespace: true
+  extract_metadata: true
+
+summarization:
+  provider: claude      # 'claude' or 'openai'
+  model: haiku          # Uses Anthropic alias 'claude-haiku-4-5' (auto-updates to latest Haiku 4.5)
+                        # Options: haiku, haiku-3.5, sonnet, sonnet-4.5, opus
+                        # Or use full names: claude-haiku-4-5, claude-3-5-haiku-latest, etc.
+  max_chars: 150        # Optimal length (Reuter 2024, Table 1)
+  tolerance: 20         # ±20 chars acceptable
+  style: generic        # NOT expert-guided (generic performs better!)
+  temperature: 0.3      # Low for consistency
+  max_tokens: 500        # Short summaries
+  retry_on_exceed: true
+  max_retries: 3
+
+chunking:
+  method: RecursiveCharacterTextSplitter
+  chunk_size: 500       # Characters (optimal from Reuter 2024)
+  chunk_overlap: 0      # RCTS handles boundaries naturally
+  enable_sac: true      # Critical: 58% DRM reduction
+  enable_multi_layer: true  # 2.3x essential chunks improvement
+
+  # RCTS separators optimized for legal text
+  separators:
+    - "\n\n"            # Paragraph breaks
+    - "\n"              # Line breaks
+    - ". "              # Sentence ends
+    - "; "              # Clause separators
+    - ", "              # Sub-clause separators
+    - " "               # Word boundaries
+    - ""                # Character fallback
+
+pipeline:
+  log_level: INFO
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_file: logs/pipeline.log

@@ -1,0 +1,506 @@
+"""
+PHASE 4: FAISS Vector Store with Multi-Layer Indexing
+
+Based on research:
+- LegalBench-RAG: Dense-only retrieval (no BM25)
+- Multi-Layer Embeddings (Lima, 2024): 3 separate indexes
+- Retrieval: K=6 on Layer 3 (primary)
+- DRM prevention: Document-level filtering
+
+Implementation:
+- 3 separate FAISS indexes (IndexFlatIP for cosine similarity)
+- Metadata tracking for chunk IDs, document IDs, sections
+- Save/load functionality
+- Document-level filtering during retrieval
+"""
+
+import logging
+import pickle
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple
+import numpy as np
+
+try:
+    import faiss
+except ImportError:
+    raise ImportError(
+        "FAISS required for vector store. "
+        "Install with: uv pip install faiss-cpu (or faiss-gpu)"
+    )
+
+logger = logging.getLogger(__name__)
+
+
+class FAISSVectorStore:
+    """
+    Multi-layer FAISS vector store for RAG pipeline.
+
+    Creates 3 separate FAISS indexes:
+    - Layer 1: Document-level (1 vector per document)
+    - Layer 2: Section-level (N vectors per document)
+    - Layer 3: Chunk-level (M vectors per document) - PRIMARY
+
+    Based on:
+    - LegalBench-RAG: Dense-only retrieval
+    - Multi-Layer Embeddings (Lima, 2024)
+    """
+
+    def __init__(self, dimensions: int):
+        """
+        Initialize multi-layer FAISS vector store.
+
+        Args:
+            dimensions: Embedding dimensionality (e.g., 3072 for text-embedding-3-large)
+        """
+        self.dimensions = dimensions
+
+        # Create 3 separate FAISS indexes
+        # Using IndexFlatIP (inner product) for cosine similarity with normalized vectors
+        self.index_layer1 = faiss.IndexFlatIP(dimensions)
+        self.index_layer2 = faiss.IndexFlatIP(dimensions)
+        self.index_layer3 = faiss.IndexFlatIP(dimensions)
+
+        # Metadata storage (chunk objects)
+        self.metadata_layer1: List[Dict] = []
+        self.metadata_layer2: List[Dict] = []
+        self.metadata_layer3: List[Dict] = []
+
+        # Document ID mapping for DRM prevention
+        self.doc_id_to_indices = {
+            1: {},  # Layer 1: doc_id -> [indices]
+            2: {},  # Layer 2: doc_id -> [indices]
+            3: {}   # Layer 3: doc_id -> [indices]
+        }
+
+        logger.info(f"FAISSVectorStore initialized: {dimensions}D, 3 layers")
+
+    def add_chunks(
+        self,
+        chunks_dict: Dict[str, List],
+        embeddings_dict: Dict[str, np.ndarray]
+    ):
+        """
+        Add chunks and embeddings to appropriate layers.
+
+        Args:
+            chunks_dict: Dict with keys 'layer1', 'layer2', 'layer3' containing Chunk objects
+            embeddings_dict: Dict with keys 'layer1', 'layer2', 'layer3' containing embeddings
+        """
+        logger.info("Adding chunks to FAISS indexes...")
+
+        # Add Layer 1 (Document level)
+        self._add_layer(
+            layer=1,
+            chunks=chunks_dict["layer1"],
+            embeddings=embeddings_dict["layer1"]
+        )
+
+        # Add Layer 2 (Section level)
+        self._add_layer(
+            layer=2,
+            chunks=chunks_dict["layer2"],
+            embeddings=embeddings_dict["layer2"]
+        )
+
+        # Add Layer 3 (Chunk level - PRIMARY)
+        self._add_layer(
+            layer=3,
+            chunks=chunks_dict["layer3"],
+            embeddings=embeddings_dict["layer3"]
+        )
+
+        logger.info(
+            f"Chunks added: "
+            f"L1={self.index_layer1.ntotal}, "
+            f"L2={self.index_layer2.ntotal}, "
+            f"L3={self.index_layer3.ntotal}"
+        )
+
+    def _add_layer(self, layer: int, chunks: List, embeddings: np.ndarray):
+        """Add chunks and embeddings to a specific layer."""
+        if not chunks or embeddings.size == 0:
+            logger.warning(f"Layer {layer}: No chunks to add")
+            return
+
+        # Select index and metadata
+        if layer == 1:
+            index = self.index_layer1
+            metadata = self.metadata_layer1
+        elif layer == 2:
+            index = self.index_layer2
+            metadata = self.metadata_layer2
+        elif layer == 3:
+            index = self.index_layer3
+            metadata = self.metadata_layer3
+        else:
+            raise ValueError(f"Invalid layer: {layer}")
+
+        # Add embeddings to FAISS index
+        if embeddings.dtype != np.float32:
+            embeddings = embeddings.astype(np.float32)
+
+        # Ensure 2D array
+        if embeddings.ndim == 1:
+            embeddings = embeddings.reshape(1, -1)
+
+        index.add(embeddings)
+
+        # Add metadata
+        for chunk in chunks:
+            chunk_meta = {
+                "chunk_id": chunk.chunk_id,
+                "document_id": chunk.metadata.document_id,
+                "section_id": chunk.metadata.section_id,
+                "section_title": chunk.metadata.section_title,
+                "section_path": chunk.metadata.section_path,
+                "page_number": chunk.metadata.page_number,
+                "layer": layer,
+                # Store raw_content for generation (without SAC)
+                "content": chunk.raw_content
+            }
+            metadata.append(chunk_meta)
+
+            # Update doc_id mapping
+            doc_id = chunk.metadata.document_id
+            if doc_id not in self.doc_id_to_indices[layer]:
+                self.doc_id_to_indices[layer][doc_id] = []
+            self.doc_id_to_indices[layer][doc_id].append(len(metadata) - 1)
+
+        logger.info(f"Layer {layer}: Added {len(chunks)} chunks")
+
+    def search_layer3(
+        self,
+        query_embedding: np.ndarray,
+        k: int = 6,
+        document_filter: Optional[str] = None,
+        similarity_threshold: Optional[float] = None
+    ) -> List[Dict]:
+        """
+        Search Layer 3 (PRIMARY retrieval layer).
+
+        Args:
+            query_embedding: Query embedding vector (1D or 2D array)
+            k: Number of results to retrieve (default: 6, per research)
+            document_filter: Optional document_id to filter results (DRM prevention)
+            similarity_threshold: Optional minimum similarity score
+
+        Returns:
+            List of chunk metadata dicts with 'score' field added
+        """
+        return self._search_layer(
+            layer=3,
+            query_embedding=query_embedding,
+            k=k,
+            document_filter=document_filter,
+            similarity_threshold=similarity_threshold
+        )
+
+    def search_layer2(
+        self,
+        query_embedding: np.ndarray,
+        k: int = 3,
+        document_filter: Optional[str] = None
+    ) -> List[Dict]:
+        """Search Layer 2 (Section level)."""
+        return self._search_layer(
+            layer=2,
+            query_embedding=query_embedding,
+            k=k,
+            document_filter=document_filter
+        )
+
+    def search_layer1(
+        self,
+        query_embedding: np.ndarray,
+        k: int = 1
+    ) -> List[Dict]:
+        """Search Layer 1 (Document level)."""
+        return self._search_layer(
+            layer=1,
+            query_embedding=query_embedding,
+            k=k
+        )
+
+    def _search_layer(
+        self,
+        layer: int,
+        query_embedding: np.ndarray,
+        k: int,
+        document_filter: Optional[str] = None,
+        similarity_threshold: Optional[float] = None
+    ) -> List[Dict]:
+        """Search a specific layer."""
+        # Select index and metadata
+        if layer == 1:
+            index = self.index_layer1
+            metadata = self.metadata_layer1
+        elif layer == 2:
+            index = self.index_layer2
+            metadata = self.metadata_layer2
+        elif layer == 3:
+            index = self.index_layer3
+            metadata = self.metadata_layer3
+        else:
+            raise ValueError(f"Invalid layer: {layer}")
+
+        if index.ntotal == 0:
+            logger.warning(f"Layer {layer}: Index is empty")
+            return []
+
+        # Prepare query embedding
+        if query_embedding.dtype != np.float32:
+            query_embedding = query_embedding.astype(np.float32)
+
+        if query_embedding.ndim == 1:
+            query_embedding = query_embedding.reshape(1, -1)
+
+        # Document filtering for DRM prevention
+        if document_filter:
+            # Get indices for this document
+            doc_indices = self.doc_id_to_indices[layer].get(document_filter, [])
+            if not doc_indices:
+                logger.warning(f"Layer {layer}: No chunks for document {document_filter}")
+                return []
+
+            # Search only within document indices
+            # Note: FAISS doesn't natively support filtering, so we search all
+            # and filter results. For production, use IDSelectorArray.
+            k_search = min(k * 10, index.ntotal)  # Search more, filter later
+        else:
+            k_search = min(k, index.ntotal)
+
+        # Search
+        scores, indices = index.search(query_embedding, k_search)
+
+        # Flatten results
+        scores = scores[0]
+        indices = indices[0]
+
+        # Build results
+        results = []
+        for score, idx in zip(scores, indices):
+            if idx == -1:  # FAISS returns -1 for missing results
+                continue
+
+            # Apply document filter if specified
+            if document_filter:
+                if metadata[idx]["document_id"] != document_filter:
+                    continue
+
+            # Apply similarity threshold if specified
+            if similarity_threshold and score < similarity_threshold:
+                continue
+
+            result = metadata[idx].copy()
+            result["score"] = float(score)
+            result["index"] = int(idx)
+            results.append(result)
+
+            if len(results) >= k:
+                break
+
+        logger.info(f"Layer {layer}: Retrieved {len(results)}/{k} chunks")
+        return results
+
+    def hierarchical_search(
+        self,
+        query_embedding: np.ndarray,
+        k_layer3: int = 6,
+        use_doc_filtering: bool = True,
+        similarity_threshold_offset: float = 0.25
+    ) -> Dict[str, List[Dict]]:
+        """
+        Hierarchical search across all layers with DRM prevention.
+
+        Strategy:
+        1. Search Layer 1 (Document) to identify relevant document
+        2. Use document_id to filter Layer 3 search (DRM prevention)
+        3. Retrieve K=6 chunks from Layer 3 (PRIMARY)
+        4. Optional: Retrieve Layer 2 sections for context
+
+        Args:
+            query_embedding: Query embedding vector
+            k_layer3: Number of chunks to retrieve from Layer 3 (default: 6)
+            use_doc_filtering: Enable document-level filtering (DRM prevention)
+            similarity_threshold_offset: Threshold = top_score - offset (default: 0.25)
+
+        Returns:
+            Dict with keys 'layer1', 'layer2', 'layer3' containing results
+        """
+        logger.info("Performing hierarchical search...")
+
+        results = {}
+
+        # Step 1: Search Layer 1 (Document level)
+        layer1_results = self.search_layer1(query_embedding, k=1)
+        results["layer1"] = layer1_results
+
+        # Get document filter for DRM prevention
+        document_filter = None
+        if use_doc_filtering and layer1_results:
+            document_filter = layer1_results[0]["document_id"]
+            logger.info(f"Document filter: {document_filter}")
+
+        # Step 2: Search Layer 3 (PRIMARY - Chunk level)
+        layer3_results = self.search_layer3(
+            query_embedding=query_embedding,
+            k=k_layer3,
+            document_filter=document_filter
+        )
+
+        # Apply similarity threshold (top_score - 25%)
+        if layer3_results and similarity_threshold_offset > 0:
+            top_score = layer3_results[0]["score"]
+            threshold = top_score - similarity_threshold_offset
+            layer3_results = [r for r in layer3_results if r["score"] >= threshold]
+            logger.info(
+                f"Similarity threshold applied: {threshold:.4f} "
+                f"({len(layer3_results)} chunks remaining)"
+            )
+
+        results["layer3"] = layer3_results
+
+        # Step 3: Optional Layer 2 (Section context)
+        layer2_results = self.search_layer2(
+            query_embedding=query_embedding,
+            k=3,
+            document_filter=document_filter
+        )
+        results["layer2"] = layer2_results
+
+        logger.info(
+            f"Hierarchical search complete: "
+            f"L1={len(layer1_results)}, "
+            f"L2={len(layer2_results)}, "
+            f"L3={len(layer3_results)}"
+        )
+
+        return results
+
+    def get_stats(self) -> Dict:
+        """Get statistics about the vector store."""
+        return {
+            "dimensions": self.dimensions,
+            "layer1_count": self.index_layer1.ntotal,
+            "layer2_count": self.index_layer2.ntotal,
+            "layer3_count": self.index_layer3.ntotal,
+            "total_vectors": (
+                self.index_layer1.ntotal +
+                self.index_layer2.ntotal +
+                self.index_layer3.ntotal
+            ),
+            "documents": len(set(
+                m["document_id"] for m in
+                self.metadata_layer1 + self.metadata_layer2 + self.metadata_layer3
+            ))
+        }
+
+    def save(self, output_dir: Path):
+        """
+        Save FAISS indexes and metadata to disk.
+
+        Args:
+            output_dir: Directory to save indexes
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Saving vector store to {output_dir}")
+
+        # Save FAISS indexes
+        faiss.write_index(self.index_layer1, str(output_dir / "layer1.index"))
+        faiss.write_index(self.index_layer2, str(output_dir / "layer2.index"))
+        faiss.write_index(self.index_layer3, str(output_dir / "layer3.index"))
+
+        # Save metadata
+        metadata = {
+            "dimensions": self.dimensions,
+            "metadata_layer1": self.metadata_layer1,
+            "metadata_layer2": self.metadata_layer2,
+            "metadata_layer3": self.metadata_layer3,
+            "doc_id_to_indices": self.doc_id_to_indices
+        }
+
+        with open(output_dir / "metadata.pkl", "wb") as f:
+            pickle.dump(metadata, f)
+
+        logger.info(f"Vector store saved: {self.get_stats()}")
+
+    @classmethod
+    def load(cls, input_dir: Path) -> "FAISSVectorStore":
+        """
+        Load FAISS indexes and metadata from disk.
+
+        Args:
+            input_dir: Directory containing saved indexes
+
+        Returns:
+            FAISSVectorStore instance
+        """
+        input_dir = Path(input_dir)
+
+        logger.info(f"Loading vector store from {input_dir}")
+
+        # Load metadata
+        with open(input_dir / "metadata.pkl", "rb") as f:
+            metadata = pickle.load(f)
+
+        # Create instance
+        store = cls(dimensions=metadata["dimensions"])
+
+        # Load FAISS indexes
+        store.index_layer1 = faiss.read_index(str(input_dir / "layer1.index"))
+        store.index_layer2 = faiss.read_index(str(input_dir / "layer2.index"))
+        store.index_layer3 = faiss.read_index(str(input_dir / "layer3.index"))
+
+        # Load metadata
+        store.metadata_layer1 = metadata["metadata_layer1"]
+        store.metadata_layer2 = metadata["metadata_layer2"]
+        store.metadata_layer3 = metadata["metadata_layer3"]
+        store.doc_id_to_indices = metadata["doc_id_to_indices"]
+
+        logger.info(f"Vector store loaded: {store.get_stats()}")
+
+        return store
+
+
+# Example usage
+if __name__ == "__main__":
+    from extraction import MultiLayerChunker, DoclingExtractorV2, ExtractionConfig
+    from extraction.embedding_generator import EmbeddingGenerator, EmbeddingConfig
+
+    # Extract and chunk
+    config = ExtractionConfig(
+        enable_smart_hierarchy=True,
+        generate_summaries=True
+    )
+
+    extractor = DoclingExtractorV2(config)
+    result = extractor.extract("document.pdf")
+
+    chunker = MultiLayerChunker(chunk_size=500, enable_sac=True)
+    chunks = chunker.chunk_document(result)
+
+    # Generate embeddings
+    embedder = EmbeddingGenerator(EmbeddingConfig(model="text-embedding-3-large"))
+
+    embeddings = {
+        "layer1": embedder.embed_chunks(chunks["layer1"], layer=1),
+        "layer2": embedder.embed_chunks(chunks["layer2"], layer=2),
+        "layer3": embedder.embed_chunks(chunks["layer3"], layer=3)
+    }
+
+    # Create vector store
+    vector_store = FAISSVectorStore(dimensions=embedder.dimensions)
+    vector_store.add_chunks(chunks, embeddings)
+
+    # Search
+    query_embedding = embedder.embed_texts(["What is the safety specification?"])
+    results = vector_store.hierarchical_search(query_embedding)
+
+    print(f"Layer 3 results: {len(results['layer3'])}")
+    for i, result in enumerate(results["layer3"][:3], 1):
+        print(f"{i}. Score: {result['score']:.4f} - {result['section_title']}")
+
+    # Save
+    vector_store.save(Path("output/vector_store"))
