@@ -157,11 +157,7 @@ def run_complete_pipeline(pdf_path: Path, output_base: Path = None):
             api_key=llm_config["api_key"]
         )
 
-        # Generate document summary
-        print_info("Generating document summary...")
-        result.document_summary = generator.generate_document_summary(result.full_text)
-
-        # Generate section summaries (in parallel for speed)
+        # Generate section summaries FIRST (in parallel for speed)
         print_info(f"Generating summaries for {result.num_sections} sections...")
         section_texts = [(s.content, s.title) for s in result.sections]
         summaries = generator.generate_batch_summaries(section_texts)
@@ -169,6 +165,14 @@ def run_complete_pipeline(pdf_path: Path, output_base: Path = None):
         # Assign summaries back to sections
         for section, summary in zip(result.sections, summaries):
             section.summary = summary
+
+        # Generate document summary from section summaries (hierarchical)
+        print_info("Generating document summary (hierarchical)...")
+        valid_section_summaries = [s.summary for s in result.sections if s.summary]
+        result.document_summary = generator.generate_document_summary(
+            section_summaries=valid_section_summaries,
+            document_text=result.full_text  # Fallback if no section summaries
+        )
 
         sections_with_summaries = sum(1 for s in result.sections if s.summary)
 
