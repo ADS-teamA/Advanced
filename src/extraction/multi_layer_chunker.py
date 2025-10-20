@@ -246,24 +246,30 @@ class MultiLayerChunker:
 
     def _create_layer3_chunks(self, extracted_doc) -> List[Chunk]:
         """
-        Layer 3: Chunk-level with Summary-Augmented Chunking (SAC).
+        Layer 3: Chunk-level with Hierarchical Summary-Augmented Chunking (H-SAC).
 
         CRITICAL: This is the PRIMARY chunking layer!
 
         Process:
         1. Split each section into 500-char chunks using RCTS
-        2. If SAC enabled: Prepend document summary to each chunk for embedding
-        3. Keep raw content (without summary) for generation
+        2. If SAC enabled: Prepend BOTH document + section summaries for embedding
+        3. Keep raw content (without summaries) for generation
+
+        Hierarchical SAC (H-SAC) provides TWO levels of context:
+        - Document summary: Global context (what document is this?)
+        - Section summary: Local context (what section are we in?)
+        - Raw chunk: Specific detail
 
         Based on:
         - Reuter et al., 2024: SAC reduces DRM by 58%
         - LegalBench-RAG: RCTS outperforms fixed-size
+        - Enhanced with hierarchical context for better precision
         """
 
         chunks = []
         chunk_counter = 0
 
-        # Get document summary for SAC
+        # Get document summary for H-SAC
         doc_summary = extracted_doc.document_summary or ""
 
         for section in extracted_doc.sections:
@@ -271,16 +277,32 @@ class MultiLayerChunker:
             if not section.content.strip():
                 continue
 
+            # Get section summary for H-SAC
+            section_summary = section.summary or ""
+
             # Split section into raw chunks using RCTS
             raw_chunks = self.text_splitter.split_text(section.content)
 
             for idx, raw_chunk in enumerate(raw_chunks):
                 chunk_counter += 1
 
-                # Apply SAC: Prepend document summary for embedding
-                if self.enable_sac and doc_summary:
-                    # CRITICAL: Summary is prepended for embedding ONLY
-                    augmented_content = f"{doc_summary} {raw_chunk}"
+                # Apply Hierarchical SAC: Prepend document + section summaries
+                if self.enable_sac:
+                    # Build hierarchical context
+                    context_parts = []
+
+                    if doc_summary:
+                        context_parts.append(doc_summary)
+
+                    if section_summary:
+                        context_parts.append(section_summary)
+
+                    if context_parts:
+                        # CRITICAL: Summaries prepended for embedding ONLY
+                        context = " ".join(context_parts)
+                        augmented_content = f"{context} {raw_chunk}"
+                    else:
+                        augmented_content = raw_chunk
                 else:
                     augmented_content = raw_chunk
 
