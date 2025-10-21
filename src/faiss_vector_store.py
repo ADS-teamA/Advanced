@@ -466,8 +466,10 @@ class FAISSVectorStore:
 
 # Example usage
 if __name__ == "__main__":
-    from extraction import MultiLayerChunker, DoclingExtractorV2, ExtractionConfig
-    from extraction.embedding_generator import EmbeddingGenerator, EmbeddingConfig
+    from config import ExtractionConfig
+    from multi_layer_chunker import MultiLayerChunker
+    from docling_extractor_v2 import DoclingExtractorV2
+    from embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
     # Extract and chunk
     config = ExtractionConfig(
