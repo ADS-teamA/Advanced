@@ -83,16 +83,7 @@ def test_phase1_jsonl(pdf_path: Path, output_dir: Path = None):
                 "content": section.content,
                 "content_length": len(section.content),
                 "parent_id": section.parent_id,
-                "child_ids": section.child_ids,
-                "tables": [
-                    {
-                        "table_id": table.table_id,
-                        "num_rows": table.num_rows,
-                        "num_cols": table.num_cols,
-                        "content": table.content
-                    }
-                    for table in section.tables
-                ] if section.tables else []
+                "children_ids": section.children_ids
             }
             # Write one JSON object per line
             f.write(json.dumps(section_data, ensure_ascii=False) + '\n')
@@ -130,8 +121,7 @@ def test_phase1_jsonl(pdf_path: Path, output_dir: Path = None):
     print("  - content: Full section text content")
     print("  - content_length: Number of characters")
     print("  - parent_id: Parent section ID (null for roots)")
-    print("  - child_ids: List of child section IDs")
-    print("  - tables: List of tables in this section")
+    print("  - children_ids: List of child section IDs")
     print()
     print("Reading JSONL files:")
     print("  Python: with open('file.jsonl') as f: for line in f: data = json.loads(line)")
