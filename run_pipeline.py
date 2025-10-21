@@ -4,9 +4,18 @@ Complete RAG Pipeline Runner - PHASE 1-4
 
 Runs the complete indexing pipeline with outputs saved after each phase.
 
+Supported formats: PDF, DOCX, PPTX, XLSX, HTML
+Input: Single document OR directory (batch processing)
+
 Usage:
-    python run_pipeline.py <pdf_path>
+    # Single document
+    python run_pipeline.py <document_path>
     python run_pipeline.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"
+    python run_pipeline.py "data/report.docx"
+
+    # Batch processing (directory)
+    python run_pipeline.py <directory_path>
+    python run_pipeline.py "data/regulace/GRI"
 
 Outputs are saved to: output/<document_name>/
 - phase1_extraction.json - Document structure & hierarchy
@@ -28,12 +37,12 @@ from datetime import datetime
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from docling_extractor_v2 import DoclingExtractorV2, ExtractionConfig
+from config import get_default_config, ExtractionConfig
+from docling_extractor_v2 import DoclingExtractorV2
 from multi_layer_chunker import MultiLayerChunker
 from embedding_generator import EmbeddingGenerator, EmbeddingConfig
 from faiss_vector_store import FAISSVectorStore
 from summary_generator import SummaryGenerator
-from config import get_default_config
 
 # Setup logging
 logging.basicConfig(
@@ -62,29 +71,103 @@ def print_info(text: str):
     print(f"  {text}")
 
 
-def run_complete_pipeline(pdf_path: Path, output_base: Path = None):
+def get_supported_documents(directory: Path) -> list:
+    """
+    Get list of all supported documents in directory.
+
+    Args:
+        directory: Path to directory
+
+    Returns:
+        List of document paths
+    """
+    supported_formats = [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm"]
+    documents = []
+
+    for ext in supported_formats:
+        documents.extend(directory.glob(f"*{ext}"))
+        documents.extend(directory.glob(f"*{ext.upper()}"))
+
+    # Remove duplicates and sort
+    documents = sorted(set(documents))
+
+    return documents
+
+
+def run_complete_pipeline(input_path: Path, output_base: Path = None):
     """
     Run complete PHASE 1-4 pipeline with outputs after each phase.
 
+    Supported formats: PDF, DOCX, PPTX, XLSX, HTML
+
     Args:
-        pdf_path: Path to PDF document
+        input_path: Path to document file or directory (PDF, DOCX, PPTX, XLSX, HTML)
         output_base: Base output directory (default: output/)
     """
-    pdf_path = Path(pdf_path)
+    input_path = Path(input_path)
 
-    if not pdf_path.exists():
-        print(f"✗ Error: File not found: {pdf_path}")
+    if not input_path.exists():
+        print(f"✗ Error: Path not found: {input_path}")
         sys.exit(1)
+
+    # Check if it's a directory
+    if input_path.is_dir():
+        documents = get_supported_documents(input_path)
+        if not documents:
+            print(f"✗ Error: No supported documents found in directory: {input_path}")
+            print(f"  Supported formats: PDF, DOCX, PPTX, XLSX, HTML")
+            sys.exit(1)
+
+        print_header(f"BATCH PROCESSING - {len(documents)} documents from {input_path.name}")
+        print_info(f"Found documents:")
+        for doc in documents:
+            print_info(f"  - {doc.name}")
+        print()
+
+        # Process each document
+        for i, document_path in enumerate(documents, 1):
+            print()
+            print("=" * 80)
+            print(f"PROCESSING [{i}/{len(documents)}]: {document_path.name}")
+            print("=" * 80)
+            print()
+            run_single_document(document_path, output_base)
+
+        print_header("BATCH PROCESSING COMPLETE")
+        print_success(f"Processed {len(documents)} documents")
+        print_info(f"Outputs saved to: {output_base or Path('output')}")
+        return
+
+    # Single document processing
+    run_single_document(input_path, output_base)
+
+
+def run_single_document(document_path: Path, output_base: Path = None):
+    """
+    Process a single document through the complete pipeline.
+
+    Args:
+        document_path: Path to document file
+        output_base: Base output directory (default: output/)
+    """
+    document_path = Path(document_path)
+
+    # Validate format
+    supported_formats = [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm"]
+    if document_path.suffix.lower() not in supported_formats:
+        print(f"✗ Error: Unsupported format: {document_path.suffix}")
+        print(f"  Supported formats: {', '.join(supported_formats)}")
+        return
 
     # Setup output directory
     if output_base is None:
         output_base = Path(__file__).parent / "output"
 
-    doc_name = pdf_path.stem.replace(" ", "_")
+    doc_name = document_path.stem.replace(" ", "_")
     output_dir = output_base / doc_name / datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print_header(f"RAG PIPELINE - {pdf_path.name}")
+    print_header(f"RAG PIPELINE - {document_path.name}")
 
     # Load model config
     config = get_default_config()
@@ -105,7 +188,7 @@ def run_complete_pipeline(pdf_path: Path, output_base: Path = None):
     )
 
     extractor = DoclingExtractorV2(extraction_config)
-    result = extractor.extract(pdf_path)
+    result = extractor.extract(document_path)
 
     print_success("Document extracted")
     print_info(f"Sections: {result.num_sections}")
@@ -315,10 +398,18 @@ def run_complete_pipeline(pdf_path: Path, output_base: Path = None):
 def main():
     """Main entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python run_pipeline.py <pdf_path>")
+        print("Usage: python run_pipeline.py <path>")
         print()
-        print("Example:")
-        print('  python run_pipeline.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"')
+        print("Supported formats: PDF, DOCX, PPTX, XLSX, HTML")
+        print("Input: Single document file OR directory containing documents")
+        print()
+        print("Examples:")
+        print("  Single document:")
+        print('    python run_pipeline.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"')
+        print('    python run_pipeline.py "data/report.docx"')
+        print()
+        print("  Batch processing (directory):")
+        print('    python run_pipeline.py "data/regulace/GRI"')
         print()
         print("Model Configuration (edit .env file):")
 
@@ -332,8 +423,8 @@ def main():
 
         sys.exit(1)
 
-    pdf_path = sys.argv[1]
-    run_complete_pipeline(pdf_path)
+    input_path = sys.argv[1]
+    run_complete_pipeline(input_path)
 
 
 if __name__ == "__main__":

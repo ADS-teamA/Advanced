@@ -8,16 +8,15 @@ import sys
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
-from src.extraction.docling_extractor import (
-    DoclingExtractor,
-    ExtractionConfig,
+from config import ExtractionConfig
+from docling_extractor_v2 import (
+    DoclingExtractorV2,
     TableData,
     DocumentSection,
     ExtractedDocument
 )
-from src.extraction.document_processor import DocumentProcessor
 from src.extraction.legal_analyzer import (
     LegalDocumentAnalyzer,
     LegalClause,

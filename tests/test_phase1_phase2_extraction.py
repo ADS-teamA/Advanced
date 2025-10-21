@@ -15,7 +15,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from docling_extractor_v2 import DoclingExtractorV2, ExtractionConfig
+from config import ExtractionConfig
+from docling_extractor_v2 import DoclingExtractorV2
 
 
 def test_phase1_only(pdf_path: Path, output_dir: Path):

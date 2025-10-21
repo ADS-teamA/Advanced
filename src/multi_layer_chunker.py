@@ -1,15 +1,20 @@
 """
-PHASE 3: Multi-Layer Chunking with Summary-Augmented Chunking (SAC)
+PHASE 3: Multi-Layer Chunking with Contextual Retrieval
 
 Based on research:
 - LegalBench-RAG: RecursiveCharacterTextSplitter > Fixed-size (Prec@1: 6.41% vs 2.40%)
-- Reuter et al., 2024: SAC reduces DRM by 58%
+- Anthropic, 2024: Contextual Retrieval reduces retrieval failures by 67%
 - Lima, 2024: Multi-layer embeddings improve essential chunks by 2.3x
 
 Implementation:
 - Layer 1: Document level (1 chunk per document)
 - Layer 2: Section level (1 chunk per section)
-- Layer 3: Chunk level (RCTS 500 chars + SAC)
+- Layer 3: Chunk level (RCTS 500 chars + Contextual Retrieval)
+
+Contextual Retrieval:
+- Generates LLM-based context for each chunk
+- 67% reduction in retrieval failures (Anthropic research)
+- Fallback to basic chunking if context generation fails
 """
 
 import logging
@@ -20,6 +25,14 @@ try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 except ImportError:
     from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# Import contextual retrieval
+try:
+    from .contextual_retrieval import ContextualRetrieval
+    from .config import ChunkingConfig, ContextGenerationConfig
+except ImportError:
+    from contextual_retrieval import ContextualRetrieval
+    from config import ChunkingConfig, ContextGenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -83,56 +96,68 @@ class Chunk:
 
 class MultiLayerChunker:
     """
-    Multi-layer chunker with Summary-Augmented Chunking (SAC).
+    Multi-layer chunker with Contextual Retrieval.
 
     Creates 3 layers:
     - Layer 1: Document level (summary only)
     - Layer 2: Section level (section summaries)
-    - Layer 3: Chunk level (RCTS 500 chars + SAC)
+    - Layer 3: Chunk level (RCTS 500 chars + Contextual Retrieval)
 
     Based on:
     - LegalBench-RAG (Pipitone & Alami, 2024)
-    - Summary-Augmented Chunking (Reuter et al., 2024)
+    - Contextual Retrieval (Anthropic, Sept 2024)
     - Multi-Layer Embeddings (Lima, 2024)
     """
 
     def __init__(
         self,
-        chunk_size: int = 500,
-        chunk_overlap: int = 0,
-        enable_sac: bool = True
+        config: Optional[ChunkingConfig] = None,
+        api_key: Optional[str] = None
     ):
         """
         Initialize multi-layer chunker.
 
         Args:
-            chunk_size: Characters per chunk (default: 500, optimal per research)
-            chunk_overlap: Overlap between chunks (default: 0, RCTS handles naturally)
-            enable_sac: Enable Summary-Augmented Chunking
+            config: ChunkingConfig instance (uses defaults if None)
+            api_key: API key for LLM provider (for contextual retrieval)
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.enable_sac = enable_sac
+        self.config = config or ChunkingConfig()
+
+        # Extract params for convenience
+        self.chunk_size = self.config.chunk_size
+        self.chunk_overlap = self.config.chunk_overlap
+        self.enable_contextual = self.config.enable_contextual
 
         # Initialize RecursiveCharacterTextSplitter
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
             length_function=len,
-            separators=[
-                "\n\n",  # Paragraph breaks
-                "\n",    # Line breaks
-                ". ",    # Sentence ends
-                "; ",    # Clause separators
-                ", ",    # Sub-clause separators
-                " ",     # Word boundaries
-                ""       # Character fallback
-            ]
+            separators=self.config.separators
         )
 
+        # Initialize contextual retrieval if enabled
+        self.context_generator = None
+        if self.enable_contextual:
+            try:
+                context_config = self.config.context_config or ContextGenerationConfig()
+                self.context_generator = ContextualRetrieval(
+                    config=context_config,
+                    api_key=api_key
+                )
+                logger.info("Contextual Retrieval initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Contextual Retrieval: {e}")
+                if not self.config.context_config.fallback_to_basic:
+                    raise
+                logger.info("Falling back to basic chunking")
+                self.enable_contextual = False
+
+        chunking_mode = "Contextual" if self.enable_contextual else "Basic"
         logger.info(
             f"MultiLayerChunker initialized: "
-            f"chunk_size={chunk_size}, overlap={chunk_overlap}, SAC={enable_sac}"
+            f"chunk_size={self.chunk_size}, overlap={self.chunk_overlap}, "
+            f"mode={chunking_mode}"
         )
 
     def chunk_document(
@@ -246,72 +271,175 @@ class MultiLayerChunker:
 
     def _create_layer3_chunks(self, extracted_doc) -> List[Chunk]:
         """
-        Layer 3: Chunk-level with Hierarchical Summary-Augmented Chunking (H-SAC).
+        Layer 3: Chunk-level with Contextual Retrieval.
 
         CRITICAL: This is the PRIMARY chunking layer!
 
-        Process:
+        Process (Contextual Retrieval):
         1. Split each section into 500-char chunks using RCTS
-        2. If SAC enabled: Prepend BOTH document + section summaries for embedding
-        3. Keep raw content (without summaries) for generation
-
-        Hierarchical SAC (H-SAC) provides TWO levels of context:
-        - Document summary: Global context (what document is this?)
-        - Section summary: Local context (what section are we in?)
-        - Raw chunk: Specific detail
+        2. Generate LLM-based context for each chunk (explains what chunk discusses)
+        3. Prepend context to chunk for embedding
+        4. Keep raw content (without context) for generation
+        5. Fallback to basic chunking if context generation fails
 
         Based on:
-        - Reuter et al., 2024: SAC reduces DRM by 58%
+        - Anthropic, 2024: Contextual Retrieval reduces failures by 67%
         - LegalBench-RAG: RCTS outperforms fixed-size
-        - Enhanced with hierarchical context for better precision
         """
 
         chunks = []
+
+        # Get document summary for context generation
+        doc_summary = extracted_doc.document_summary or ""
+
+        # CONTEXTUAL RETRIEVAL mode
+        if self.enable_contextual and self.context_generator:
+            logger.info("Using Contextual Retrieval for Layer 3")
+            chunks = self._create_layer3_contextual(
+                extracted_doc,
+                doc_summary
+            )
+
+        # Basic mode (no augmentation)
+        else:
+            logger.info("Using basic chunking for Layer 3 (no augmentation)")
+            chunks = self._create_layer3_basic(extracted_doc)
+
+        return chunks
+
+    def _create_layer3_contextual(
+        self,
+        extracted_doc,
+        doc_summary: str
+    ) -> List[Chunk]:
+        """
+        Create Layer 3 chunks with Contextual Retrieval.
+
+        Generates LLM-based context for each chunk.
+        """
+        chunks = []
         chunk_counter = 0
 
-        # Get document summary for H-SAC
-        doc_summary = extracted_doc.document_summary or ""
+        # Prepare all chunks with metadata for batch context generation
+        chunks_to_contextualize = []
 
         for section in extracted_doc.sections:
             # Skip empty sections
             if not section.content.strip():
                 continue
 
-            # Get section summary for H-SAC
-            section_summary = section.summary or ""
-
-            # Split section into raw chunks using RCTS
+            # Split section into raw chunks
             raw_chunks = self.text_splitter.split_text(section.content)
 
             for idx, raw_chunk in enumerate(raw_chunks):
                 chunk_counter += 1
 
-                # Apply Hierarchical SAC: Prepend document + section summaries
-                if self.enable_sac:
-                    # Build hierarchical context
-                    context_parts = []
+                # Get surrounding chunks (if enabled in config)
+                preceding_chunk = None
+                following_chunk = None
+                if self.config.context_config and self.config.context_config.include_surrounding_chunks:
+                    num_surrounding = self.config.context_config.num_surrounding_chunks
+                    # Get preceding chunk(s)
+                    if idx > 0:
+                        preceding_chunk = raw_chunks[idx - 1]
+                    # Get following chunk(s)
+                    if idx < len(raw_chunks) - 1:
+                        following_chunk = raw_chunks[idx + 1]
 
-                    if doc_summary:
-                        context_parts.append(doc_summary)
+                # Prepare metadata for context generation
+                metadata = {
+                    "document_summary": doc_summary,
+                    "section_title": section.title,
+                    "section_path": section.path,
+                    "preceding_chunk": preceding_chunk,
+                    "following_chunk": following_chunk,
+                    "section": section,
+                    "idx": idx,
+                    "chunk_id": f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}"
+                }
 
-                    if section_summary:
-                        context_parts.append(section_summary)
+                chunks_to_contextualize.append((raw_chunk, metadata))
 
-                    if context_parts:
-                        # CRITICAL: Summaries prepended for embedding ONLY
-                        context = " ".join(context_parts)
-                        augmented_content = f"{context} {raw_chunk}"
-                    else:
-                        augmented_content = raw_chunk
+        # Generate contexts in batch (parallel)
+        logger.info(f"Generating contexts for {len(chunks_to_contextualize)} chunks...")
+
+        try:
+            chunk_contexts = self.context_generator.generate_contexts_batch(
+                chunks_to_contextualize
+            )
+
+            # Create Chunk objects with contexts
+            for (raw_chunk, metadata), context_result in zip(chunks_to_contextualize, chunk_contexts):
+                section = metadata["section"]
+                idx = metadata["idx"]
+
+                # Use context if successful, otherwise use raw chunk
+                if context_result.success:
+                    augmented_content = f"{context_result.context}\n\n{raw_chunk}"
                 else:
+                    # Fallback to basic (no augmentation)
+                    logger.warning(
+                        f"Context generation failed for chunk {metadata['chunk_id']}, "
+                        f"using raw chunk"
+                    )
                     augmented_content = raw_chunk
 
                 chunk = Chunk(
-                    chunk_id=f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}",
-                    content=augmented_content,  # For embedding (with SAC)
-                    raw_content=raw_chunk,      # For generation (without SAC)
+                    chunk_id=metadata["chunk_id"],
+                    content=augmented_content,  # For embedding (with context)
+                    raw_content=raw_chunk,      # For generation (without context)
                     metadata=ChunkMetadata(
                         chunk_id=f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}",
+                        layer=3,
+                        document_id=extracted_doc.document_id,
+                        section_id=section.section_id,
+                        parent_chunk_id=f"{extracted_doc.document_id}_L2_{section.section_id}",
+                        page_number=section.page_number,
+                        char_start=section.char_start,
+                        char_end=section.char_end,
+                        section_title=section.title,
+                        section_path=section.path,
+                        section_level=section.level,
+                        section_depth=section.depth
+                    )
+                )
+
+                chunks.append(chunk)
+
+        except Exception as e:
+            logger.error(f"Batch context generation failed: {e}")
+            if self.config.context_config and self.config.context_config.fallback_to_basic:
+                logger.warning("Falling back to basic chunking due to context generation failure")
+                return self._create_layer3_basic(extracted_doc)
+            raise
+
+        return chunks
+
+    def _create_layer3_basic(self, extracted_doc) -> List[Chunk]:
+        """
+        Create Layer 3 chunks with basic RCTS chunking (no augmentation).
+
+        Used as fallback when Contextual Retrieval is disabled or fails.
+        """
+        chunks = []
+
+        for section in extracted_doc.sections:
+            # Skip empty sections
+            if not section.content.strip():
+                continue
+
+            # Split section into raw chunks
+            raw_chunks = self.text_splitter.split_text(section.content)
+
+            for idx, raw_chunk in enumerate(raw_chunks):
+                chunk_id = f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}"
+
+                chunk = Chunk(
+                    chunk_id=chunk_id,
+                    content=raw_chunk,  # No augmentation
+                    raw_content=raw_chunk,
+                    metadata=ChunkMetadata(
+                        chunk_id=chunk_id,
                         layer=3,
                         document_id=extracted_doc.document_id,
                         section_id=section.section_id,
@@ -355,12 +483,12 @@ class MultiLayerChunker:
             stats["layer3_min_size"] = min(layer3_sizes)
             stats["layer3_max_size"] = max(layer3_sizes)
 
-            # SAC statistics
-            sac_sizes = [
+            # Context augmentation statistics
+            context_sizes = [
                 len(c.content) - len(c.raw_content)
                 for c in chunks_dict["layer3"]
             ]
-            stats["sac_avg_overhead"] = sum(sac_sizes) / len(sac_sizes) if sac_sizes else 0
+            stats["context_avg_overhead"] = sum(context_sizes) / len(context_sizes) if context_sizes else 0
 
         return stats
 
@@ -368,22 +496,28 @@ class MultiLayerChunker:
 # Example usage
 if __name__ == "__main__":
     # This would be used after DoclingExtractorV2
-    from extraction import DoclingExtractorV2, ExtractionConfig
+    from config import ExtractionConfig, ChunkingConfig
+    from docling_extractor_v2 import DoclingExtractorV2
 
     # Extract document
-    config = ExtractionConfig(
+    extraction_config = ExtractionConfig(
         enable_smart_hierarchy=True,
-        generate_summaries=True  # Required for SAC
+        generate_summaries=True  # Required for Layer 1 and Layer 2
     )
 
-    extractor = DoclingExtractorV2(config)
+    extractor = DoclingExtractorV2(extraction_config)
     result = extractor.extract("document.pdf")
 
-    # Create multi-layer chunks
-    chunker = MultiLayerChunker(
+    # Create multi-layer chunks with Contextual Retrieval
+    chunking_config = ChunkingConfig(
         chunk_size=500,
         chunk_overlap=0,
-        enable_sac=True
+        enable_contextual=True  # Use Contextual Retrieval (RECOMMENDED)
+    )
+
+    chunker = MultiLayerChunker(
+        config=chunking_config,
+        api_key="your-api-key"  # For Anthropic/OpenAI
     )
 
     chunks = chunker.chunk_document(result)
