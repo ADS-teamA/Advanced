@@ -12,7 +12,7 @@ This module provides high-precision extraction with:
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -31,6 +31,12 @@ from docling.datamodel.layout_model_specs import (
 from docling_core.types.doc import DoclingDocument, SectionHeaderItem
 from docling_core.transforms.chunker import HierarchicalChunker
 
+# Import configuration (centralized)
+try:
+    from .config import ExtractionConfig, SummarizationConfig
+except ImportError:
+    from config import ExtractionConfig, SummarizationConfig
+
 # Import summary generator (PHASE 2)
 try:
     from .summary_generator import SummaryGenerator
@@ -38,38 +44,6 @@ except ImportError:
     from summary_generator import SummaryGenerator
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ExtractionConfig:
-    """Configuration for Docling extraction."""
-
-    # OCR settings
-    enable_ocr: bool = True
-    ocr_language: List[str] = field(default_factory=lambda: ["cs-CZ", "en-US"])
-    ocr_recognition: str = "accurate"  # "accurate" or "fast"
-
-    # Table extraction
-    table_mode: TableFormerMode = TableFormerMode.ACCURATE
-    extract_tables: bool = True
-
-    # Hierarchy extraction
-    extract_hierarchy: bool = True
-    enable_smart_hierarchy: bool = True  # Font-size based classification
-    hierarchy_tolerance: float = 0.8  # BBox height clustering tolerance (lower = stricter)
-
-    # Summary generation (PHASE 2)
-    generate_summaries: bool = False  # Enable in PHASE 2
-    summary_model: str = "gpt-4o-mini"
-    summary_max_chars: int = 150
-    summary_style: str = "generic"  # "generic" or "expert"
-
-    # Output formats
-    generate_markdown: bool = True
-    generate_json: bool = True
-
-    # Performance
-    layout_model: str = "EGRET_XLARGE"  # Options: HERON, EGRET_LARGE, EGRET_XLARGE (recommended)
 
 
 @dataclass
@@ -226,12 +200,21 @@ class DoclingExtractorV2:
         # Initialize summary generator (PHASE 2)
         if self.config.generate_summaries:
             try:
-                self.summary_generator = SummaryGenerator(
+                # Create SummarizationConfig from ExtractionConfig
+                summary_config = SummarizationConfig(
                     model=self.config.summary_model,
                     max_chars=self.config.summary_max_chars,
+                    style=self.config.summary_style
+                )
+
+                self.summary_generator = SummaryGenerator(
+                    config=summary_config,
                     api_key=openai_api_key
                 )
-                logger.info("Summary generator initialized")
+                logger.info(
+                    f"Summary generator initialized: model={summary_config.model}, "
+                    f"max_chars={summary_config.max_chars}"
+                )
             except Exception as e:
                 logger.warning(f"Failed to initialize summary generator: {e}")
                 self.summary_generator = None
@@ -261,10 +244,20 @@ class DoclingExtractorV2:
         )
         logger.info(f"Using layout model: {self.config.layout_model}")
 
+        # Convert table_mode string to TableFormerMode enum
+        table_mode_map = {
+            "ACCURATE": TableFormerMode.ACCURATE,
+            "FAST": TableFormerMode.FAST,
+        }
+        table_mode = table_mode_map.get(
+            self.config.table_mode,
+            TableFormerMode.ACCURATE  # Default to ACCURATE
+        )
+
         # Configure pipeline
         pipeline_options = PdfPipelineOptions()
         pipeline_options.do_table_structure = self.config.extract_tables
-        pipeline_options.table_structure_options.mode = self.config.table_mode
+        pipeline_options.table_structure_options.mode = table_mode
         pipeline_options.ocr_options = ocr_options
         pipeline_options.layout_options = LayoutOptions(model_spec=layout_model)
 
@@ -284,8 +277,10 @@ class DoclingExtractorV2:
         """
         Extract complete hierarchical structure from document.
 
+        Supported formats: PDF, DOCX, PPTX, XLSX, HTML
+
         Args:
-            source: Path to the document file
+            source: Path to the document file (PDF, DOCX, PPTX, XLSX, HTML)
             document_id: Optional document identifier
 
         Returns:
@@ -296,6 +291,14 @@ class DoclingExtractorV2:
 
         if not source_path.exists():
             raise FileNotFoundError(f"Document not found: {source}")
+
+        # Validate format
+        supported_formats = self.get_supported_formats()
+        if source_path.suffix.lower() not in supported_formats:
+            raise ValueError(
+                f"Unsupported format: {source_path.suffix}. "
+                f"Supported formats: {', '.join(supported_formats)}"
+            )
 
         doc_id = document_id or source_path.stem
         logger.info(f"Starting extraction of {source_path.name}")
@@ -315,7 +318,7 @@ class DoclingExtractorV2:
         # PHASE 2: Generate summaries (if enabled)
         if self.config.generate_summaries:
             sections = self._generate_section_summaries(sections)
-            document_summary = self._generate_document_summary(full_text)
+            document_summary = self._generate_document_summary(sections)
         else:
             document_summary = None
 
@@ -494,8 +497,6 @@ class DoclingExtractorV2:
                 # Calculate cluster statistics
                 cluster_heights = [c[1] for c in cluster]
                 avg_height = sum(cluster_heights) / len(cluster_heights)
-                max_height = max(cluster_heights)
-                min_height = min(cluster_heights)
 
                 # Stricter clustering: height must be within tolerance of cluster range
                 height_diff = abs(height - avg_height)
@@ -628,22 +629,33 @@ class DoclingExtractorV2:
 
         return sections
 
-    def _generate_document_summary(self, full_text: str) -> str:
+    def _generate_document_summary(self, sections: List[DocumentSection]) -> str:
         """
-        PHASE 2: Generate document-level generic summary.
+        PHASE 2: Generate document-level generic summary from section summaries.
 
-        Uses gpt-4o-mini to generate 150-char generic summary.
+        Uses hierarchical summarization: generates summary from section summaries
+        rather than from full text. This is more efficient and covers entire document.
         """
 
         if not self.summary_generator:
             logger.warning("Summary generator not initialized")
             return ""
 
-        logger.info("Generating document-level summary...")
+        logger.info("Generating document-level summary from section summaries...")
 
         try:
-            summary = self.summary_generator.generate_document_summary(full_text)
-            logger.info(f"Document summary generated: {len(summary)} chars")
+            # Extract section summaries (filter out empty ones)
+            section_summaries = [s.summary for s in sections if s.summary and s.summary.strip()]
+
+            if not section_summaries:
+                logger.warning("No section summaries available for document summary")
+                return ""
+
+            # Use hierarchical summarization (recommended approach)
+            summary = self.summary_generator.generate_document_summary(
+                section_summaries=section_summaries
+            )
+            logger.info(f"Document summary generated from {len(section_summaries)} section summaries: {len(summary)} chars")
             return summary
 
         except Exception as e:

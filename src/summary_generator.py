@@ -9,12 +9,20 @@ Based on Reuter et al., 2024 (Summary-Augmented Chunking):
 Supports:
 - Claude: claude-sonnet-4.5, claude-haiku-4.5 (via Anthropic API)
 - OpenAI: gpt-4o-mini, gpt-4o (via OpenAI API)
+
+Configuration is loaded from centralized config.py.
 """
 
 import logging
 import os
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Import centralized configuration
+try:
+    from .config import SummarizationConfig, resolve_model_alias
+except ImportError:
+    from config import SummarizationConfig, resolve_model_alias
 
 logger = logging.getLogger(__name__)
 
@@ -25,50 +33,55 @@ class SummaryGenerator:
 
     Based on research:
     - Reuter et al., 2024: Generic > Expert-guided for retrieval
-    - Optimal length: 150 chars
+    - Optimal length: configured in SummarizationConfig (default 150 chars)
     - Style: Broad semantic alignment, not overfitted to narrow features
+
+    Configuration is centralized in config.py.
     """
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-5-20250929",
-        max_chars: int = 150,
-        tolerance: int = 20,
-        api_key: Optional[str] = None,
-        max_workers: int = 10,  # Parallel requests
-        min_text_length: int = 50  # Skip summaries for tiny sections
+        config: Optional[SummarizationConfig] = None,
+        api_key: Optional[str] = None
     ):
         """
         Initialize summary generator.
 
         Args:
-            model: Model to use. Options:
-                   - Claude: "claude-sonnet-4.5" (default), "claude-haiku-4.5"
-                   - OpenAI: "gpt-4o-mini", "gpt-4o"
-            max_chars: Maximum summary length in characters
-            tolerance: Acceptable overage (±tolerance)
+            config: SummarizationConfig instance (uses defaults if None)
             api_key: API key (or set ANTHROPIC_API_KEY/OPENAI_API_KEY env var)
         """
-        self.model = model
-        self.max_chars = max_chars
-        self.tolerance = tolerance
-        self.max_workers = max_workers
-        self.min_text_length = min_text_length
+        # Use provided config or create default
+        self.config = config or SummarizationConfig()
+
+        # Resolve model alias (e.g., "haiku" -> "claude-haiku-4-5-20251001")
+        self.model = resolve_model_alias(self.config.model)
+
+        # Extract config values for convenience
+        self.max_chars = self.config.max_chars
+        self.tolerance = self.config.tolerance
+        self.max_workers = self.config.max_workers
+        self.min_text_length = self.config.min_text_length
+        self.temperature = self.config.temperature
+        self.max_tokens = self.config.max_tokens
 
         # Detect provider from model name
-        if "claude" in model.lower():
+        if "claude" in self.model.lower():
             self.provider = "claude"
             self._init_claude(api_key)
-        elif "gpt" in model.lower():
+        elif "gpt" in self.model.lower():
             self.provider = "openai"
             self._init_openai(api_key)
         else:
             raise ValueError(
-                f"Unsupported model: {model}. "
+                f"Unsupported model: {self.model}. "
                 f"Supported: claude-sonnet-4.5, claude-haiku-4.5, gpt-4o-mini, gpt-4o"
             )
 
-        logger.info(f"SummaryGenerator initialized: provider={self.provider}, model={model}, max_chars={max_chars}")
+        logger.info(
+            f"SummaryGenerator initialized: provider={self.provider}, "
+            f"model={self.model}, max_chars={self.max_chars}"
+        )
 
     def _init_claude(self, api_key: Optional[str]):
         """Initialize Anthropic Claude client."""
@@ -150,28 +163,28 @@ class SummaryGenerator:
         if document_text:
             logger.warning("Using direct summarization (limited to first 5000 chars)")
             # Truncate to first 5000 chars for efficiency
-            text_preview = document_text[:5000]
+            text_preview = document_text[:30000]
 
             prompt = f"""You are an expert document summarizer.
 
 Summarize the following document text. Focus on extracting the most important entities,
 core purpose, and key topics.
 
-The summary must be concise, maximum {self.max_chars} characters long, and optimized
-for providing context to smaller text chunks.
+CRITICAL: The summary MUST be EXACTLY {self.max_chars} characters or less (current limit: {self.max_chars} chars).
+This is a hard constraint. The summary should be optimized for providing context to smaller text chunks.
 
 Output only the summary text, nothing else.
 
 Document:
 {text_preview}
 
-Summary:"""
+Summary (max {self.max_chars} characters):"""
 
             try:
                 if self.provider == "claude":
-                    summary = self._generate_with_claude(prompt, max_tokens=500)
+                    summary = self._generate_with_claude(prompt)
                 else:  # openai
-                    summary = self._generate_with_openai(prompt, max_tokens=500)
+                    summary = self._generate_with_openai(prompt)
 
                 # Check length and retry if too long
                 if len(summary) > self.max_chars + self.tolerance:
@@ -215,21 +228,21 @@ Summary:"""
 You are given summaries of different sections from a document.
 Create a unified document-level summary that captures the main theme and purpose.
 
-The summary must be concise, maximum {self.max_chars} characters long, and optimized
-for providing global context to text chunks.
+CRITICAL: The summary MUST be EXACTLY {self.max_chars} characters or less (current limit: {self.max_chars} chars).
+This is a hard constraint. The summary should be optimized for providing global context to text chunks.
 
 Output only the summary text, nothing else.
 
 Section summaries:
 {combined_text}
 
-Document summary:"""
+Document summary (max {self.max_chars} characters):"""
 
         try:
             if self.provider == "claude":
-                summary = self._generate_with_claude(prompt, max_tokens=500)
+                summary = self._generate_with_claude(prompt)
             else:  # openai
-                summary = self._generate_with_openai(prompt, max_tokens=500)
+                summary = self._generate_with_openai(prompt)
 
             # Check length and retry if too long
             if len(summary) > self.max_chars + self.tolerance:
@@ -238,16 +251,16 @@ Document summary:"""
                 )
                 # Retry with stricter limit
                 target_chars = int(self.max_chars * 0.9)
-                prompt_strict = f"""Summarize in EXACTLY {target_chars} characters or less:
+                prompt_strict = f"""CRITICAL: Summarize in EXACTLY {target_chars} characters or LESS.
 
 {combined_text}
 
-Summary ({target_chars} chars max):"""
+Summary (STRICT LIMIT: {target_chars} characters):"""
 
                 if self.provider == "claude":
-                    summary = self._generate_with_claude(prompt_strict, max_tokens=500)
+                    summary = self._generate_with_claude(prompt_strict)
                 else:
-                    summary = self._generate_with_openai(prompt_strict, max_tokens=500)
+                    summary = self._generate_with_openai(prompt_strict)
 
                 summary = summary[:self.max_chars]  # Hard truncate
 
@@ -260,23 +273,31 @@ Summary ({target_chars} chars max):"""
             fallback = " ".join(section_summaries)
             return fallback[:self.max_chars].strip() + "..."
 
-    def _generate_with_claude(self, prompt: str, max_tokens: int = 50) -> str:
-        """Generate text using Claude API."""
+    def _generate_with_claude(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+        """
+        Generate text using Claude API.
+
+        Uses temperature and max_tokens from config unless overridden.
+        """
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=max_tokens,
-            temperature=0.3,
+            max_tokens=max_tokens or self.max_tokens,
+            temperature=self.temperature,
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text.strip()
 
-    def _generate_with_openai(self, prompt: str, max_tokens: int = 50) -> str:
-        """Generate text using OpenAI API."""
+    def _generate_with_openai(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+        """
+        Generate text using OpenAI API.
+
+        Uses temperature and max_tokens from config unless overridden.
+        """
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=max_tokens
+            temperature=self.temperature,
+            max_tokens=max_tokens or self.max_tokens
         )
         return response.choices[0].message.content.strip()
 
@@ -290,19 +311,19 @@ Summary ({target_chars} chars max):"""
         text_preview = document_text[:5000]
         target_chars = int(self.max_chars * 0.9)  # Aim for 90% of max
 
-        prompt = f"""Summarize this document in EXACTLY {target_chars} characters or less.
+        prompt = f"""CRITICAL: Summarize this document in EXACTLY {target_chars} characters or LESS.
 Be extremely concise.
 
 Document:
 {text_preview}
 
-Summary ({target_chars} chars max):"""
+Summary (STRICT LIMIT: {target_chars} characters):"""
 
         try:
             if self.provider == "claude":
-                summary = self._generate_with_claude(prompt, max_tokens=500)
+                summary = self._generate_with_claude(prompt)
             else:  # openai
-                summary = self._generate_with_openai(prompt, max_tokens=500)
+                summary = self._generate_with_openai(prompt)
 
             return summary[:self.max_chars]  # Hard truncate if needed
 
@@ -336,15 +357,16 @@ Summary ({target_chars} chars max):"""
 {title_context}Section content:
 {text_preview}
 
-Provide a {self.max_chars}-character summary focusing on the main topic and key information.
+CRITICAL: Provide a summary that is EXACTLY {self.max_chars} characters or less (current limit: {self.max_chars} chars).
+Focus on the main topic and key information. This is a hard constraint.
 
-Summary:"""
+Summary (max {self.max_chars} characters):"""
 
         try:
             if self.provider == "claude":
-                summary = self._generate_with_claude(prompt, max_tokens=500)
+                summary = self._generate_with_claude(prompt)
             else:  # openai
-                summary = self._generate_with_openai(prompt, max_tokens=500)
+                summary = self._generate_with_openai(prompt)
 
             # Check length
             if len(summary) > self.max_chars + self.tolerance:

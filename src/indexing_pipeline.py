@@ -5,6 +5,8 @@ Orchestrates:
 1. PHASE 1-3: Extraction, hierarchy, summaries, chunking
 2. PHASE 4: Embedding generation + FAISS indexing
 
+Supported formats: PDF, DOCX, PPTX, XLSX, HTML
+
 Based on research:
 - LegalBench-RAG: text-embedding-3-large + RCTS
 - Multi-Layer Embeddings: 3 separate indexes
@@ -25,7 +27,8 @@ from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
 
-from docling_extractor_v2 import DoclingExtractorV2, ExtractionConfig
+from config import ExtractionConfig
+from docling_extractor_v2 import DoclingExtractorV2
 from multi_layer_chunker import MultiLayerChunker
 from embedding_generator import EmbeddingGenerator, EmbeddingConfig
 from faiss_vector_store import FAISSVectorStore
@@ -122,12 +125,14 @@ class IndexingPipeline:
 
     def index_document(
         self,
-        pdf_path: Path,
+        document_path: Path,
         save_intermediate: bool = False,
         output_dir: Optional[Path] = None
     ) -> FAISSVectorStore:
         """
-        Index a single PDF document.
+        Index a single document.
+
+        Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 
         Complete pipeline:
         1. Extract with smart hierarchy (PHASE 1)
@@ -136,25 +141,33 @@ class IndexingPipeline:
         4. Embed + FAISS index (PHASE 4)
 
         Args:
-            pdf_path: Path to PDF document
+            document_path: Path to document file (PDF, DOCX, PPTX, XLSX, HTML)
             save_intermediate: Save intermediate results (chunks, embeddings)
             output_dir: Directory for intermediate results
 
         Returns:
             FAISSVectorStore with indexed document
         """
-        pdf_path = Path(pdf_path)
+        document_path = Path(document_path)
 
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+        if not document_path.exists():
+            raise FileNotFoundError(f"Document not found: {document_path}")
+
+        # Validate format
+        supported_formats = [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm"]
+        if document_path.suffix.lower() not in supported_formats:
+            raise ValueError(
+                f"Unsupported format: {document_path.suffix}. "
+                f"Supported formats: {', '.join(supported_formats)}"
+            )
 
         logger.info("="*80)
-        logger.info(f"Indexing document: {pdf_path.name}")
+        logger.info(f"Indexing document: {document_path.name}")
         logger.info("="*80)
 
         # PHASE 1+2: Extract + Summaries
         logger.info("PHASE 1+2: Extraction + Summaries")
-        result = self.extractor.extract(pdf_path)
+        result = self.extractor.extract(document_path)
         logger.info(
             f"✓ Extracted: {result.num_sections} sections, "
             f"depth={result.hierarchy_depth}"
@@ -202,22 +215,24 @@ class IndexingPipeline:
             )
 
         logger.info("="*80)
-        logger.info(f"✓ Indexing complete: {pdf_path.name}")
+        logger.info(f"✓ Indexing complete: {document_path.name}")
         logger.info("="*80)
 
         return vector_store
 
     def index_batch(
         self,
-        pdf_paths: list,
+        document_paths: list,
         output_dir: Path,
         save_per_document: bool = False
     ) -> FAISSVectorStore:
         """
-        Index multiple PDF documents into a single vector store.
+        Index multiple documents into a single vector store.
+
+        Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 
         Args:
-            pdf_paths: List of PDF file paths
+            document_paths: List of document file paths
             output_dir: Directory to save vector store
             save_per_document: Save individual document vector stores
 
@@ -227,18 +242,18 @@ class IndexingPipeline:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Batch indexing {len(pdf_paths)} documents...")
+        logger.info(f"Batch indexing {len(document_paths)} documents...")
 
         # Create combined vector store
         vector_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
 
-        for i, pdf_path in enumerate(pdf_paths, 1):
-            logger.info(f"\n[{i}/{len(pdf_paths)}] Processing: {Path(pdf_path).name}")
+        for i, document_path in enumerate(document_paths, 1):
+            logger.info(f"\n[{i}/{len(document_paths)}] Processing: {Path(document_path).name}")
 
             try:
                 # Index document
                 doc_store = self.index_document(
-                    pdf_path=pdf_path,
+                    document_path=document_path,
                     save_intermediate=False
                 )
 
@@ -253,13 +268,13 @@ class IndexingPipeline:
 
                 # Save per-document store
                 if save_per_document:
-                    doc_name = Path(pdf_path).stem
+                    doc_name = Path(document_path).stem
                     doc_output = output_dir / f"{doc_name}_store"
                     doc_store.save(doc_output)
                     logger.info(f"✓ Saved individual store: {doc_output}")
 
             except Exception as e:
-                logger.error(f"✗ Failed to index {pdf_path}: {e}")
+                logger.error(f"✗ Failed to index {document_path}: {e}")
                 continue
 
         # Save combined store
