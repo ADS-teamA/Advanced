@@ -25,10 +25,10 @@ from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
 
-from .docling_extractor_v2 import DoclingExtractorV2, ExtractionConfig
-from .multi_layer_chunker import MultiLayerChunker
-from .embedding_generator import EmbeddingGenerator, EmbeddingConfig
-from .faiss_vector_store import FAISSVectorStore
+from docling_extractor_v2 import DoclingExtractorV2, ExtractionConfig
+from multi_layer_chunker import MultiLayerChunker
+from embedding_generator import EmbeddingGenerator, EmbeddingConfig
+from faiss_vector_store import FAISSVectorStore
 
 logger = logging.getLogger(__name__)
 

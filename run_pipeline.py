@@ -28,15 +28,12 @@ from datetime import datetime
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from extraction import (
-    DoclingExtractorV2,
-    ExtractionConfig,
-    MultiLayerChunker,
-    EmbeddingGenerator,
-    EmbeddingConfig,
-    FAISSVectorStore
-)
-from extraction.config import get_default_config
+from docling_extractor_v2 import DoclingExtractorV2, ExtractionConfig
+from multi_layer_chunker import MultiLayerChunker
+from embedding_generator import EmbeddingGenerator, EmbeddingConfig
+from faiss_vector_store import FAISSVectorStore
+from summary_generator import SummaryGenerator
+from config import get_default_config
 
 # Setup logging
 logging.basicConfig(
@@ -148,8 +145,6 @@ def run_complete_pipeline(pdf_path: Path, output_base: Path = None):
     print_header("PHASE 2: Generic Summary Generation")
 
     try:
-        from extraction import SummaryGenerator
-
         llm_config = config.get_llm_config()
         generator = SummaryGenerator(
             model=llm_config["model"],
