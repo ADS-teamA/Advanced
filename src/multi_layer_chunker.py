@@ -406,6 +406,13 @@ class MultiLayerChunker:
 
                 chunks.append(chunk)
 
+        except Exception as e:
+            logger.error(f"Batch context generation failed: {e}")
+            if self.config.context_config and self.config.context_config.fallback_to_basic:
+                logger.warning("Falling back to basic chunking due to context generation failure")
+                return self._create_layer3_basic(extracted_doc)
+            raise
+
         return chunks
 
     def _create_layer3_basic(self, extracted_doc) -> List[Chunk]:

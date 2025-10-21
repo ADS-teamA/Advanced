@@ -19,9 +19,11 @@ Reference: https://www.anthropic.com/news/contextual-retrieval
 
 import logging
 import os
+import re
 from typing import Optional, List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+import time
 
 # Import config
 try:
@@ -293,14 +295,19 @@ class ContextualRetrieval:
 
         context_block = "\n".join(context_info) if context_info else "No additional context available."
 
+        # Escape chunk content to prevent prompt injection
+        chunk_escaped = self._escape_xml_tags(chunk)
+
         # Build surrounding chunks section
         surrounding_chunks_block = ""
         if self.config.include_surrounding_chunks and (preceding_chunk or following_chunk):
             surrounding_parts = []
             if preceding_chunk:
-                surrounding_parts.append(f"<preceding_chunk>\n{preceding_chunk[:500]}\n</preceding_chunk>")
+                preceding_escaped = self._escape_xml_tags(preceding_chunk[:500])
+                surrounding_parts.append(f"<preceding_chunk>\n{preceding_escaped}\n</preceding_chunk>")
             if following_chunk:
-                surrounding_parts.append(f"<following_chunk>\n{following_chunk[:500]}\n</following_chunk>")
+                following_escaped = self._escape_xml_tags(following_chunk[:500])
+                surrounding_parts.append(f"<following_chunk>\n{following_escaped}\n</following_chunk>")
 
             if surrounding_parts:
                 surrounding_chunks_block = f"\n\nSurrounding chunks for additional context:\n" + "\n\n".join(surrounding_parts)
@@ -312,7 +319,7 @@ class ContextualRetrieval:
 
 Here is the chunk we want to situate within the whole document:
 <chunk>
-{chunk}
+{chunk_escaped}
 </chunk>
 
 Please give a short succinct context (50-100 words) to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
@@ -320,24 +327,66 @@ Please give a short succinct context (50-100 words) to situate this chunk within
         return prompt
 
     def _generate_with_anthropic(self, prompt: str) -> str:
-        """Generate context using Anthropic Claude."""
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+        """
+        Generate context using Anthropic Claude.
+
+        Includes retry logic with exponential backoff for rate limits.
+        """
+        max_retries = 3
+        base_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.content[0].text
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check if it's a rate limit error
+                if "rate" in error_str or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                        continue
+                # Re-raise if not rate limit or last attempt
+                logger.error(f"Anthropic API error: {self._sanitize_error(str(e))}")
+                raise
 
     def _generate_with_openai(self, prompt: str) -> str:
-        """Generate context using OpenAI."""
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens
-        )
-        return response.choices[0].message.content
+        """
+        Generate context using OpenAI.
+
+        Includes retry logic with exponential backoff for rate limits.
+        """
+        max_retries = 3
+        base_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check if it's a rate limit error
+                if "rate" in error_str or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                        continue
+                # Re-raise if not rate limit or last attempt
+                logger.error(f"OpenAI API error: {self._sanitize_error(str(e))}")
+                raise
 
     def _generate_with_ollama(self, prompt: str) -> str:
         """Generate context using Ollama."""
@@ -387,6 +436,39 @@ Please give a short succinct context (50-100 words) to situate this chunk within
 
         return context
 
+    def _sanitize_error(self, error_msg: str) -> str:
+        """
+        Sanitize error messages to remove potential API keys.
+
+        Args:
+            error_msg: Raw error message
+
+        Returns:
+            Sanitized error message with API keys masked
+        """
+        # Mask Anthropic API keys (sk-ant-...)
+        error_msg = re.sub(r'sk-ant-[a-zA-Z0-9_-]{32,}', 'sk-ant-***', error_msg)
+        # Mask OpenAI API keys (sk-...)
+        error_msg = re.sub(r'sk-[a-zA-Z0-9]{32,}', 'sk-***', error_msg)
+        # Mask generic bearer tokens
+        error_msg = re.sub(r'Bearer [a-zA-Z0-9_-]{20,}', 'Bearer ***', error_msg)
+        return error_msg
+
+    def _escape_xml_tags(self, text: str) -> str:
+        """
+        Escape XML tags in text to prevent prompt injection.
+
+        Args:
+            text: Raw text that may contain XML tags
+
+        Returns:
+            Text with XML tags escaped
+        """
+        # Only escape if text contains problematic tags
+        if '</chunk>' in text or '</document>' in text:
+            text = text.replace('<', '&lt;').replace('>', '&gt;')
+        return text
+
     def generate_contexts_batch(
         self,
         chunks: List[Tuple[str, dict]]
@@ -435,13 +517,15 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             for i in range(0, len(chunks), batch_size):
                 batch = chunks[i:i + batch_size]
 
+                # Submit all tasks and preserve order
                 futures = [
                     executor.submit(generate_one, chunk_text, metadata)
                     for chunk_text, metadata in batch
                 ]
 
-                for future in as_completed(futures):
-                    results.append(future.result())
+                # Wait for all futures in ORDER (not as_completed to preserve order)
+                batch_results = [future.result() for future in futures]
+                results.extend(batch_results)
 
                 logger.info(f"Generated contexts for batch {i//batch_size + 1}")
 

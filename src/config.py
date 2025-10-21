@@ -260,12 +260,25 @@ class ContextGenerationConfig:
     max_workers: int = 5  # Parallel context generation
 
     def __post_init__(self):
-        """Load API key from environment if not provided."""
+        """Load API key from environment if not provided and validate."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         if self.api_key is None:
             if self.provider == "anthropic":
                 self.api_key = os.getenv("ANTHROPIC_API_KEY")
+                if not self.api_key:
+                    logger.warning(
+                        "ANTHROPIC_API_KEY not set in environment. "
+                        "Contextual retrieval will fail unless API key is provided during initialization."
+                    )
             elif self.provider == "openai":
                 self.api_key = os.getenv("OPENAI_API_KEY")
+                if not self.api_key:
+                    logger.warning(
+                        "OPENAI_API_KEY not set in environment. "
+                        "Contextual retrieval will fail unless API key is provided during initialization."
+                    )
 
 
 @dataclass
@@ -372,7 +385,7 @@ if __name__ == "__main__":
     print("PHASE 3: Chunking")
     print(f"  Method: {config.chunking.method}")
     print(f"  Chunk Size: {config.chunking.chunk_size}")
-    print(f"  Enable SAC: {config.chunking.enable_sac}")
+    print(f"  Enable Contextual: {config.chunking.enable_contextual}")
     print()
 
     print("PHASE 4: Embedding")
