@@ -102,24 +102,21 @@ class AgentValidator:
 
         # Check for blocking failures (not marked CRITICAL but still block startup)
         # These are failures in essential components like API keys, vector store, embedder
-        blocking_names = [
-            "API Key: ANTHROPIC",  # Invalid format but key is present
-            "API Key: OPENAI",  # Invalid format (only if using cloud embeddings)
-            "Vector Store",  # Loading succeeded but has issues
-            "Embedding Generator",  # Failed to initialize
-            "Claude Client",  # Failed to initialize
-        ]
+        blocking_names = {
+            "API Key: ANTHROPIC",
+            "Vector Store",
+            "Embedding Generator",
+            "Claude Client",
+        }
+
+        # OpenAI key only blocks if using cloud embeddings
+        if not self.config.embedding_model.startswith("bge-"):
+            blocking_names.add("API Key: OPENAI")
 
         blocking_failures = [
             r for r in self.results
             if not r.passed and r.name in blocking_names
         ]
-
-        # Special case: OpenAI key only blocks if using cloud embeddings
-        openai_failures = [f for f in blocking_failures if "OPENAI" in f.name]
-        if openai_failures and self.config.embedding_model.startswith("bge-"):
-            # Using local embeddings, OpenAI key failure is not blocking
-            blocking_failures = [f for f in blocking_failures if "OPENAI" not in f.name]
 
         if blocking_failures:
             logger.error(f"❌ {len(blocking_failures)} blocking validation failures detected")

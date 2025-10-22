@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,7 @@ class ToolInput(BaseModel):
     All tool inputs inherit from this for automatic validation.
     """
 
-    class Config:
-        extra = "forbid"  # Reject unknown fields
+    model_config = ConfigDict(extra="forbid")  # Reject unknown fields
 
 
 @dataclass

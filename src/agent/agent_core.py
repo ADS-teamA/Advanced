@@ -100,7 +100,7 @@ class AgentCore:
         - Claude loses access to earlier conversation context
         - May break multi-turn reasoning across >50 message exchanges
         - Tool results in trimmed messages are lost permanently
-        - Trimming happens BEFORE processing current message (line 143)
+        - Trimming happens BEFORE Claude API call (line 153)
 
         NOTES:
         - Each "message" may contain multiple tool results (lines 270, 344)

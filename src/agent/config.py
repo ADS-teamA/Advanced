@@ -40,14 +40,15 @@ def _detect_optimal_embedding_model() -> str:
     try:
         import torch
 
-        # Apple Silicon with MPS support
-        if system == "Darwin" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            logger.info("Detected Apple Silicon with MPS - using bge-m3 (local, GPU-accelerated)")
-            return "bge-m3"
+        # Check for GPU acceleration (Apple Silicon MPS or Linux CUDA)
+        has_gpu = (
+            (system == "Darwin" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) or
+            (system == "Linux" and torch.cuda.is_available())
+        )
 
-        # Linux with CUDA support
-        if system == "Linux" and torch.cuda.is_available():
-            logger.info("Detected Linux with CUDA - using bge-m3 (local, GPU-accelerated)")
+        if has_gpu:
+            gpu_type = "MPS" if system == "Darwin" else "CUDA"
+            logger.info(f"Detected {system} with {gpu_type} - using bge-m3 (local, GPU-accelerated)")
             return "bge-m3"
 
     except ImportError:
@@ -268,8 +269,8 @@ TIER 3 - Analysis & Insights (deep, 1-3s):
         if not self.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY not set. Set via environment variable or config.")
 
-        if not self.anthropic_api_key.startswith("sk-"):
-            raise ValueError("Anthropic API key has invalid format (should start with sk-)")
+        if not self.anthropic_api_key.startswith("sk-ant-"):
+            raise ValueError("Anthropic API key has invalid format (should start with sk-ant-)")
 
         # Numeric range validation
         if self.max_tokens <= 0:
