@@ -95,7 +95,17 @@ class AgentCore:
         """
         Trim conversation history to prevent unbounded memory growth.
 
-        Keeps the last MAX_HISTORY_MESSAGES messages.
+        IMPORTANT IMPLICATIONS:
+        - User is NOT notified when history is trimmed (silent truncation)
+        - Claude loses access to earlier conversation context
+        - May break multi-turn reasoning across >50 message exchanges
+        - Tool results in trimmed messages are lost permanently
+        - Trimming happens BEFORE processing current message (line 143)
+
+        NOTES:
+        - Each "message" may contain multiple tool results (lines 270, 344)
+        - Actual context size varies significantly per message
+        - Keeps the last MAX_HISTORY_MESSAGES messages
         """
         if len(self.conversation_history) > MAX_HISTORY_MESSAGES:
             old_len = len(self.conversation_history)
@@ -164,9 +174,14 @@ class AgentCore:
         Process message with streaming.
 
         Yields text chunks as they arrive from Claude.
+        Handles API errors gracefully to avoid incomplete responses.
         """
-        while True:
-            with self.client.messages.stream(
+        try:
+            # Import anthropic for error handling
+            import anthropic
+
+            while True:
+                with self.client.messages.stream(
                 model=self.config.model,
                 max_tokens=self.config.max_tokens,
                 temperature=self.config.temperature,
@@ -245,6 +260,16 @@ class AgentCore:
 
                         result = self.registry.execute_tool(tool_name, **tool_input)
 
+                        # Check for tool failure and alert user
+                        if not result.success:
+                            logger.error(
+                                f"Tool '{tool_name}' failed: {result.error}",
+                                extra={"tool_input": tool_input, "metadata": result.metadata}
+                            )
+                            # Alert user in streaming mode if show_tool_calls is enabled
+                            if self.config.cli_config.show_tool_calls:
+                                yield f"[⚠️  Tool '{tool_name}' failed: {result.error}]\n"
+
                         # Track in history
                         self.tool_call_history.append(
                             {
@@ -275,6 +300,19 @@ class AgentCore:
                 else:
                     logger.warning(f"Unexpected stop reason: {final_message.stop_reason}")
                     break
+
+        except anthropic.APITimeoutError as e:
+            logger.error(f"API timeout during streaming: {e}")
+            yield "\n\n[⚠️  API timeout - response incomplete. Please try again.]\n"
+        except anthropic.RateLimitError as e:
+            logger.error(f"Rate limit hit: {e}")
+            yield "\n\n[⚠️  Rate limit exceeded - please wait a moment and try again.]\n"
+        except anthropic.APIError as e:
+            logger.error(f"Claude API error: {e}")
+            yield f"\n\n[❌ API Error: {e}]\n"
+        except Exception as e:
+            logger.error(f"Streaming failed: {e}", exc_info=True)
+            yield f"\n\n[❌ Unexpected error: {type(e).__name__}: {e}]\n"
 
     def _process_non_streaming(self, tools: List[Dict]) -> str:
         """
@@ -318,6 +356,13 @@ class AgentCore:
                         logger.info(f"Executing tool: {tool_name}")
 
                         result = self.registry.execute_tool(tool_name, **tool_input)
+
+                        # Check for tool failure and log error
+                        if not result.success:
+                            logger.error(
+                                f"Tool '{tool_name}' failed: {result.error}",
+                                extra={"tool_input": tool_input, "metadata": result.metadata}
+                            )
 
                         # Track in history
                         self.tool_call_history.append(

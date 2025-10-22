@@ -66,7 +66,7 @@ Guidelines:
             anthropic_api_key: Anthropic API key
             model: Claude model to use (default: claude-haiku-4-5 for speed)
             num_documents: Number of hypothetical documents to generate
-            temperature: Sampling temperature for diversity
+            temperature: Moderate temperature prevents overfitting to query wording (Gao et al., 2022)
         """
         self.client = anthropic.Anthropic(api_key=anthropic_api_key)
         self.model = model
@@ -133,10 +133,21 @@ Guidelines:
                 combined_query=combined,
             )
 
-        except Exception as e:
-            logger.error(f"HyDE generation failed: {e}", exc_info=True)
-            # Fallback: return original query
+        except anthropic.AuthenticationError as e:
+            logger.error(f"HyDE authentication failed: {e}")
+            raise RuntimeError(
+                "HyDE failed: Invalid Anthropic API key. "
+                "Check ANTHROPIC_API_KEY environment variable."
+            )
+        except (anthropic.APITimeoutError, anthropic.RateLimitError, anthropic.APIError) as e:
+            logger.error(f"HyDE API error: {e}")
+            # Fallback acceptable for API issues
+            logger.warning("Falling back to original query without HyDE optimization")
             return HyDEResult(original_query=query, hypothetical_documents=[], combined_query=query)
+        except Exception as e:
+            logger.error(f"HyDE unexpected error: {e}", exc_info=True)
+            # Don't hide programming bugs - raise them
+            raise
 
     def _combine_query_and_hypotheticals(self, query: str, hypothetical_docs: List[str]) -> str:
         """

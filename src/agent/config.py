@@ -6,9 +6,57 @@ Supports environment variable overrides.
 """
 
 import os
+import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _detect_optimal_embedding_model() -> str:
+    """
+    Detect optimal embedding model based on platform.
+
+    Cross-platform compatibility (per CLAUDE.md):
+    - Apple Silicon (MPS): Use bge-m3 (local, FREE, GPU-accelerated)
+    - Linux with NVIDIA GPU: Use bge-m3 (local, FREE, GPU-accelerated)
+    - Windows or CPU-only: Use text-embedding-3-large (cloud, avoids PyTorch DLL issues)
+
+    Can be overridden via EMBEDDING_MODEL environment variable.
+
+    Returns:
+        str: Optimal embedding model identifier
+    """
+    # Check environment variable override first
+    env_model = os.getenv("EMBEDDING_MODEL")
+    if env_model:
+        logger.info(f"Using EMBEDDING_MODEL from environment: {env_model}")
+        return env_model
+
+    system = platform.system()
+
+    try:
+        import torch
+
+        # Apple Silicon with MPS support
+        if system == "Darwin" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            logger.info("Detected Apple Silicon with MPS - using bge-m3 (local, GPU-accelerated)")
+            return "bge-m3"
+
+        # Linux with CUDA support
+        if system == "Linux" and torch.cuda.is_available():
+            logger.info("Detected Linux with CUDA - using bge-m3 (local, GPU-accelerated)")
+            return "bge-m3"
+
+    except ImportError:
+        # PyTorch not available, fallback to cloud
+        logger.info("PyTorch not available - using cloud embeddings")
+
+    # Default: Windows or CPU-only
+    logger.info(f"Platform: {system} (CPU) - using text-embedding-3-large (cloud)")
+    return "text-embedding-3-large"
 
 
 @dataclass
@@ -96,6 +144,10 @@ class AgentConfig:
     # === Paths ===
     vector_store_path: Path = field(default_factory=lambda: Path("output/hybrid_store"))
     knowledge_graph_path: Optional[Path] = None
+
+    # === Embedding Configuration ===
+    # Platform-aware embedding model selection (can override via EMBEDDING_MODEL env var)
+    embedding_model: str = field(default_factory=_detect_optimal_embedding_model)
 
     # === Feature Flags ===
     enable_hyde: bool = False

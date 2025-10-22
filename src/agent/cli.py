@@ -109,22 +109,61 @@ class AgentCLI:
         """
         print("🚀 Initializing agent components...")
 
-        # Load vector store
+        # Load vector store with error handling
         print("Loading vector store...")
-        vector_store = HybridVectorStore.load(self.config.vector_store_path)
+        try:
+            vector_store = HybridVectorStore.load(self.config.vector_store_path)
+        except FileNotFoundError:
+            logger.error(f"Vector store not found: {self.config.vector_store_path}")
+            raise RuntimeError(
+                f"❌ Vector store not found at: {self.config.vector_store_path}\n"
+                f"   Please run the indexing pipeline first:\n"
+                f"   python run_pipeline.py data/your_documents/"
+            )
+        except Exception as e:
+            logger.error(f"Failed to load vector store: {e}", exc_info=True)
+            raise RuntimeError(
+                f"❌ Vector store loading failed: {e}\n"
+                f"   The vector store may be corrupted. Try re-indexing:\n"
+                f"   python run_pipeline.py data/your_documents/"
+            )
 
-        # Initialize embedder
-        print("Initializing embedder...")
-        embedder = EmbeddingGenerator(
-            EmbeddingConfig(model="text-embedding-3-large", batch_size=100, normalize=True)
-        )
+        # Initialize embedder with error handling (platform-aware model selection)
+        print(f"Initializing embedder (model: {self.config.embedding_model})...")
+        try:
+            embedder = EmbeddingGenerator(
+                EmbeddingConfig(model=self.config.embedding_model, batch_size=100, normalize=True)
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize embedder: {e}", exc_info=True)
+            # Check if it's an API key issue
+            if "api" in str(e).lower() or "key" in str(e).lower():
+                raise RuntimeError(
+                    f"❌ Embedder initialization failed: {e}\n"
+                    f"   Model: {self.config.embedding_model}\n"
+                    f"   This model requires an API key. Please set:\n"
+                    f"   export OPENAI_API_KEY=your_key_here  # For OpenAI models\n"
+                    f"   Or use a local model by setting:\n"
+                    f"   export EMBEDDING_MODEL=bge-m3"
+                )
+            raise RuntimeError(
+                f"❌ Embedder initialization failed: {e}\n"
+                f"   Model: {self.config.embedding_model}\n"
+                f"   Check that the model is supported and dependencies are installed."
+            )
 
         # Initialize reranker (optional, lazy load)
         reranker = None
         if self.config.tool_config.enable_reranking:
             if not self.config.tool_config.lazy_load_reranker:
                 print("Loading reranker...")
-                reranker = CrossEncoderReranker(model_name=self.config.tool_config.reranker_model)
+                try:
+                    reranker = CrossEncoderReranker(model_name=self.config.tool_config.reranker_model)
+                except Exception as e:
+                    logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
+                    print(f"   ⚠️  Reranker failed to load: {e}")
+                    print("   Continuing without reranking (results may be less accurate)")
+                    self.config.tool_config.enable_reranking = False
             else:
                 print("Reranker set to lazy load")
 
@@ -133,18 +172,34 @@ class AgentCLI:
         graph_retriever = None
         if self.config.enable_knowledge_graph and self.config.knowledge_graph_path:
             print("Loading knowledge graph...")
-            from src.graph.models import KnowledgeGraph
-            from src.graph_retrieval import GraphEnhancedRetriever
+            try:
+                from src.graph.models import KnowledgeGraph
+                from src.graph_retrieval import GraphEnhancedRetriever
 
-            knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
-            print(
-                f"   Entities: {len(knowledge_graph.entities)}, "
-                f"Relationships: {len(knowledge_graph.relationships)}"
-            )
+                knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
+                print(
+                    f"   Entities: {len(knowledge_graph.entities)}, "
+                    f"Relationships: {len(knowledge_graph.relationships)}"
+                )
 
-            graph_retriever = GraphEnhancedRetriever(
-                vector_store=vector_store, knowledge_graph=knowledge_graph
-            )
+                graph_retriever = GraphEnhancedRetriever(
+                    vector_store=vector_store, knowledge_graph=knowledge_graph
+                )
+            except FileNotFoundError:
+                logger.warning(f"Knowledge graph file not found: {self.config.knowledge_graph_path}")
+                print(f"   ⚠️  Knowledge graph file not found: {self.config.knowledge_graph_path}")
+                print("   Continuing without knowledge graph (graph tools will be unavailable)")
+                self.config.enable_knowledge_graph = False
+            except ImportError as e:
+                logger.warning(f"Knowledge graph module not available: {e}")
+                print(f"   ⚠️  Knowledge graph module not available: {e}")
+                print("   Continuing without knowledge graph")
+                self.config.enable_knowledge_graph = False
+            except Exception as e:
+                logger.warning(f"Failed to load knowledge graph: {e}")
+                print(f"   ⚠️  Knowledge graph failed to load: {e}")
+                print("   Continuing without knowledge graph")
+                self.config.enable_knowledge_graph = False
 
         # Initialize context assembler
         print("Initializing context assembler...")

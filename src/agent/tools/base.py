@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -162,21 +162,87 @@ class BaseTool(ABC):
 
             return result
 
-        except Exception as e:
-            # Handle errors gracefully
+        except ValidationError as e:
+            # Pydantic validation errors - user input issues
             elapsed_ms = (time.time() - start_time) * 1000
             self.error_count += 1
 
-            logger.error(f"Tool '{self.name}' failed: {e}", exc_info=True)
+            logger.warning(f"Tool '{self.name}' validation failed: {e}")
 
             return ToolResult(
                 success=False,
                 data=None,
-                error=f"{type(e).__name__}: {str(e)}",
+                error=f"Invalid input: {str(e)}",
                 metadata={
                     "tool_name": self.name,
                     "tier": self.tier,
                     "execution_time_ms": elapsed_ms,
+                    "error_type": "validation",
+                },
+            )
+
+        except (KeyError, AttributeError, IndexError, TypeError) as e:
+            # Programming errors - these are bugs in tool implementation
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.error_count += 1
+
+            logger.error(
+                f"Tool '{self.name}' implementation error: {e}",
+                exc_info=True,
+                extra={"kwargs": kwargs}
+            )
+
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Internal tool error - this is a bug. {type(e).__name__}: {str(e)}",
+                metadata={
+                    "tool_name": self.name,
+                    "tier": self.tier,
+                    "execution_time_ms": elapsed_ms,
+                    "error_type": "programming",
+                },
+            )
+
+        except (OSError, RuntimeError, MemoryError) as e:
+            # System errors - resource issues
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.error_count += 1
+
+            logger.error(f"Tool '{self.name}' system error: {e}", exc_info=True)
+
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"System error: {type(e).__name__}: {str(e)}. Try again or contact administrator.",
+                metadata={
+                    "tool_name": self.name,
+                    "tier": self.tier,
+                    "execution_time_ms": elapsed_ms,
+                    "error_type": "system",
+                },
+            )
+
+        except Exception as e:
+            # Unexpected errors - catch-all for unknown issues
+            elapsed_ms = (time.time() - start_time) * 1000
+            self.error_count += 1
+
+            logger.error(
+                f"Tool '{self.name}' unexpected error: {type(e).__name__}: {e}",
+                exc_info=True,
+                extra={"kwargs": kwargs}
+            )
+
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Unexpected error: {type(e).__name__}: {str(e)}",
+                metadata={
+                    "tool_name": self.name,
+                    "tier": self.tier,
+                    "execution_time_ms": elapsed_ms,
+                    "error_type": "unexpected",
                 },
             )
 

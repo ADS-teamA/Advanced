@@ -135,10 +135,21 @@ Now decompose the following query:"""
 
             return DecomposedQuery(original_query=query, sub_queries=sub_queries, is_complex=True)
 
-        except Exception as e:
-            logger.error(f"Query decomposition failed: {e}", exc_info=True)
-            # Fallback: return original query
+        except anthropic.AuthenticationError as e:
+            logger.error(f"Query decomposition authentication failed: {e}")
+            raise RuntimeError(
+                "Query decomposition failed: Invalid Anthropic API key. "
+                "Check ANTHROPIC_API_KEY environment variable."
+            )
+        except (anthropic.APITimeoutError, anthropic.RateLimitError, anthropic.APIError) as e:
+            logger.error(f"Query decomposition API error: {e}")
+            # Fallback acceptable for API issues
+            logger.warning("Falling back to original query without decomposition")
             return DecomposedQuery(original_query=query, sub_queries=[query], is_complex=False)
+        except Exception as e:
+            logger.error(f"Query decomposition unexpected error: {e}", exc_info=True)
+            # Don't hide programming bugs - raise them
+            raise
 
     def _parse_sub_queries(self, response: str) -> List[str]:
         """

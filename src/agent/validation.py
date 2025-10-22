@@ -86,7 +86,7 @@ class AgentValidator:
             for result in self.results:
                 logger.debug(f"{result}")
 
-        # Check for critical failures
+        # Check for critical failures (marked with [CRITICAL])
         critical_failures = [r for r in self.results if not r.passed and "CRITICAL" in r.name]
         if critical_failures:
             logger.error(f"❌ {len(critical_failures)} CRITICAL validation failures detected")
@@ -94,9 +94,37 @@ class AgentValidator:
                 logger.error(f"   {failure.message}")
             return False
 
-        # Non-critical failures are warnings
-        if failed_count > 0:
-            logger.warning(f"⚠️  {failed_count} non-critical validation warnings")
+        # Check for blocking failures (not marked CRITICAL but still block startup)
+        # These are failures in essential components like API keys, vector store, embedder
+        blocking_names = [
+            "API Key: ANTHROPIC",  # Invalid format but key is present
+            "API Key: OPENAI",  # Invalid format (only if using cloud embeddings)
+            "Vector Store",  # Loading succeeded but has issues
+            "Embedding Generator",  # Failed to initialize
+            "Claude Client",  # Failed to initialize
+        ]
+
+        blocking_failures = [
+            r for r in self.results
+            if not r.passed and r.name in blocking_names
+        ]
+
+        # Special case: OpenAI key only blocks if using cloud embeddings
+        openai_failures = [f for f in blocking_failures if "OPENAI" in f.name]
+        if openai_failures and self.config.embedding_model.startswith("bge-"):
+            # Using local embeddings, OpenAI key failure is not blocking
+            blocking_failures = [f for f in blocking_failures if "OPENAI" not in f.name]
+
+        if blocking_failures:
+            logger.error(f"❌ {len(blocking_failures)} blocking validation failures detected")
+            for failure in blocking_failures:
+                logger.error(f"   {failure.name}: {failure.message}")
+            return False
+
+        # Non-critical failures are warnings (agent can still start)
+        warning_count = failed_count - len(critical_failures) - len(blocking_failures)
+        if warning_count > 0:
+            logger.warning(f"⚠️  {warning_count} non-critical validation warnings (agent can still start)")
 
         logger.info("✅ Validation complete - agent ready to start")
         return True
@@ -506,13 +534,17 @@ class AgentValidator:
             registry = get_registry()
             tool_count = len(registry._tool_classes)
 
-            if tool_count < 17:
+            # Minimum expected tools (Tier 1: 6, Tier 2: 6, Tier 3: 5 = 17 total)
+            # Update this count when adding new tools to the registry
+            MINIMUM_TOOL_COUNT = 17
+
+            if tool_count < MINIMUM_TOOL_COUNT:
                 self.results.append(
                     ValidationResult(
                         name="Tool Registry",
                         passed=False,
-                        message=f"Expected 17 tools, found {tool_count}",
-                        details={"registered_tools": tool_count, "expected": 17},
+                        message=f"Expected at least {MINIMUM_TOOL_COUNT} tools, found {tool_count}",
+                        details={"registered_tools": tool_count, "minimum_expected": MINIMUM_TOOL_COUNT},
                     )
                 )
             else:
