@@ -1,9 +1,10 @@
 """
-PHASE 4: Complete Indexing Pipeline
+PHASE 4-5A: Complete Indexing Pipeline
 
 Orchestrates:
 1. PHASE 1-3: Extraction, hierarchy, summaries, chunking
 2. PHASE 4: Embedding generation + FAISS indexing
+3. PHASE 5A: Knowledge Graph construction (optional)
 
 Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 
@@ -11,15 +12,18 @@ Based on research:
 - LegalBench-RAG: text-embedding-3-large + RCTS
 - Multi-Layer Embeddings: 3 separate indexes
 - Dense-only retrieval (no BM25)
+- Knowledge Graph: Entity & relationship extraction
 
 Usage:
     pipeline = IndexingPipeline(
         embedding_model="text-embedding-3-large",
-        enable_sac=True
+        enable_sac=True,
+        enable_knowledge_graph=True
     )
 
-    vector_store = pipeline.index_document("document.pdf")
-    vector_store.save("output/vector_store")
+    result = pipeline.index_document("document.pdf")
+    result["vector_store"].save("output/vector_store")
+    result["knowledge_graph"].save_json("output/knowledge_graph.json")
 """
 
 import logging
@@ -32,6 +36,20 @@ from docling_extractor_v2 import DoclingExtractorV2
 from multi_layer_chunker import MultiLayerChunker
 from embedding_generator import EmbeddingGenerator, EmbeddingConfig
 from faiss_vector_store import FAISSVectorStore
+
+# Knowledge Graph imports (optional)
+try:
+    from graph import (
+        KnowledgeGraphPipeline,
+        KnowledgeGraphConfig,
+        EntityExtractionConfig as KGEntityConfig,
+        RelationshipExtractionConfig as KGRelationshipConfig,
+        GraphStorageConfig,
+        GraphBackend,
+    )
+    KG_AVAILABLE = True
+except ImportError:
+    KG_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +76,16 @@ class IndexingConfig:
     embedding_model: str = "text-embedding-3-large"
     embedding_batch_size: int = 100
     normalize_embeddings: bool = True
+
+    # PHASE 5A: Knowledge Graph (optional)
+    enable_knowledge_graph: bool = False
+    kg_llm_provider: str = "openai"
+    kg_llm_model: str = "gpt-4o-mini"
+    kg_backend: str = "simple"  # simple, neo4j, networkx
+    kg_min_entity_confidence: float = 0.6
+    kg_min_relationship_confidence: float = 0.5
+    kg_batch_size: int = 10
+    kg_max_workers: int = 5
 
     def __post_init__(self):
         if self.ocr_language is None:
@@ -116,11 +144,81 @@ class IndexingPipeline:
         )
         self.embedder = EmbeddingGenerator(self.embedding_config)
 
+        # Initialize PHASE 5A: Knowledge Graph (optional)
+        self.kg_pipeline = None
+        if self.config.enable_knowledge_graph:
+            if not KG_AVAILABLE:
+                logger.warning(
+                    "Knowledge Graph requested but not available. "
+                    "Install with: pip install openai anthropic"
+                )
+            else:
+                self._initialize_kg_pipeline()
+
         logger.info(
             f"Pipeline initialized: "
             f"SAC={self.config.enable_sac}, "
             f"model={self.config.embedding_model} "
-            f"({self.embedder.dimensions}D)"
+            f"({self.embedder.dimensions}D), "
+            f"KG={self.config.enable_knowledge_graph}"
+        )
+
+    def _initialize_kg_pipeline(self):
+        """Initialize Knowledge Graph pipeline."""
+        import os
+
+        # Map backend string to enum
+        backend_map = {
+            "simple": GraphBackend.SIMPLE,
+            "neo4j": GraphBackend.NEO4J,
+            "networkx": GraphBackend.NETWORKX,
+        }
+        backend = backend_map.get(self.config.kg_backend, GraphBackend.SIMPLE)
+
+        # Get API key
+        api_key = None
+        if self.config.kg_llm_provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+        elif self.config.kg_llm_provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            logger.warning(
+                f"No API key found for {self.config.kg_llm_provider}. "
+                f"Set {self.config.kg_llm_provider.upper()}_API_KEY environment variable."
+            )
+            self.kg_pipeline = None
+            return
+
+        # Create KG config
+        kg_config = KnowledgeGraphConfig(
+            entity_extraction=KGEntityConfig(
+                llm_provider=self.config.kg_llm_provider,
+                llm_model=self.config.kg_llm_model,
+                min_confidence=self.config.kg_min_entity_confidence,
+                batch_size=self.config.kg_batch_size,
+                max_workers=self.config.kg_max_workers,
+            ),
+            relationship_extraction=KGRelationshipConfig(
+                llm_provider=self.config.kg_llm_provider,
+                llm_model=self.config.kg_llm_model,
+                min_confidence=self.config.kg_min_relationship_confidence,
+                batch_size=self.config.kg_batch_size,
+                max_workers=self.config.kg_max_workers,
+            ),
+            graph_storage=GraphStorageConfig(
+                backend=backend,
+                export_json=True,
+            ),
+            openai_api_key=api_key if self.config.kg_llm_provider == "openai" else None,
+            anthropic_api_key=api_key if self.config.kg_llm_provider == "anthropic" else None,
+        )
+
+        self.kg_pipeline = KnowledgeGraphPipeline(kg_config)
+        logger.info(
+            f"Knowledge Graph initialized: "
+            f"model={self.config.kg_llm_model}, "
+            f"backend={self.config.kg_backend}"
         )
 
     def index_document(
@@ -128,7 +226,7 @@ class IndexingPipeline:
         document_path: Path,
         save_intermediate: bool = False,
         output_dir: Optional[Path] = None
-    ) -> FAISSVectorStore:
+    ) -> Dict:
         """
         Index a single document.
 
@@ -139,6 +237,7 @@ class IndexingPipeline:
         2. Generate summaries (PHASE 2)
         3. Multi-layer chunking + SAC (PHASE 3)
         4. Embed + FAISS index (PHASE 4)
+        5. Build knowledge graph (PHASE 5A - optional)
 
         Args:
             document_path: Path to document file (PDF, DOCX, PPTX, XLSX, HTML)
@@ -146,7 +245,11 @@ class IndexingPipeline:
             output_dir: Directory for intermediate results
 
         Returns:
-            FAISSVectorStore with indexed document
+            Dict with:
+                - vector_store: FAISSVectorStore with indexed document
+                - knowledge_graph: KnowledgeGraph (if enabled, else None)
+                - chunks: Dict of chunks (if save_intermediate)
+                - stats: Pipeline statistics
         """
         document_path = Path(document_path)
 
@@ -205,6 +308,51 @@ class IndexingPipeline:
             f"({store_stats['documents']} documents)"
         )
 
+        # PHASE 5A: Knowledge Graph (optional)
+        knowledge_graph = None
+        if self.kg_pipeline:
+            logger.info("PHASE 5A: Knowledge Graph Construction")
+
+            try:
+                # Prepare chunks for KG (use Layer 3 primary chunks)
+                kg_chunks = [
+                    {
+                        "id": chunk.id,
+                        "content": chunk.content,
+                        "raw_content": chunk.raw_content,
+                        "metadata": {
+                            "document_id": chunk.metadata.document_id,
+                            "section_path": chunk.metadata.section_path,
+                            "section_title": chunk.metadata.section_title,
+                        }
+                    }
+                    for chunk in chunks["layer3"]
+                ]
+
+                # Build knowledge graph
+                knowledge_graph = self.kg_pipeline.build_from_chunks(
+                    chunks=kg_chunks,
+                    document_id=result.document_id
+                )
+
+                logger.info(
+                    f"✓ Knowledge Graph: {len(knowledge_graph.entities)} entities, "
+                    f"{len(knowledge_graph.relationships)} relationships"
+                )
+
+                # Save KG if output_dir specified
+                if output_dir:
+                    output_dir = Path(output_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    kg_path = output_dir / f"{result.document_id}_kg.json"
+                    knowledge_graph.save_json(str(kg_path))
+                    logger.info(f"✓ Saved Knowledge Graph: {kg_path}")
+
+            except Exception as e:
+                logger.error(f"✗ Knowledge Graph construction failed: {e}")
+                logger.warning("Continuing without Knowledge Graph...")
+                knowledge_graph = None
+
         # Save intermediate results
         if save_intermediate and output_dir:
             self._save_intermediate(
@@ -218,14 +366,32 @@ class IndexingPipeline:
         logger.info(f"✓ Indexing complete: {document_path.name}")
         logger.info("="*80)
 
-        return vector_store
+        # Prepare result
+        result_dict = {
+            "vector_store": vector_store,
+            "knowledge_graph": knowledge_graph,
+            "stats": {
+                "document_id": result.document_id,
+                "source_path": str(document_path),
+                "vector_store": store_stats,
+                "chunking": chunking_stats,
+                "kg_enabled": self.config.enable_knowledge_graph,
+                "kg_entities": len(knowledge_graph.entities) if knowledge_graph else 0,
+                "kg_relationships": len(knowledge_graph.relationships) if knowledge_graph else 0,
+            }
+        }
+
+        if save_intermediate:
+            result_dict["chunks"] = chunks
+
+        return result_dict
 
     def index_batch(
         self,
         document_paths: list,
         output_dir: Path,
         save_per_document: bool = False
-    ) -> FAISSVectorStore:
+    ) -> Dict:
         """
         Index multiple documents into a single vector store.
 
@@ -237,7 +403,10 @@ class IndexingPipeline:
             save_per_document: Save individual document vector stores
 
         Returns:
-            FAISSVectorStore with all indexed documents
+            Dict with:
+                - vector_store: Combined FAISSVectorStore
+                - knowledge_graphs: List of KnowledgeGraphs (if enabled)
+                - stats: Batch statistics
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -247,15 +416,23 @@ class IndexingPipeline:
         # Create combined vector store
         vector_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
 
+        # Collect knowledge graphs
+        knowledge_graphs = []
+
         for i, document_path in enumerate(document_paths, 1):
             logger.info(f"\n[{i}/{len(document_paths)}] Processing: {Path(document_path).name}")
 
             try:
                 # Index document
-                doc_store = self.index_document(
+                result = self.index_document(
                     document_path=document_path,
-                    save_intermediate=False
+                    save_intermediate=False,
+                    output_dir=output_dir if save_per_document else None
                 )
+
+                # Extract components
+                doc_store = result["vector_store"]
+                doc_kg = result.get("knowledge_graph")
 
                 # Merge into combined store (by adding chunks)
                 # Note: This is simplified - production would need proper merging
@@ -265,6 +442,10 @@ class IndexingPipeline:
                 vector_store.metadata_layer1.extend(doc_store.metadata_layer1)
                 vector_store.metadata_layer2.extend(doc_store.metadata_layer2)
                 vector_store.metadata_layer3.extend(doc_store.metadata_layer3)
+
+                # Collect knowledge graph
+                if doc_kg:
+                    knowledge_graphs.append(doc_kg)
 
                 # Save per-document store
                 if save_per_document:
@@ -281,10 +462,42 @@ class IndexingPipeline:
         combined_output = output_dir / "combined_store"
         vector_store.save(combined_output)
 
+        # Save combined knowledge graph (if any)
+        if knowledge_graphs and self.kg_pipeline:
+            try:
+                # Merge all KGs
+                from graph import KnowledgeGraph
+                combined_kg = KnowledgeGraph(
+                    entities=[e for kg in knowledge_graphs for e in kg.entities],
+                    relationships=[r for kg in knowledge_graphs for r in kg.relationships],
+                )
+                combined_kg.compute_stats()
+
+                kg_output = output_dir / "combined_kg.json"
+                combined_kg.save_json(str(kg_output))
+                logger.info(f"✓ Saved combined Knowledge Graph: {kg_output}")
+                logger.info(
+                    f"  Total: {len(combined_kg.entities)} entities, "
+                    f"{len(combined_kg.relationships)} relationships"
+                )
+            except Exception as e:
+                logger.error(f"✗ Failed to save combined KG: {e}")
+
         logger.info(f"\n✓ Batch indexing complete: {vector_store.get_stats()}")
         logger.info(f"✓ Saved to: {combined_output}")
 
-        return vector_store
+        return {
+            "vector_store": vector_store,
+            "knowledge_graphs": knowledge_graphs,
+            "stats": {
+                "total_documents": len(document_paths),
+                "successful": len(knowledge_graphs) if self.kg_pipeline else len(document_paths),
+                "vector_store": vector_store.get_stats(),
+                "kg_enabled": self.config.enable_knowledge_graph,
+                "total_entities": sum(len(kg.entities) for kg in knowledge_graphs),
+                "total_relationships": sum(len(kg.relationships) for kg in knowledge_graphs),
+            }
+        }
 
     def _save_intermediate(
         self,
@@ -320,7 +533,7 @@ class IndexingPipeline:
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize pipeline with research-optimal settings
+    # Initialize pipeline with research-optimal settings + Knowledge Graph
     config = IndexingConfig(
         # PHASE 1-2
         enable_smart_hierarchy=True,
@@ -333,20 +546,37 @@ if __name__ == "__main__":
 
         # PHASE 4
         embedding_model="text-embedding-3-large",
-        normalize_embeddings=True
+        normalize_embeddings=True,
+
+        # PHASE 5A: Knowledge Graph (NEW!)
+        enable_knowledge_graph=True,
+        kg_llm_provider="openai",
+        kg_llm_model="gpt-4o-mini",
+        kg_backend="simple",  # simple, neo4j, or networkx
     )
 
     pipeline = IndexingPipeline(config)
 
     # Index single document
-    vector_store = pipeline.index_document(
-        pdf_path="data/document.pdf",
+    result = pipeline.index_document(
+        document_path=Path("data/document.pdf"),
         save_intermediate=True,
         output_dir=Path("output/indexing")
     )
 
+    # Extract components
+    vector_store = result["vector_store"]
+    knowledge_graph = result["knowledge_graph"]
+
     # Save vector store
     vector_store.save(Path("output/vector_store"))
+
+    # Save knowledge graph
+    if knowledge_graph:
+        knowledge_graph.save_json("output/knowledge_graph.json")
+        print(f"\nKnowledge Graph:")
+        print(f"  Entities: {len(knowledge_graph.entities)}")
+        print(f"  Relationships: {len(knowledge_graph.relationships)}")
 
     # Search example
     query_embedding = pipeline.embedder.embed_texts(["safety specification"])
