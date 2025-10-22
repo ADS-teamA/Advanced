@@ -318,7 +318,7 @@ class IndexingPipeline:
             logger.info("PHASE 5B: Hybrid Search (BM25 + Dense + RRF)")
 
             try:
-                from hybrid_search import BM25Store, HybridVectorStore
+                from src.hybrid_search import BM25Store, HybridVectorStore
 
                 # Build BM25 indexes for all 3 layers
                 bm25_store = BM25Store()
