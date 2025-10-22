@@ -28,16 +28,42 @@ Production-ready RAG system based on 4 research papers:
 
 ### Installation
 
-```bash
-# Clone repository
-cd MY_SUJBOT
+**⚠️ IMPORTANT: Installation is platform-specific. See [INSTALL.md](INSTALL.md) for detailed instructions.**
 
+**Quick Install:**
+
+**Windows:**
+```bash
+# 1. Install PyTorch FIRST (prevents DLL errors)
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# 2. Install dependencies
+uv sync
+
+# 3. Configure (use cloud embeddings - recommended for Windows)
+copy .env.example .env
+# Edit .env and set EMBEDDING_MODEL=text-embedding-3-large
+```
+
+**macOS/Linux:**
+```bash
 # Install dependencies
 uv sync
 
-# Set OpenAI API key (for PHASE 2 & 4)
-export OPENAI_API_KEY="sk-..."
+# Configure
+cp .env.example .env
+# Edit .env with your API keys
 ```
+
+**API Keys (Required):**
+```bash
+# .env file
+ANTHROPIC_API_KEY=sk-ant-...  # Required for summaries
+OPENAI_API_KEY=sk-...         # For OpenAI embeddings (optional)
+EMBEDDING_MODEL=text-embedding-3-large  # Recommended for Windows
+```
+
+**For detailed platform-specific instructions, troubleshooting, and embedding model selection, see [INSTALL.md](INSTALL.md).**
 
 ### Basic Usage (PHASE 1-4 Complete Pipeline)
 
