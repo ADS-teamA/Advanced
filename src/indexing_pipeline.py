@@ -87,6 +87,10 @@ class IndexingConfig:
     kg_batch_size: int = 10
     kg_max_workers: int = 5
 
+    # PHASE 5B: Hybrid Search (optional)
+    enable_hybrid_search: bool = False  # BM25 + dense with RRF fusion
+    hybrid_fusion_k: int = 60  # RRF k parameter (research: k=60 optimal)
+
     def __post_init__(self):
         if self.ocr_language is None:
             self.ocr_language = ["cs-CZ", "en-US"]
@@ -160,7 +164,8 @@ class IndexingPipeline:
             f"SAC={self.config.enable_sac}, "
             f"model={self.config.embedding_model} "
             f"({self.embedder.dimensions}D), "
-            f"KG={self.config.enable_knowledge_graph}"
+            f"KG={self.config.enable_knowledge_graph}, "
+            f"Hybrid={self.config.enable_hybrid_search}"
         )
 
     def _initialize_kg_pipeline(self):
@@ -308,6 +313,43 @@ class IndexingPipeline:
             f"({store_stats['documents']} documents)"
         )
 
+        # PHASE 5B: Hybrid Search (optional)
+        if self.config.enable_hybrid_search:
+            logger.info("PHASE 5B: Hybrid Search (BM25 + Dense + RRF)")
+
+            try:
+                from src.hybrid_search import BM25Store, HybridVectorStore
+
+                # Build BM25 indexes for all 3 layers
+                bm25_store = BM25Store()
+                bm25_store.build_from_chunks(chunks)
+
+                logger.info(
+                    f"✓ BM25 Indexed: "
+                    f"L1={len(bm25_store.index_layer1.corpus)}, "
+                    f"L2={len(bm25_store.index_layer2.corpus)}, "
+                    f"L3={len(bm25_store.index_layer3.corpus)}"
+                )
+
+                # Wrap FAISS + BM25 into HybridVectorStore
+                hybrid_store = HybridVectorStore(
+                    faiss_store=vector_store,
+                    bm25_store=bm25_store,
+                    fusion_k=self.config.hybrid_fusion_k
+                )
+
+                # Replace vector_store with hybrid_store for return
+                vector_store = hybrid_store
+                store_stats = vector_store.get_stats()
+
+                logger.info(f"✓ Hybrid Search enabled: RRF k={self.config.hybrid_fusion_k}")
+
+            except Exception as e:
+                logger.error(f"✗ Hybrid Search failed: {e}")
+                logger.warning("Continuing with dense-only retrieval...")
+                import traceback
+                logger.debug(traceback.format_exc())
+
         # PHASE 5A: Knowledge Graph (optional)
         knowledge_graph = None
         if self.kg_pipeline:
@@ -375,6 +417,7 @@ class IndexingPipeline:
                 "source_path": str(document_path),
                 "vector_store": store_stats,
                 "chunking": chunking_stats,
+                "hybrid_enabled": self.config.enable_hybrid_search,
                 "kg_enabled": self.config.enable_knowledge_graph,
                 "kg_entities": len(knowledge_graph.entities) if knowledge_graph else 0,
                 "kg_relationships": len(knowledge_graph.relationships) if knowledge_graph else 0,
