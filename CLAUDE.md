@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MY_SUJBOT is a research-based RAG (Retrieval-Augmented Generation) pipeline optimized for legal and technical documents. The system implements state-of-the-art techniques from multiple research papers to achieve superior retrieval quality through hierarchical structure extraction, contextual chunking, multi-layer embeddings, and knowledge graph construction.
 
-**Current Status:** PHASE 1-5A Complete (Extraction → Knowledge Graph)
-**Next Steps:** PHASE 5B-7 (Hybrid Search, Reranking, Answer Generation)
+**Current Status:** PHASE 1-5B Complete (Extraction → Hybrid Search)
+**Next Steps:** PHASE 5C-7 (Reranking, Context Assembly, Answer Generation)
 
 ## Core Architecture
 
@@ -19,6 +19,7 @@ The pipeline follows a multi-phase architecture where each phase builds on the p
 3. **PHASE 3:** Multi-layer chunking with Summary-Augmented Chunks (RCTS 500 chars)
 4. **PHASE 4:** Embedding generation and FAISS indexing (text-embedding-3-large, 3072D)
 5. **PHASE 5A:** Knowledge Graph construction (entities and relationships)
+6. **PHASE 5B:** Hybrid Search (BM25 + Dense + RRF fusion)
 
 ### Key Design Principles
 - **Contextual Retrieval:** Chunks are augmented with LLM-generated context before embedding (-49% retrieval errors)
@@ -38,7 +39,8 @@ src/
 ├── contextual_retrieval.py     # PHASE 3: Context generation for chunks
 ├── embedding_generator.py      # PHASE 4: Embedding with OpenAI
 ├── faiss_vector_store.py       # PHASE 4: FAISS vector storage
-├── indexing_pipeline.py        # Main orchestrator for PHASE 1-5A
+├── hybrid_search.py            # PHASE 5B: BM25 + RRF fusion
+├── indexing_pipeline.py        # Main orchestrator for PHASE 1-5B
 └── graph/                      # PHASE 5A: Knowledge Graph
     ├── models.py               # Entity, Relationship, KnowledgeGraph
     ├── config.py               # KG configuration
@@ -61,10 +63,37 @@ tests/
 # Python 3.10+ required
 python --version
 
-# Install dependencies
+# Install uv package manager (recommended)
+# Windows (PowerShell):
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS/Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Platform-Specific Installation
+
+**CRITICAL:** PyTorch installation differs by platform. Windows users must follow specific steps to avoid DLL errors.
+
+**See `INSTALL.md` for detailed platform-specific instructions:**
+- Windows: Requires PyTorch pre-installation before other dependencies
+- macOS: Works with standard `uv sync`
+- Linux: Choose CPU or CUDA version based on hardware
+
+### Quick Installation
+
+**Windows:**
+```bash
+# 1. Install PyTorch FIRST (avoids DLL errors)
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# 2. Install application
 uv sync
-# OR
-pip install -e .
+```
+
+**macOS/Linux:**
+```bash
+uv sync
 ```
 
 ### API Keys
@@ -73,9 +102,16 @@ API keys are **required** for the pipeline to function:
 1. Copy `.env.example` to `.env`
 2. Add your API keys:
    - `ANTHROPIC_API_KEY`: For summary generation (PHASE 2) and optional KG extraction
-   - `OPENAI_API_KEY`: For embeddings (PHASE 4) and KG extraction (PHASE 5A)
+   - `OPENAI_API_KEY`: For OpenAI embeddings (PHASE 4) or KG extraction (PHASE 5A)
+   - `VOYAGE_API_KEY`: For Voyage AI embeddings (optional, SOTA quality)
 
-**IMPORTANT:** Without API keys, the pipeline will fail at PHASE 2 (summaries) and PHASE 4 (embeddings).
+3. Choose embedding model:
+   - **Windows:** Use `text-embedding-3-large` (cloud, avoids PyTorch issues)
+   - **macOS (M1/M2/M3):** Use `bge-m3` (local, FREE, GPU-accelerated)
+   - **Linux with GPU:** Use `bge-m3` (local, FREE, GPU-accelerated)
+   - **Any platform:** Use `voyage-3-large` (cloud, best quality)
+
+**IMPORTANT:** Without API keys, the pipeline will fail at PHASE 2 (summaries). Embedding models can be either cloud-based (API key required) or local (no API key).
 
 ## Common Commands
 
@@ -184,6 +220,78 @@ standards = [e for e in kg.entities if e.type == "STANDARD"]
 for std in standards:
     rels = kg.get_outgoing_relationships(std.id)
 ```
+
+## Hybrid Search (PHASE 5B)
+
+PHASE 5B implements hybrid retrieval combining dense (FAISS) and sparse (BM25) search with Reciprocal Rank Fusion (RRF).
+
+### Key Features
+- **BM25 Sparse Retrieval**: Keyword/exact match via term frequency
+- **Dense Retrieval**: Semantic similarity via embeddings (existing FAISS)
+- **RRF Fusion**: Combines both rankings using formula: `score = 1/(k + rank)`, k=60
+- **Multi-Layer Support**: All 3 layers (document, section, chunk)
+- **Contextual Indexing**: BM25 indexes same text as FAISS (context + raw_content)
+
+### Expected Impact
+Based on research: **+23% precision improvement** over dense-only retrieval for legal documents.
+
+### Usage Example
+```python
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+
+# Enable hybrid search
+config = IndexingConfig(
+    enable_hybrid_search=True,  # Enable PHASE 5B
+    hybrid_fusion_k=60,  # RRF parameter (research-optimal)
+    enable_knowledge_graph=False
+)
+
+pipeline = IndexingPipeline(config)
+result = pipeline.index_document("doc.pdf")
+
+# result["vector_store"] is now HybridVectorStore
+hybrid_store = result["vector_store"]
+
+# Search requires both text and embedding
+from src.embedding_generator import EmbeddingGenerator
+
+embedder = EmbeddingGenerator()
+query_text = "waste disposal requirements"
+query_embedding = embedder.embed_texts([query_text])
+
+# Hybrid search with RRF fusion
+results = hybrid_store.hierarchical_search(
+    query_text=query_text,  # For BM25
+    query_embedding=query_embedding,  # For FAISS
+    k_layer3=6
+)
+
+# Results contain RRF-fused chunks
+for chunk in results["layer3"]:
+    print(f"RRF Score: {chunk['rrf_score']:.4f}")
+    print(f"Content: {chunk['content'][:100]}...")
+```
+
+### Architecture
+```
+src/hybrid_search.py:
+├── BM25Index: Single-layer BM25 index
+├── BM25Store: Multi-layer wrapper (3 BM25 indexes)
+└── HybridVectorStore: FAISS + BM25 + RRF fusion
+```
+
+### Save/Load
+```python
+# Save hybrid store (saves both FAISS and BM25)
+hybrid_store.save(Path("output/hybrid_store"))
+
+# Load
+from src.hybrid_search import HybridVectorStore
+loaded = HybridVectorStore.load(Path("output/hybrid_store"))
+```
+
+### Backward Compatibility
+Hybrid search is **optional** via config flag. When disabled, pipeline behaves exactly as before (dense-only FAISS retrieval).
 
 ## Indexing Pipeline Integration
 
@@ -302,28 +410,85 @@ The roadmap for SOTA 2025 upgrade is documented in `PIPELINE.md`:
 
 ## Important Notes for Claude Code
 
+### Cross-Platform Compatibility
+
+**CRITICAL:** This codebase must work on Windows, macOS, and Linux.
+
+**Platform-Specific Issues to Avoid:**
+- **PyTorch Installation:** Windows requires specific pre-installation steps (see `INSTALL.md`)
+- **macOS-Specific Code:** No `ocrmac` or other macOS-only dependencies
+- **GPU Detection:** Code must gracefully handle CPU-only, CUDA, and MPS (Apple Silicon)
+- **Path Separators:** Use `pathlib.Path` instead of string concatenation
+- **Line Endings:** Git handles this, but be aware
+
+**When Adding Dependencies:**
+1. Check if it works on all platforms
+2. If platform-specific, make it optional
+3. Document platform requirements in `INSTALL.md`
+4. Update `.env.example` with platform recommendations
+
 ### API Key Management
 - Always check for API keys before running pipeline components
 - PHASE 2 (summaries) requires ANTHROPIC_API_KEY or OPENAI_API_KEY
-- PHASE 4 (embeddings) requires OPENAI_API_KEY
+- PHASE 4 (embeddings):
+  - Cloud models (text-embedding-3-large, voyage-*): Require API key
+  - Local models (bge-m3): No API key needed
 - PHASE 5A (KG) requires either key depending on `kg_llm_provider`
+
+### Embedding Model Selection
+
+**Windows Users:**
+- Recommend `text-embedding-3-large` (cloud) to avoid PyTorch DLL issues
+- If BGE-M3 needed, ensure PyTorch is installed first (see INSTALL.md)
+
+**Apple Silicon Users:**
+- Recommend `bge-m3` (local) for FREE GPU-accelerated embeddings
+- Gracefully detect MPS availability: `torch.backends.mps.is_available()`
+
+**Linux Users:**
+- With NVIDIA GPU: Recommend `bge-m3` (local)
+- CPU only: Recommend `text-embedding-3-large` (cloud)
 
 ### Research-Backed Decisions
 Do NOT change these without strong justification:
 - Chunk size: 500 chars (RCTS optimal)
 - Summary length: 150 chars (research-validated)
 - Summary style: "generic" not "expert" (counterintuitive but proven)
-- Embedding model: text-embedding-3-large (best for legal)
+- Embedding models: text-embedding-3-large, voyage-3-large, or bge-m3 (research-validated)
 - No Cohere reranking (hurts performance on legal docs)
 
 ### Performance Considerations
 - Docling extraction is CPU-intensive (use for structure, not speed)
+- Docling requires PyTorch for layout detection (unavoidable but CPU-only is fine)
 - FAISS indexes are in-memory (large datasets may need disk-based indexes)
 - Knowledge Graph extraction is parallelized (5 workers default)
 - Batch processing merges indexes (careful with large batches)
+- BGE-M3 local inference:
+  - Fast on Apple Silicon (MPS) or NVIDIA GPU
+  - Slow on CPU (recommend cloud embeddings instead)
 
 ### Common Pitfalls
+- **Windows DLL errors:** PyTorch not installed correctly → See INSTALL.md for fix
 - Missing API keys causes silent failures → Always validate env vars first
 - Knowledge Graph requires graph module imports → Check KG_AVAILABLE flag
 - FAISS dimensions must match embeddings → Use `embedder.dimensions`
 - SAC context is prepended during embedding, stripped during retrieval
+- **Platform assumptions:** Always test cross-platform or document platform-specific code
+
+### Troubleshooting Windows Issues
+
+**Error:** `OSError: [WinError 1114] DLL load failed`
+
+**Root Cause:** PyTorch DLL dependencies not correctly installed
+
+**Solutions (in order of preference):**
+1. **Use cloud embeddings:** Set `EMBEDDING_MODEL=text-embedding-3-large` in `.env`
+2. **Install Visual C++ Redistributables:** Download from Microsoft
+3. **Reinstall PyTorch:** Use platform-specific wheel from pytorch.org
+4. See `INSTALL.md` for complete troubleshooting steps
+
+**Error:** `ImportError: No module named 'sentence_transformers'`
+
+**Solution:**
+- For BGE-M3: `uv pip install sentence-transformers`
+- Or use cloud embeddings (no installation needed)
