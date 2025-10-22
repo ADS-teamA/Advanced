@@ -1,24 +1,33 @@
 """
-PHASE 4-5A: Complete Indexing Pipeline
+PHASE 1-6: Complete Indexing Pipeline
 
 Orchestrates:
 1. PHASE 1-3: Extraction, hierarchy, summaries, chunking
 2. PHASE 4: Embedding generation + FAISS indexing
 3. PHASE 5A: Knowledge Graph construction (optional)
+4. PHASE 5B: Hybrid Search with BM25 + RRF (optional)
+5. PHASE 5C: Cross-Encoder Reranking (optional)
+6. PHASE 5D: Graph-Vector Integration (optional)
+7. PHASE 6: Context Assembly for LLM (optional)
 
 Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 
 Based on research:
 - LegalBench-RAG: text-embedding-3-large + RCTS
 - Multi-Layer Embeddings: 3 separate indexes
-- Dense-only retrieval (no BM25)
-- Knowledge Graph: Entity & relationship extraction
+- Hybrid Search: BM25 + Dense + RRF fusion
+- Cross-Encoder Reranking: Two-stage retrieval
+- Graph Integration: Entity-aware boosting
+- Context Assembly: SAC stripping + citations
 
 Usage:
     pipeline = IndexingPipeline(
         embedding_model="text-embedding-3-large",
         enable_sac=True,
-        enable_knowledge_graph=True
+        enable_knowledge_graph=True,
+        enable_hybrid_search=True,
+        enable_reranking=True,
+        enable_context_assembly=True
     )
 
     result = pipeline.index_document("document.pdf")
@@ -91,6 +100,24 @@ class IndexingConfig:
     enable_hybrid_search: bool = False  # BM25 + dense with RRF fusion
     hybrid_fusion_k: int = 60  # RRF k parameter (research: k=60 optimal)
 
+    # PHASE 5C: Cross-Encoder Reranking (optional)
+    enable_reranking: bool = False  # Two-stage retrieval: hybrid → rerank
+    reranker_model: str = "ms-marco-mini"  # or "accurate", "sota"
+    reranker_candidates: int = 50  # Retrieve 50 via hybrid search
+    reranker_top_k: int = 6  # Rerank to top 6
+
+    # PHASE 5D: Graph-Vector Integration (optional)
+    enable_graph_retrieval: bool = False  # Graph-enhanced retrieval
+    graph_boost_weight: float = 0.3  # Boost weight for graph matches
+    enable_multi_hop: bool = False  # Multi-hop graph traversal
+
+    # PHASE 6: Context Assembly (optional)
+    enable_context_assembly: bool = False  # Assemble retrieved chunks for LLM
+    citation_format: str = "inline"  # Citation style: inline, simple, detailed, footnote
+    max_context_chunks: int = 6  # Max chunks to include in assembled context
+    max_context_tokens: int = 4000  # Max tokens in assembled context (~16K chars)
+    include_chunk_metadata: bool = True  # Include document/section/page metadata
+
     def __post_init__(self):
         if self.ocr_language is None:
             self.ocr_language = ["cs-CZ", "en-US"]
@@ -105,11 +132,19 @@ class IndexingPipeline:
     2. Generic summary generation (gpt-4o-mini)
     3. Multi-layer chunking + SAC (RCTS 500 chars)
     4. Embedding + FAISS indexing (3 separate indexes)
+    5A. Knowledge Graph construction (optional)
+    5B. Hybrid search with BM25 + RRF (optional)
+    5C. Cross-encoder reranking (optional)
+    5D. Graph-vector integration (optional)
+    6. Context assembly for LLM (optional)
 
     Based on:
     - LegalBench-RAG (Pipitone & Alami, 2024)
     - Summary-Augmented Chunking (Reuter et al., 2024)
     - Multi-Layer Embeddings (Lima, 2024)
+    - Contextual Retrieval (Anthropic, 2024)
+    - HybridRAG (2024): Graph + Vector integration
+    - Context Assembly: SAC stripping + citations
     """
 
     def __init__(self, config: Optional[IndexingConfig] = None):
@@ -165,7 +200,9 @@ class IndexingPipeline:
             f"model={self.config.embedding_model} "
             f"({self.embedder.dimensions}D), "
             f"KG={self.config.enable_knowledge_graph}, "
-            f"Hybrid={self.config.enable_hybrid_search}"
+            f"Hybrid={self.config.enable_hybrid_search}, "
+            f"Rerank={self.config.enable_reranking}, "
+            f"GraphRetrieval={self.config.enable_graph_retrieval}"
         )
 
     def _initialize_kg_pipeline(self):
