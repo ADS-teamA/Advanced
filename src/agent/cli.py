@@ -8,20 +8,21 @@ Interactive terminal interface for RAG Agent with:
 - Streaming display
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
-from .config import AgentConfig
-from .agent_core import AgentCore
-from .tools.registry import get_registry
+from src.context_assembly import CitationFormat, ContextAssembler
+from src.embedding_generator import EmbeddingConfig, EmbeddingGenerator
 
 # Import pipeline components
 from src.hybrid_search import HybridVectorStore
-from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 from src.reranker import CrossEncoderReranker
-from src.context_assembly import ContextAssembler, CitationFormat
+
+from .agent_core import AgentCore
+from .config import AgentConfig
+from .tools.registry import get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +116,7 @@ class AgentCLI:
         # Initialize embedder
         print("Initializing embedder...")
         embedder = EmbeddingGenerator(
-            EmbeddingConfig(
-                model="text-embedding-3-large", batch_size=100, normalize=True
-            )
+            EmbeddingConfig(model="text-embedding-3-large", batch_size=100, normalize=True)
         )
 
         # Initialize reranker (optional, lazy load)
@@ -125,9 +124,7 @@ class AgentCLI:
         if self.config.tool_config.enable_reranking:
             if not self.config.tool_config.lazy_load_reranker:
                 print("Loading reranker...")
-                reranker = CrossEncoderReranker(
-                    model_name=self.config.tool_config.reranker_model
-                )
+                reranker = CrossEncoderReranker(model_name=self.config.tool_config.reranker_model)
             else:
                 print("Reranker set to lazy load")
 
@@ -139,9 +136,7 @@ class AgentCLI:
             from src.graph.models import KnowledgeGraph
             from src.graph_retrieval import GraphEnhancedRetriever
 
-            knowledge_graph = KnowledgeGraph.load_json(
-                str(self.config.knowledge_graph_path)
-            )
+            knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
             print(
                 f"   Entities: {len(knowledge_graph.entities)}, "
                 f"Relationships: {len(knowledge_graph.relationships)}"
@@ -288,9 +283,7 @@ class AgentCLI:
 
         # Show top 5 most used tools
         if stats["tools"]:
-            sorted_tools = sorted(
-                stats["tools"], key=lambda x: x["execution_count"], reverse=True
-            )
+            sorted_tools = sorted(stats["tools"], key=lambda x: x["execution_count"], reverse=True)
             print("\n🔝 Most Used Tools:")
             for tool in sorted_tools[:5]:
                 if tool["execution_count"] > 0:

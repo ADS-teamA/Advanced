@@ -5,12 +5,14 @@ Fast tools (100-300ms) for common retrieval tasks.
 These should handle 80% of user queries.
 """
 
+import logging
 from typing import List, Optional
+
 from pydantic import Field
+
 from .base import BaseTool, ToolInput, ToolResult
 from .registry import register_tool
 from .utils import format_chunk_result, validate_k_parameter
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +72,7 @@ class SimpleSearchTool(BaseTool):
 
         # Generate citations
         citations = [
-            f"[{i+1}] {c['document_id']}: {c['section_title']}"
-            for i, c in enumerate(formatted)
+            f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
         return ToolResult(
@@ -94,7 +95,9 @@ class SimpleSearchTool(BaseTool):
 class EntitySearchInput(ToolInput):
     """Input for entity_search tool."""
 
-    entity_value: str = Field(..., description="Entity value to search for (e.g., 'GRI 306', 'GSSB')")
+    entity_value: str = Field(
+        ..., description="Entity value to search for (e.g., 'GRI 306', 'GSSB')"
+    )
     k: int = Field(6, description="Number of results", ge=1, le=20)
 
 
@@ -128,17 +131,14 @@ class EntitySearchTool(BaseTool):
 
         # Filter chunks that actually mention the entity (case-insensitive)
         entity_lower = entity_value.lower()
-        filtered = [
-            c
-            for c in results["layer3"]
-            if entity_lower in c.get("content", "").lower()
-        ][:k]
+        filtered = [c for c in results["layer3"] if entity_lower in c.get("content", "").lower()][
+            :k
+        ]
 
         formatted = [format_chunk_result(c) for c in filtered]
 
         citations = [
-            f"[{i+1}] {c['document_id']}: {c['section_title']}"
-            for i, c in enumerate(formatted)
+            f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
         return ToolResult(
@@ -207,9 +207,7 @@ class DocumentSearchTool(BaseTool):
 
         formatted = [format_chunk_result(c) for c in chunks[:k]]
 
-        citations = [
-            f"[{i+1}] {c['section_title']}" for i, c in enumerate(formatted)
-        ]
+        citations = [f"[{i+1}] {c['section_title']}" for i, c in enumerate(formatted)]
 
         return ToolResult(
             success=True,
@@ -264,9 +262,7 @@ class SectionSearchTool(BaseTool):
         # Filter by section title (case-insensitive partial match)
         section_lower = section_title.lower()
         chunks = [
-            c
-            for c in results["layer3"]
-            if section_lower in c.get("section_title", "").lower()
+            c for c in results["layer3"] if section_lower in c.get("section_title", "").lower()
         ][:k]
 
         if not chunks:
@@ -280,8 +276,7 @@ class SectionSearchTool(BaseTool):
         formatted = [format_chunk_result(c) for c in chunks]
 
         citations = [
-            f"[{i+1}] {c['document_id']}: {c['section_title']}"
-            for i, c in enumerate(formatted)
+            f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
         return ToolResult(
@@ -317,7 +312,9 @@ class KeywordSearchTool(BaseTool):
     """
 
     name = "keyword_search"
-    description = "Fast keyword search using BM25 (no semantic embeddings) - best for exact terms/phrases"
+    description = (
+        "Fast keyword search using BM25 (no semantic embeddings) - best for exact terms/phrases"
+    )
     tier = 1
     input_schema = KeywordSearchInput
 
@@ -348,8 +345,7 @@ class KeywordSearchTool(BaseTool):
         formatted = [format_chunk_result(c) for c in results]
 
         citations = [
-            f"[{i+1}] {c['document_id']}: {c['section_title']}"
-            for i, c in enumerate(formatted)
+            f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
         return ToolResult(

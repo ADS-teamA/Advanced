@@ -40,15 +40,15 @@ from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
 
-from config import ExtractionConfig
-from docling_extractor_v2 import DoclingExtractorV2
-from multi_layer_chunker import MultiLayerChunker
-from embedding_generator import EmbeddingGenerator, EmbeddingConfig
-from faiss_vector_store import FAISSVectorStore
+from src.config import ExtractionConfig
+from src.docling_extractor_v2 import DoclingExtractorV2
+from src.multi_layer_chunker import MultiLayerChunker
+from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
+from src.faiss_vector_store import FAISSVectorStore
 
 # Knowledge Graph imports (optional)
 try:
-    from graph import (
+    from src.graph import (
         KnowledgeGraphPipeline,
         KnowledgeGraphConfig,
         EntityExtractionConfig as KGEntityConfig,
@@ -56,6 +56,7 @@ try:
         GraphStorageConfig,
         GraphBackend,
     )
+
     KG_AVAILABLE = True
 except ImportError:
     KG_AVAILABLE = False

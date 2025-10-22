@@ -11,8 +11,8 @@ instead of the original query. This aligns the query better with document space.
 """
 
 import logging
-from typing import List, Optional
 from dataclasses import dataclass
+from typing import List, Optional
 
 import anthropic
 
@@ -97,7 +97,9 @@ Guidelines:
                 # Add variation prompt for multiple generations
                 variation_note = ""
                 if i > 0:
-                    variation_note = f" (Variation {i+1}: Provide a different perspective or aspect)"
+                    variation_note = (
+                        f" (Variation {i+1}: Provide a different perspective or aspect)"
+                    )
 
                 message = self.client.messages.create(
                     model=self.model,
@@ -134,13 +136,9 @@ Guidelines:
         except Exception as e:
             logger.error(f"HyDE generation failed: {e}", exc_info=True)
             # Fallback: return original query
-            return HyDEResult(
-                original_query=query, hypothetical_documents=[], combined_query=query
-            )
+            return HyDEResult(original_query=query, hypothetical_documents=[], combined_query=query)
 
-    def _combine_query_and_hypotheticals(
-        self, query: str, hypothetical_docs: List[str]
-    ) -> str:
+    def _combine_query_and_hypotheticals(self, query: str, hypothetical_docs: List[str]) -> str:
         """
         Combine original query with hypothetical documents.
 

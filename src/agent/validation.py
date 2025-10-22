@@ -5,9 +5,9 @@ Validates all components and their integration for proper operation.
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
 import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 class ValidationResult:
     """Result of a validation check."""
 
-    def __init__(self, name: str, passed: bool, message: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, name: str, passed: bool, message: str, details: Optional[Dict[str, Any]] = None
+    ):
         self.name = name
         self.passed = passed
         self.message = message
@@ -107,19 +109,23 @@ class AgentValidator:
         version_str = f"{version.major}.{version.minor}.{version.micro}"
 
         if version.major == 3 and version.minor >= 10:
-            self.results.append(ValidationResult(
-                name="Python Version",
-                passed=True,
-                message=f"Python {version_str} (compatible)",
-                details={"version": version_str}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Python Version",
+                    passed=True,
+                    message=f"Python {version_str} (compatible)",
+                    details={"version": version_str},
+                )
+            )
         else:
-            self.results.append(ValidationResult(
-                name="Python Version [CRITICAL]",
-                passed=False,
-                message=f"Python {version_str} - requires Python 3.10+",
-                details={"version": version_str, "required": "3.10+"}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Python Version [CRITICAL]",
+                    passed=False,
+                    message=f"Python {version_str} - requires Python 3.10+",
+                    details={"version": version_str, "required": "3.10+"},
+                )
+            )
 
     def _check_dependencies(self):
         """Check required dependencies are installed."""
@@ -141,37 +147,45 @@ class AgentValidator:
         for module_name, description in required_modules:
             try:
                 __import__(module_name)
-                self.results.append(ValidationResult(
-                    name=f"Dependency: {module_name}",
-                    passed=True,
-                    message=f"{description} - installed",
-                    details={"module": module_name}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name=f"Dependency: {module_name}",
+                        passed=True,
+                        message=f"{description} - installed",
+                        details={"module": module_name},
+                    )
+                )
             except ImportError:
-                self.results.append(ValidationResult(
-                    name=f"Dependency: {module_name} [CRITICAL]",
-                    passed=False,
-                    message=f"{description} - MISSING (pip install {module_name})",
-                    details={"module": module_name, "required": True}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name=f"Dependency: {module_name} [CRITICAL]",
+                        passed=False,
+                        message=f"{description} - MISSING (pip install {module_name})",
+                        details={"module": module_name, "required": True},
+                    )
+                )
 
         # Check optional
         for module_name, description in optional_modules:
             try:
                 __import__(module_name)
-                self.results.append(ValidationResult(
-                    name=f"Optional: {module_name}",
-                    passed=True,
-                    message=f"{description} - installed",
-                    details={"module": module_name, "optional": True}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name=f"Optional: {module_name}",
+                        passed=True,
+                        message=f"{description} - installed",
+                        details={"module": module_name, "optional": True},
+                    )
+                )
             except ImportError:
-                self.results.append(ValidationResult(
-                    name=f"Optional: {module_name}",
-                    passed=True,  # Not critical
-                    message=f"{description} - not installed (optional)",
-                    details={"module": module_name, "optional": True}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name=f"Optional: {module_name}",
+                        passed=True,  # Not critical
+                        message=f"{description} - not installed (optional)",
+                        details={"module": module_name, "optional": True},
+                    )
+                )
 
     def _check_api_keys(self):
         """Check API keys are present and valid format."""
@@ -181,52 +195,65 @@ class AgentValidator:
         if self.config.anthropic_api_key:
             # Basic format validation
             if self.config.anthropic_api_key.startswith("sk-ant-"):
-                self.results.append(ValidationResult(
-                    name="API Key: ANTHROPIC",
-                    passed=True,
-                    message="Anthropic API key present (format valid)",
-                    details={"key_prefix": self.config.anthropic_api_key[:10] + "..."}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="API Key: ANTHROPIC",
+                        passed=True,
+                        message="Anthropic API key present (format valid)",
+                        details={"key_prefix": "sk-ant-***"},  # Fixed prefix for security
+                    )
+                )
             else:
-                self.results.append(ValidationResult(
-                    name="API Key: ANTHROPIC",
-                    passed=False,
-                    message="Anthropic API key has invalid format (should start with sk-ant-)",
-                    details={"key_prefix": self.config.anthropic_api_key[:10] + "..."}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="API Key: ANTHROPIC",
+                        passed=False,
+                        message="Anthropic API key has invalid format (should start with sk-ant-)",
+                        details={"key_prefix": "***"},  # Don't expose any part of invalid key
+                    )
+                )
         else:
-            self.results.append(ValidationResult(
-                name="API Key: ANTHROPIC [CRITICAL]",
-                passed=False,
-                message="Anthropic API key missing (set ANTHROPIC_API_KEY)",
-                details={}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="API Key: ANTHROPIC [CRITICAL]",
+                    passed=False,
+                    message="Anthropic API key missing (set ANTHROPIC_API_KEY)",
+                    details={},
+                )
+            )
 
         # OpenAI API key (for embeddings)
         import os
+
         openai_key = os.getenv("OPENAI_API_KEY", "")
         if openai_key:
             if openai_key.startswith("sk-"):
-                self.results.append(ValidationResult(
-                    name="API Key: OPENAI",
-                    passed=True,
-                    message="OpenAI API key present (for embeddings)",
-                    details={"key_prefix": openai_key[:10] + "..."}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="API Key: OPENAI",
+                        passed=True,
+                        message="OpenAI API key present (for embeddings)",
+                        details={"key_prefix": "sk-***"},  # Fixed prefix for security
+                    )
+                )
             else:
-                self.results.append(ValidationResult(
-                    name="API Key: OPENAI",
-                    passed=False,
-                    message="OpenAI API key has invalid format",
-                    details={}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="API Key: OPENAI",
+                        passed=False,
+                        message="OpenAI API key has invalid format",
+                        details={"key_prefix": "***"},  # Don't expose any part of invalid key
+                    )
+                )
         else:
-            self.results.append(ValidationResult(
-                name="API Key: OPENAI",
-                passed=True,  # Not critical if using local embeddings
-                message="OpenAI API key not set (required for cloud embeddings)",
-                details={"required_for": "text-embedding-3-large, text-embedding-ada-002"}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="API Key: OPENAI",
+                    passed=True,  # Not critical if using local embeddings
+                    message="OpenAI API key not set (required for cloud embeddings)",
+                    details={"required_for": "text-embedding-3-large, text-embedding-ada-002"},
+                )
+            )
 
     def _check_vector_store(self):
         """Check vector store exists and is valid."""
@@ -236,21 +263,28 @@ class AgentValidator:
 
         # Check directory exists
         if not store_path.exists():
-            self.results.append(ValidationResult(
-                name="Vector Store Path [CRITICAL]",
-                passed=False,
-                message=f"Vector store not found: {store_path}",
-                details={"path": str(store_path), "suggestion": "Run: python run_pipeline.py data/documents/"}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Vector Store Path [CRITICAL]",
+                    passed=False,
+                    message=f"Vector store not found: {store_path}",
+                    details={
+                        "path": str(store_path),
+                        "suggestion": "Run: python run_pipeline.py data/documents/",
+                    },
+                )
+            )
             return
 
         if not store_path.is_dir():
-            self.results.append(ValidationResult(
-                name="Vector Store Path [CRITICAL]",
-                passed=False,
-                message=f"Vector store path is not a directory: {store_path}",
-                details={"path": str(store_path)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Vector Store Path [CRITICAL]",
+                    passed=False,
+                    message=f"Vector store path is not a directory: {store_path}",
+                    details={"path": str(store_path)},
+                )
+            )
             return
 
         # Check required files
@@ -267,12 +301,14 @@ class AgentValidator:
                 missing_files.append(filename)
 
         if missing_files:
-            self.results.append(ValidationResult(
-                name="Vector Store Files [CRITICAL]",
-                passed=False,
-                message=f"Missing vector store files: {missing_files}",
-                details={"missing": missing_files, "path": str(store_path)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Vector Store Files [CRITICAL]",
+                    passed=False,
+                    message=f"Missing vector store files: {missing_files}",
+                    details={"missing": missing_files, "path": str(store_path)},
+                )
+            )
             return
 
         # Try loading vector store
@@ -286,60 +322,75 @@ class AgentValidator:
             # Check minimum vectors
             total_vectors = stats.get("total_vectors", 0)
             if total_vectors < 10:
-                self.results.append(ValidationResult(
-                    name="Vector Store Content",
-                    passed=False,
-                    message=f"Vector store has very few vectors ({total_vectors}) - consider indexing more documents",
-                    details=stats
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="Vector Store Content",
+                        passed=False,
+                        message=f"Vector store has very few vectors ({total_vectors}) - consider indexing more documents",
+                        details=stats,
+                    )
+                )
             else:
-                self.results.append(ValidationResult(
-                    name="Vector Store",
-                    passed=True,
-                    message=f"Vector store loaded successfully ({total_vectors} vectors)",
-                    details=stats
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="Vector Store",
+                        passed=True,
+                        message=f"Vector store loaded successfully ({total_vectors} vectors)",
+                        details=stats,
+                    )
+                )
 
         except Exception as e:
-            self.results.append(ValidationResult(
-                name="Vector Store Loading [CRITICAL]",
-                passed=False,
-                message=f"Failed to load vector store: {str(e)}",
-                details={"path": str(store_path), "error": str(e)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Vector Store Loading [CRITICAL]",
+                    passed=False,
+                    message=f"Failed to load vector store: {str(e)}",
+                    details={"path": str(store_path), "error": str(e)},
+                )
+            )
 
     def _check_knowledge_graph(self):
         """Check knowledge graph if enabled."""
         if not self.config.enable_knowledge_graph:
             logger.debug("Knowledge graph disabled - skipping check")
-            self.results.append(ValidationResult(
-                name="Knowledge Graph",
-                passed=True,
-                message="Knowledge graph disabled (optional)",
-                details={"enabled": False}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Knowledge Graph",
+                    passed=True,
+                    message="Knowledge graph disabled (optional)",
+                    details={"enabled": False},
+                )
+            )
             return
 
         logger.debug("Checking knowledge graph...")
 
         if not self.config.knowledge_graph_path:
-            self.results.append(ValidationResult(
-                name="Knowledge Graph Path [CRITICAL]",
-                passed=False,
-                message="Knowledge graph enabled but path not specified",
-                details={"enabled": True, "path": None}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Knowledge Graph Path [CRITICAL]",
+                    passed=False,
+                    message="Knowledge graph enabled but path not specified",
+                    details={"enabled": True, "path": None},
+                )
+            )
             return
 
         kg_path = self.config.knowledge_graph_path
 
         if not kg_path.exists():
-            self.results.append(ValidationResult(
-                name="Knowledge Graph File [CRITICAL]",
-                passed=False,
-                message=f"Knowledge graph file not found: {kg_path}",
-                details={"path": str(kg_path), "suggestion": "Run: python run_pipeline.py --enable-kg"}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Knowledge Graph File [CRITICAL]",
+                    passed=False,
+                    message=f"Knowledge graph file not found: {kg_path}",
+                    details={
+                        "path": str(kg_path),
+                        "suggestion": "Run: python run_pipeline.py --enable-kg",
+                    },
+                )
+            )
             return
 
         # Try loading KG
@@ -353,53 +404,63 @@ class AgentValidator:
             rel_count = len(kg.relationships)
 
             if entity_count == 0:
-                self.results.append(ValidationResult(
-                    name="Knowledge Graph Content",
-                    passed=False,
-                    message="Knowledge graph is empty (no entities)",
-                    details={"entities": 0, "relationships": 0}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="Knowledge Graph Content",
+                        passed=False,
+                        message="Knowledge graph is empty (no entities)",
+                        details={"entities": 0, "relationships": 0},
+                    )
+                )
             else:
-                self.results.append(ValidationResult(
-                    name="Knowledge Graph",
-                    passed=True,
-                    message=f"Knowledge graph loaded ({entity_count} entities, {rel_count} relationships)",
-                    details={"entities": entity_count, "relationships": rel_count}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="Knowledge Graph",
+                        passed=True,
+                        message=f"Knowledge graph loaded ({entity_count} entities, {rel_count} relationships)",
+                        details={"entities": entity_count, "relationships": rel_count},
+                    )
+                )
 
         except Exception as e:
-            self.results.append(ValidationResult(
-                name="Knowledge Graph Loading [CRITICAL]",
-                passed=False,
-                message=f"Failed to load knowledge graph: {str(e)}",
-                details={"path": str(kg_path), "error": str(e)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Knowledge Graph Loading [CRITICAL]",
+                    passed=False,
+                    message=f"Failed to load knowledge graph: {str(e)}",
+                    details={"path": str(kg_path), "error": str(e)},
+                )
+            )
 
     def _check_embedding_compatibility(self):
         """Check embedding generator compatibility."""
         logger.debug("Checking embedding compatibility...")
 
         try:
-            from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
+            from src.embedding_generator import EmbeddingConfig, EmbeddingGenerator
 
             # Try creating embedder
             config = EmbeddingConfig(model="text-embedding-3-large")
             embedder = EmbeddingGenerator(config)
 
-            self.results.append(ValidationResult(
-                name="Embedding Generator",
-                passed=True,
-                message=f"Embedding generator initialized (model: {config.model})",
-                details={"model": config.model, "dimensions": embedder.dimensions}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Embedding Generator",
+                    passed=True,
+                    message=f"Embedding generator initialized (model: {config.model})",
+                    details={"model": config.model, "dimensions": embedder.dimensions},
+                )
+            )
 
         except Exception as e:
-            self.results.append(ValidationResult(
-                name="Embedding Generator",
-                passed=False,
-                message=f"Failed to initialize embedding generator: {str(e)}",
-                details={"error": str(e)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Embedding Generator",
+                    passed=False,
+                    message=f"Failed to initialize embedding generator: {str(e)}",
+                    details={"error": str(e)},
+                )
+            )
 
     def _check_model_access(self):
         """Check Claude model accessibility."""
@@ -415,20 +476,24 @@ class AgentValidator:
             # Try creating client (doesn't make API call)
             client = anthropic.Anthropic(api_key=self.config.anthropic_api_key)
 
-            self.results.append(ValidationResult(
-                name="Claude Client",
-                passed=True,
-                message=f"Claude client initialized (model: {self.config.model})",
-                details={"model": self.config.model}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Claude Client",
+                    passed=True,
+                    message=f"Claude client initialized (model: {self.config.model})",
+                    details={"model": self.config.model},
+                )
+            )
 
         except Exception as e:
-            self.results.append(ValidationResult(
-                name="Claude Client [CRITICAL]",
-                passed=False,
-                message=f"Failed to initialize Claude client: {str(e)}",
-                details={"error": str(e)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Claude Client [CRITICAL]",
+                    passed=False,
+                    message=f"Failed to initialize Claude client: {str(e)}",
+                    details={"error": str(e)},
+                )
+            )
 
     def _check_component_integration(self):
         """Check all components work together."""
@@ -442,27 +507,33 @@ class AgentValidator:
             tool_count = len(registry._tool_classes)
 
             if tool_count < 17:
-                self.results.append(ValidationResult(
-                    name="Tool Registry",
-                    passed=False,
-                    message=f"Expected 17 tools, found {tool_count}",
-                    details={"registered_tools": tool_count, "expected": 17}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="Tool Registry",
+                        passed=False,
+                        message=f"Expected 17 tools, found {tool_count}",
+                        details={"registered_tools": tool_count, "expected": 17},
+                    )
+                )
             else:
-                self.results.append(ValidationResult(
-                    name="Tool Registry",
-                    passed=True,
-                    message=f"All {tool_count} tools registered",
-                    details={"registered_tools": tool_count}
-                ))
+                self.results.append(
+                    ValidationResult(
+                        name="Tool Registry",
+                        passed=True,
+                        message=f"All {tool_count} tools registered",
+                        details={"registered_tools": tool_count},
+                    )
+                )
 
         except Exception as e:
-            self.results.append(ValidationResult(
-                name="Tool Registry [CRITICAL]",
-                passed=False,
-                message=f"Failed to initialize tool registry: {str(e)}",
-                details={"error": str(e)}
-            ))
+            self.results.append(
+                ValidationResult(
+                    name="Tool Registry [CRITICAL]",
+                    passed=False,
+                    message=f"Failed to initialize tool registry: {str(e)}",
+                    details={"error": str(e)},
+                )
+            )
 
     def print_summary(self):
         """Print validation summary to console."""

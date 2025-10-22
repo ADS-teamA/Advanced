@@ -87,7 +87,9 @@ class AgentConfig:
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
 
     # Model selection (user can override via CLI)
-    model: str = field(default_factory=lambda: os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929"))
+    model: str = field(
+        default_factory=lambda: os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929")
+    )
     max_tokens: int = 4096
     temperature: float = 0.3
 
@@ -111,7 +113,8 @@ class AgentConfig:
     cli_config: CLIConfig = field(default_factory=CLIConfig)
 
     # === System Prompt ===
-    system_prompt: str = field(default_factory=lambda: """You are a RAG-powered legal and technical document assistant with access to specialized retrieval tools.
+    system_prompt: str = field(
+        default_factory=lambda: """You are a RAG-powered legal and technical document assistant with access to specialized retrieval tools.
 
 **Available Tools (17 total, organized by tier):**
 
@@ -151,14 +154,13 @@ TIER 3 - Analysis & Insights (deep, 1-3s):
 - Try multiple retrieval strategies before giving up
 - If simple_search fails, try keyword_search or entity_search
 - If single-doc search fails, try cross_reference_search
-- Only report "no results" after exhausting relevant tools""".strip())
+- Only report "no results" after exhausting relevant tools""".strip()
+    )
 
     def validate(self) -> None:
         """Validate configuration."""
         if not self.anthropic_api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY not set. Set via environment variable or config."
-            )
+            raise ValueError("ANTHROPIC_API_KEY not set. Set via environment variable or config.")
 
         if not self.vector_store_path.exists():
             raise FileNotFoundError(

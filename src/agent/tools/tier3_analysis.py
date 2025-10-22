@@ -5,14 +5,16 @@ Deep analysis tools (1-3s) for specialized tasks.
 Use for entity analysis, timeline extraction, statistics.
 """
 
-from pydantic import Field
-from typing import Optional, List, Dict, Any
+import logging
+import re
 from collections import Counter
+from typing import Any, Dict, List, Optional
+
+from pydantic import Field
+
 from .base import BaseTool, ToolInput, ToolResult
 from .registry import register_tool
 from .utils import format_chunk_result
-import logging
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +98,11 @@ class ExplainEntityTool(BaseTool):
                 "outgoing_relationships": [
                     {
                         "type": rel.type,
-                        "target": self.knowledge_graph.entities[rel.target].name
-                        if rel.target in self.knowledge_graph.entities
-                        else rel.target,
+                        "target": (
+                            self.knowledge_graph.entities[rel.target].name
+                            if rel.target in self.knowledge_graph.entities
+                            else rel.target
+                        ),
                         "confidence": rel.confidence,
                     }
                     for rel in outgoing_rels
@@ -106,9 +110,11 @@ class ExplainEntityTool(BaseTool):
                 "incoming_relationships": [
                     {
                         "type": rel.type,
-                        "source": self.knowledge_graph.entities[rel.source].name
-                        if rel.source in self.knowledge_graph.entities
-                        else rel.source,
+                        "source": (
+                            self.knowledge_graph.entities[rel.source].name
+                            if rel.source in self.knowledge_graph.entities
+                            else rel.source
+                        ),
                         "confidence": rel.confidence,
                     }
                     for rel in incoming_rels
@@ -124,7 +130,10 @@ class ExplainEntityTool(BaseTool):
                 success=True,
                 data=entity_data,
                 citations=[chunk.get("doc_id", "Unknown") for chunk in chunks[:5]],
-                metadata={"entity_id": entity.id, "relationship_count": len(outgoing_rels) + len(incoming_rels)},
+                metadata={
+                    "entity_id": entity.id,
+                    "relationship_count": len(outgoing_rels) + len(incoming_rels),
+                },
             )
 
         except Exception as e:
@@ -195,9 +204,11 @@ class GetEntityRelationshipsTool(BaseTool):
                         {
                             "direction": "outgoing",
                             "type": r.type,
-                            "target": self.knowledge_graph.entities[r.target].name
-                            if r.target in self.knowledge_graph.entities
-                            else r.target,
+                            "target": (
+                                self.knowledge_graph.entities[r.target].name
+                                if r.target in self.knowledge_graph.entities
+                                else r.target
+                            ),
                             "target_id": r.target,
                             "confidence": r.confidence,
                             "properties": r.properties,
@@ -215,9 +226,11 @@ class GetEntityRelationshipsTool(BaseTool):
                         {
                             "direction": "incoming",
                             "type": r.type,
-                            "source": self.knowledge_graph.entities[r.source].name
-                            if r.source in self.knowledge_graph.entities
-                            else r.source,
+                            "source": (
+                                self.knowledge_graph.entities[r.source].name
+                                if r.source in self.knowledge_graph.entities
+                                else r.source
+                            ),
                             "source_id": r.source,
                             "confidence": r.confidence,
                             "properties": r.properties,
@@ -357,10 +370,7 @@ class SummarizeSectionTool(BaseTool):
             section_summary = None
 
             for section in layer2_results:
-                if (
-                    section.get("doc_id") == doc_id
-                    and section.get("section_id") == section_id
-                ):
+                if section.get("doc_id") == doc_id and section.get("section_id") == section_id:
                     section_summary = section
                     break
 
@@ -392,16 +402,18 @@ class SummarizeSectionTool(BaseTool):
 
             # Use context assembler to format nicely
             if self.context_assembler and section_chunks:
-                assembled = self.context_assembler.assemble(
-                    chunks=section_chunks, max_chunks=10
-                )
+                assembled = self.context_assembler.assemble(chunks=section_chunks, max_chunks=10)
                 summary_data["formatted_content"] = assembled.context
 
             return ToolResult(
                 success=True,
                 data=summary_data,
                 citations=[doc_id],
-                metadata={"doc_id": doc_id, "section_id": section_id, "chunk_count": len(section_chunks)},
+                metadata={
+                    "doc_id": doc_id,
+                    "section_id": section_id,
+                    "chunk_count": len(section_chunks),
+                },
             )
 
         except Exception as e:

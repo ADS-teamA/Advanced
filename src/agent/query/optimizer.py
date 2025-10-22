@@ -5,11 +5,11 @@ Decides when and how to apply query optimization techniques based on configurati
 """
 
 import logging
-from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
+from .decomposition import DecomposedQuery, QueryDecomposer
 from .hyde import HyDEGenerator, HyDEResult
-from .decomposition import QueryDecomposer, DecomposedQuery
 
 logger = logging.getLogger(__name__)
 
@@ -140,9 +140,7 @@ class QueryOptimizer:
                         for sub_q in decomposed.sub_queries:
                             hyde_result = self.hyde_generator.generate(sub_q)
                             # Use combined query (original + hypothetical docs)
-                            optimized_queries.append(
-                                hyde_result.combined_query or sub_q
-                            )
+                            optimized_queries.append(hyde_result.combined_query or sub_q)
 
                         metadata["hyde_applied"] = True
 
@@ -174,9 +172,7 @@ class QueryOptimizer:
 
         # STRATEGY 3: No optimization
         logger.info(f"No optimization applied to query: '{query[:50]}...'")
-        return OptimizedQuery(
-            original_query=query, optimized_queries=[query], metadata=metadata
-        )
+        return OptimizedQuery(original_query=query, optimized_queries=[query], metadata=metadata)
 
     def get_search_queries(self, query: str) -> List[str]:
         """

@@ -5,13 +5,15 @@ Quality tools (500-1000ms) for complex retrieval tasks.
 Use when Tier 1 tools are insufficient.
 """
 
-from pydantic import Field
-from typing import Optional, List
+import logging
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import Field
+
 from .base import BaseTool, ToolInput, ToolResult
 from .registry import register_tool
 from .utils import format_chunk_result
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -168,12 +170,8 @@ class CompareDocumentsTool(BaseTool):
                     "doc_id_1": doc_id_1,
                     "doc_id_2": doc_id_2,
                     "comparison_aspect": comparison_aspect,
-                    "doc1_relevant_chunks": [
-                        format_chunk_result(c) for c in doc1_relevant
-                    ],
-                    "doc2_relevant_chunks": [
-                        format_chunk_result(c) for c in doc2_relevant
-                    ],
+                    "doc1_relevant_chunks": [format_chunk_result(c) for c in doc1_relevant],
+                    "doc2_relevant_chunks": [format_chunk_result(c) for c in doc2_relevant],
                 }
 
             else:
@@ -259,9 +257,7 @@ class FindRelatedChunksTool(BaseTool):
             related_chunks = results.get("layer3", [])
 
             # Filter out the source chunk itself
-            related_chunks = [
-                c for c in related_chunks if c.get("chunk_id") != chunk_id
-            ]
+            related_chunks = [c for c in related_chunks if c.get("chunk_id") != chunk_id]
 
             # Rerank if available
             if self.reranker and len(related_chunks) > k:
@@ -455,16 +451,12 @@ class HybridSearchWithFiltersTool(BaseTool):
             # Apply filters
             if document_type:
                 chunks = [
-                    c
-                    for c in chunks
-                    if c.get("doc_type", "").lower() == document_type.lower()
+                    c for c in chunks if c.get("doc_type", "").lower() == document_type.lower()
                 ]
 
             if section_type:
                 chunks = [
-                    c
-                    for c in chunks
-                    if c.get("section_type", "").lower() == section_type.lower()
+                    c for c in chunks if c.get("section_type", "").lower() == section_type.lower()
                 ]
 
             if not chunks:

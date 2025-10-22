@@ -14,8 +14,8 @@ Usage:
     python run_agent.py --store output/hybrid_store
 """
 
-from .config import AgentConfig
 from .agent_core import AgentCore
+from .config import AgentConfig
 
 __version__ = "1.0.0"
 __all__ = ["AgentConfig", "AgentCore"]

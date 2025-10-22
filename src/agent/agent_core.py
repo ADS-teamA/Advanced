@@ -8,16 +8,21 @@ Main agent loop with:
 - Streaming responses
 """
 
-import anthropic
-from typing import List, Dict, Any, Generator, Optional
-import logging
 import json
+import logging
+from typing import Any, Dict, Generator, List, Optional
+
+import anthropic
 
 from .config import AgentConfig
-from .tools.registry import get_registry
 from .tools.base import ToolResult
+from .tools.registry import get_registry
 
 logger = logging.getLogger(__name__)
+
+# Configuration constants
+MAX_HISTORY_MESSAGES = 50  # Keep last 50 messages to prevent unbounded memory growth
+MAX_QUERY_LENGTH = 10000  # Maximum characters in a single query
 
 
 class AgentCore:
@@ -83,10 +88,21 @@ class AgentCore:
         return {
             "message_count": len(self.conversation_history),
             "tool_calls": len(self.tool_call_history),
-            "tools_used": list(
-                set(t["tool_name"] for t in self.tool_call_history)
-            ),
+            "tools_used": list(set(t["tool_name"] for t in self.tool_call_history)),
         }
+
+    def _trim_history(self):
+        """
+        Trim conversation history to prevent unbounded memory growth.
+
+        Keeps the last MAX_HISTORY_MESSAGES messages.
+        """
+        if len(self.conversation_history) > MAX_HISTORY_MESSAGES:
+            old_len = len(self.conversation_history)
+            self.conversation_history = self.conversation_history[-MAX_HISTORY_MESSAGES:]
+            logger.info(
+                f"Trimmed conversation history: {old_len} → {len(self.conversation_history)} messages"
+            )
 
     def process_message(
         self, user_message: str, stream: bool = None
@@ -95,11 +111,13 @@ class AgentCore:
         Process user message with full agent loop.
 
         Flow:
-        1. Add user message to history
-        2. Call Claude with tools
-        3. Execute tools if requested
-        4. Get final answer
-        5. Stream or return response
+        1. Validate query length
+        2. Add user message to history
+        3. Trim history if needed
+        4. Call Claude with tools
+        5. Execute tools if requested
+        6. Get final answer
+        7. Stream or return response
 
         Args:
             user_message: User's question/request
@@ -107,9 +125,22 @@ class AgentCore:
 
         Returns:
             Generator of text chunks (if streaming) or full text
+
+        Raises:
+            ValueError: If query is too long
         """
+        # Validate query length (prevent DoS via huge queries)
+        if len(user_message) > MAX_QUERY_LENGTH:
+            raise ValueError(
+                f"Query too long ({len(user_message)} chars). "
+                f"Maximum length is {MAX_QUERY_LENGTH} characters."
+            )
+
         # Add user message to history
         self.conversation_history.append({"role": "user", "content": user_message})
+
+        # Trim history to prevent unbounded growth
+        self._trim_history()
 
         # Determine streaming
         if stream is None:
@@ -151,9 +182,7 @@ class AgentCore:
                 for event in stream:
                     if event.type == "content_block_start":
                         if event.content_block.type == "text":
-                            assistant_message["content"].append(
-                                {"type": "text", "text": ""}
-                            )
+                            assistant_message["content"].append({"type": "text", "text": ""})
 
                     elif event.type == "content_block_delta":
                         if event.delta.type == "text_delta":
@@ -167,7 +196,10 @@ class AgentCore:
                                     break
 
                     elif event.type == "content_block_stop":
-                        if hasattr(event, "content_block") and event.content_block.type == "tool_use":
+                        if (
+                            hasattr(event, "content_block")
+                            and event.content_block.type == "tool_use"
+                        ):
                             tool_uses.append(event.content_block)
                             assistant_message["content"].append(
                                 {
@@ -235,9 +267,7 @@ class AgentCore:
                         )
 
                     # Add tool results to conversation
-                    self.conversation_history.append(
-                        {"role": "user", "content": tool_results}
-                    )
+                    self.conversation_history.append({"role": "user", "content": tool_results})
 
                     # Continue loop to get final answer
                     yield "\n"  # Newline after tool execution
@@ -265,9 +295,7 @@ class AgentCore:
             )
 
             # Add assistant message to history
-            self.conversation_history.append(
-                {"role": "assistant", "content": response.content}
-            )
+            self.conversation_history.append({"role": "assistant", "content": response.content})
 
             # Extract text
             for block in response.content:
@@ -313,9 +341,7 @@ class AgentCore:
                         )
 
                 # Add tool results to conversation
-                self.conversation_history.append(
-                    {"role": "user", "content": tool_results}
-                )
+                self.conversation_history.append({"role": "user", "content": tool_results})
 
             else:
                 logger.warning(f"Unexpected stop reason: {response.stop_reason}")
@@ -334,9 +360,7 @@ class AgentCore:
             Formatted string for Claude
         """
         if not result.success:
-            return json.dumps(
-                {"error": result.error, "metadata": result.metadata}, indent=2
-            )
+            return json.dumps({"error": result.error, "metadata": result.metadata}, indent=2)
 
         # Format successful result
         formatted = {"data": result.data, "metadata": result.metadata}

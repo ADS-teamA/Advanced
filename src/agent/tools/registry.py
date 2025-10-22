@@ -5,9 +5,10 @@ Manages registration and discovery of all RAG tools.
 Provides Claude SDK tool definitions.
 """
 
-from typing import Dict, List, Type, Optional, Any
-from .base import BaseTool, ToolResult
 import logging
+from typing import Any, Dict, List, Optional, Type
+
+from .base import BaseTool, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class ToolRegistry:
         """Initialize empty registry."""
         self._tools: Dict[str, BaseTool] = {}
         self._tool_classes: Dict[str, Type[BaseTool]] = {}
+        self._unavailable_tools: Dict[str, str] = {}  # tool_name -> reason
 
     def register_tool_class(self, tool_class: Type[BaseTool]) -> Type[BaseTool]:
         """
@@ -69,9 +71,11 @@ class ToolRegistry:
         for tool_name, tool_class in self._tool_classes.items():
             # Check requirements
             if tool_class.requires_kg and not knowledge_graph:
+                reason = "Requires knowledge graph (use --kg option)"
                 logger.warning(
                     f"Tool '{tool_name}' requires knowledge graph but none provided. Skipping."
                 )
+                self._unavailable_tools[tool_name] = reason
                 continue
 
             if tool_class.requires_reranker and not reranker:
@@ -94,7 +98,17 @@ class ToolRegistry:
             self._tools[tool_name] = tool_instance
             logger.info(f"Initialized tool: {tool_name} (Tier {tool_class.tier})")
 
-        logger.info(f"Tool registry initialized: {len(self._tools)} tools available")
+        # Log summary
+        available_count = len(self._tools)
+        unavailable_count = len(self._unavailable_tools)
+        total_count = len(self._tool_classes)
+
+        logger.info(f"Tool registry initialized: {available_count}/{total_count} tools available")
+
+        if unavailable_count > 0:
+            logger.warning(
+                f"{unavailable_count} tools unavailable: {list(self._unavailable_tools.keys())}"
+            )
 
     def get_tool(self, name: str) -> Optional[BaseTool]:
         """
@@ -146,6 +160,15 @@ class ToolRegistry:
         """
         return [tool for tool in self._tools.values() if tool.tier == tier]
 
+    def get_unavailable_tools(self) -> Dict[str, str]:
+        """
+        Get list of unavailable tools and reasons.
+
+        Returns:
+            Dict mapping tool names to unavailability reasons
+        """
+        return self._unavailable_tools.copy()
+
     def get_claude_sdk_tools(self) -> List[Dict[str, Any]]:
         """
         Get Claude SDK tool definitions for all tools.
@@ -177,6 +200,8 @@ class ToolRegistry:
 
         return {
             "total_tools": len(self._tools),
+            "total_registered": len(self._tool_classes),
+            "unavailable_tools": len(self._unavailable_tools),
             "total_calls": total_calls,
             "total_errors": total_errors,
             "total_time_ms": round(total_time, 2),
@@ -188,6 +213,7 @@ class ToolRegistry:
             ),
             "tier_distribution": tier_stats,
             "tools": tool_stats,
+            "unavailable": self._unavailable_tools,
         }
 
     def __len__(self) -> int:

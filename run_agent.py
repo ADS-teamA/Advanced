@@ -28,12 +28,12 @@ Environment variables:
 
 import argparse
 import logging
-import sys
 import os
+import sys
 from pathlib import Path
 
-from src.agent.config import AgentConfig
 from src.agent.cli import main as cli_main
+from src.agent.config import AgentConfig
 
 
 def setup_logging(debug: bool = False, verbose: bool = False):
@@ -198,8 +198,6 @@ def parse_args():
     # Validate required arguments
     if not args.store:
         # Try to use default from environment
-        import os
-
         default_store = os.getenv("VECTOR_STORE_PATH", "output/hybrid_store")
         args.store = Path(default_store)
         print(f"Using default vector store: {args.store}")

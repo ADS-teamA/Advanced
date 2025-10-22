@@ -8,12 +8,13 @@ Provides lightweight abstraction for all RAG tools with:
 - Result formatting
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field
-from dataclasses import dataclass, field
-import time
 import logging
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +157,7 @@ class BaseTool(ABC):
             result.metadata["tier"] = self.tier
 
             logger.info(
-                f"Tool '{self.name}' executed in {elapsed_ms:.0f}ms "
-                f"(success={result.success})"
+                f"Tool '{self.name}' executed in {elapsed_ms:.0f}ms " f"(success={result.success})"
             )
 
             return result
@@ -182,9 +182,7 @@ class BaseTool(ABC):
 
     def get_stats(self) -> Dict[str, Any]:
         """Get tool execution statistics."""
-        avg_time = (
-            self.total_time_ms / self.execution_count if self.execution_count > 0 else 0
-        )
+        avg_time = self.total_time_ms / self.execution_count if self.execution_count > 0 else 0
         success_rate = (
             (self.execution_count - self.error_count) / self.execution_count
             if self.execution_count > 0

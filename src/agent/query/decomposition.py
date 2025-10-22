@@ -11,8 +11,8 @@ that can be answered independently, then combine results.
 """
 
 import logging
-from typing import List
 from dataclasses import dataclass
+from typing import List
 
 import anthropic
 
@@ -121,36 +121,24 @@ Now decompose the following query:"""
             if response.startswith("SIMPLE"):
                 # Query is simple, no decomposition needed
                 logger.info(f"Query marked as SIMPLE: '{query}'")
-                return DecomposedQuery(
-                    original_query=query, sub_queries=[query], is_complex=False
-                )
+                return DecomposedQuery(original_query=query, sub_queries=[query], is_complex=False)
 
             # Parse numbered sub-queries
             sub_queries = self._parse_sub_queries(response)
 
             if not sub_queries:
                 # Fallback: treat as simple
-                logger.warning(
-                    f"Failed to parse sub-queries from response: '{response}'"
-                )
-                return DecomposedQuery(
-                    original_query=query, sub_queries=[query], is_complex=False
-                )
+                logger.warning(f"Failed to parse sub-queries from response: '{response}'")
+                return DecomposedQuery(original_query=query, sub_queries=[query], is_complex=False)
 
-            logger.info(
-                f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}"
-            )
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
 
-            return DecomposedQuery(
-                original_query=query, sub_queries=sub_queries, is_complex=True
-            )
+            return DecomposedQuery(original_query=query, sub_queries=sub_queries, is_complex=True)
 
         except Exception as e:
             logger.error(f"Query decomposition failed: {e}", exc_info=True)
             # Fallback: return original query
-            return DecomposedQuery(
-                original_query=query, sub_queries=[query], is_complex=False
-            )
+            return DecomposedQuery(original_query=query, sub_queries=[query], is_complex=False)
 
     def _parse_sub_queries(self, response: str) -> List[str]:
         """
@@ -219,9 +207,7 @@ Now decompose the following query:"""
         query_lower = query.lower()
 
         # Count indicators
-        indicator_count = sum(
-            1 for indicator in complexity_indicators if indicator in query_lower
-        )
+        indicator_count = sum(1 for indicator in complexity_indicators if indicator in query_lower)
 
         # Heuristic: 2+ indicators suggests complexity
         is_complex = indicator_count >= 2
