@@ -1,6 +1,20 @@
 # Jak spustit RAG Pipeline
 
-## 🚀 Rychlý Start
+**⚠️ DŮLEŽITÉ: Tento návod je pro macOS. Pro Windows/Linux viz [INSTALL.md](INSTALL.md)**
+
+---
+
+## 📋 Cross-Platform Podpora
+
+Aplikace nyní podporuje **Windows, macOS a Linux**:
+
+- **Windows:** Vyžaduje specifickou instalaci PyTorch → Viz [INSTALL.md](INSTALL.md)
+- **macOS (tento návod):** Funguje standardně s Apple Silicon i Intel
+- **Linux:** CPU i CUDA varianty → Viz [INSTALL.md](INSTALL.md)
+
+---
+
+## 🚀 macOS Quick Start
 
 ### 1. Nastav API klíč v `.env`
 
@@ -10,20 +24,28 @@ nano .env
 ```
 
 ```bash
-# Minimální konfigurace (Claude + BGE-M3-v2 LOCAL):
+# Minimální konfigurace (Claude + BGE-M3 LOCAL):
 ANTHROPIC_API_KEY=sk-ant-...    # Pro LLM (summaries)
+EMBEDDING_MODEL=bge-m3          # Lokální embeddings
 
-# BGE-M3-v2 běží LOKÁLNĚ na tvém M1 Macu - žádný API klíč nepotřebuje! 🚀
+# BGE-M3 běží LOKÁLNĚ na tvém M1/M2/M3 Macu - žádný API klíč nepotřebuje! 🚀
 ```
 
 **Získání API klíče:**
 - Claude: https://console.anthropic.com/
 
-**Proč BGE-M3-v2?**
-- ✅ Běží lokálně na M1 (MPS acceleration)
+**Proč BGE-M3 na macOS?**
+- ✅ Běží lokálně na M1/M2/M3 (MPS acceleration)
 - ✅ Žádné API klíče, žádné náklady
 - ✅ Multilingual (100+ jazyků včetně češtiny)
 - ✅ SOTA performance (close to commercial APIs)
+
+**Alternativně (Cloud embeddings):**
+```bash
+# Pokud preferuješ cloud embeddings
+OPENAI_API_KEY=sk-...
+EMBEDDING_MODEL=text-embedding-3-large  # Vyžaduje OpenAI API key
+```
 
 ### 2. Spusť pipeline
 
