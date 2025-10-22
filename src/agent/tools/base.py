@@ -45,6 +45,18 @@ class ToolResult:
     citations: List[str] = field(default_factory=list)
     execution_time_ms: float = 0.0
 
+    def __post_init__(self):
+        """Validate ToolResult invariants."""
+        # Validate execution time
+        if self.execution_time_ms < 0:
+            raise ValueError(f"Execution time cannot be negative: {self.execution_time_ms}")
+
+        # Validate success/error relationship
+        if self.success and self.error is not None:
+            raise ValueError("Successful results cannot have errors")
+        if not self.success and not self.error:
+            raise ValueError("Failed results must have an error message")
+
 
 class BaseTool(ABC):
     """

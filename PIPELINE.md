@@ -1,7 +1,7 @@
 # RAG PIPELINE - Současná Implementace & SOTA 2025
 
-**Datum:** 2025-10-22
-**Status:** PHASE 1-6 ✅ Implementováno | PHASE 7 ⏳ SOTA Upgrade
+**Datum:** 2025-01-15 (updated)
+**Status:** PHASE 1-6 ✅ Implementováno | PHASE 7 ✅ RAG Agent CLI | SOTA 2025 Complete
 **Založeno na:** LegalBench-RAG, Anthropic Contextual Retrieval, Microsoft GraphRAG, HybridRAG, Industry Best Practices 2025
 
 **⚠️ DŮLEŽITÉ: Před použitím nastavte API klíče v `.env` souboru:**
@@ -29,7 +29,7 @@ cp .env.example .env
 | **PHASE 5C** | Cross-Encoder Reranking | ✅ | **ms-marco reranker, +25% accuracy** |
 | **PHASE 5D** | Graph-Vector Integration | ✅ | **Triple-modal fusion, +60% multi-hop** |
 | **PHASE 6** | Context Assembly | ✅ | **SAC stripping, citations, provenance tracking** |
-| **PHASE 7** | Answer Generation | ⏳ | Pending |
+| **PHASE 7** | RAG Agent CLI | ✅ | **Claude SDK, 17 tools, streaming, validation** |
 
 ### 🎯 PHASE 5A Status: ✅ FULLY INTEGRATED
 
@@ -1232,15 +1232,144 @@ Current (PHASE 1-5A) ✅
 
 ---
 
-**Last Updated:** 2025-10-22
-**Current Status:** PHASE 1-6 Complete ✅ (Full SOTA 2025 Retrieval + Context Assembly)
-**Next Steps:**
+## 🎯 PHASE 7: RAG Agent CLI - ✅ FULLY IMPLEMENTED
+
+Interactive RAG agent with Claude SDK integration, comprehensive tool ecosystem, and production-ready validation.
+
+### Key Features
+
+**Architecture:**
+- ✅ Claude Sonnet 4.5 integration via official Anthropic SDK
+- ✅ Streaming responses with real-time tool execution
+- ✅ 17 specialized retrieval tools organized in 3 tiers
+- ✅ Comprehensive validation system with platform detection
+- ✅ Robust error handling and graceful degradation
+
+**Tool Ecosystem (3 Tiers):**
+
+**TIER 1 - Basic Retrieval (fast, 100-300ms):**
+- simple_search, entity_search, document_search
+- section_search, keyword_search, get_document_list
+
+**TIER 2 - Advanced Retrieval (quality, 500-1000ms):**
+- multi_hop_search, compare_documents, find_related_chunks
+- temporal_search, hybrid_search_with_filters, cross_reference_search
+
+**TIER 3 - Analysis & Insights (deep, 1-3s):**
+- explain_entity, get_entity_relationships, timeline_view
+- summarize_section, get_statistics
+
+**Query Optimization:**
+- HyDE (Hypothetical Document Embeddings)
+- Query Decomposition for complex multi-part queries
+- Context assembly with configurable citation formats
+
+**Production Features:**
+- Platform-aware embedding model selection (Apple Silicon, Linux GPU, Windows)
+- Comprehensive validation (API keys, vector store, dependencies)
+- Tool failure notifications to users
+- Specific exception handling (validation, programming, system errors)
+- Streaming error recovery (timeout, rate limit, API errors)
+- Type validation with `__post_init__` checks
+
+### Usage
+
+**Basic Usage:**
+```bash
+python run_agent.py
+```
+
+**With Configuration:**
+```python
+from src.agent.cli import AgentCLI
+from src.agent.config import AgentConfig
+
+config = AgentConfig.from_env(
+    enable_hyde=True,  # Enable HyDE
+    enable_query_decomposition=True,  # Enable decomposition
+)
+
+cli = AgentCLI(config)
+cli.run_repl()
+```
+
+**Example Interaction:**
+```
+> What are the waste disposal requirements in GRI 306?
+
+[Using simple_search...]
+Assistant: According to GRI 306 [Doc: GRI 306, Section: 3.2],
+the waste disposal requirements include:
+
+1. Waste must be categorized by type and composition
+2. Disposal methods must be documented
+3. Third-party disposal facilities must be certified
+
+[Citations automatically included]
+```
+
+**Commands:**
+- `/help` - Show available commands
+- `/stats` - Show tool usage statistics
+- `/config` - Show current configuration
+- `/clear` - Clear conversation history
+- `/exit` - Exit the agent
+
+### Implementation Details
+
+**Files:**
+- `src/agent/agent_core.py` - Core agent with streaming & tool execution
+- `src/agent/cli.py` - Interactive CLI with REPL loop
+- `src/agent/config.py` - Configuration with validation
+- `src/agent/validation.py` - Comprehensive validation system
+- `src/agent/tools/` - 17 specialized tools (tier1, tier2, tier3)
+- `src/agent/query/` - HyDE & query decomposition
+- `run_agent.py` - Entry point
+
+**Tests:**
+- `tests/agent/test_agent_core.py` - Core agent tests (15 tests)
+- `tests/agent/test_tool_registry.py` - Tool registry tests (18 tests)
+- `tests/agent/test_validation.py` - Validation tests (16 tests)
+- **Total: 49 agent tests, 100% passing**
+
+### Recent Improvements (PR #3)
+
+**Critical Fixes:**
+1. Platform-specific embedding model detection (Apple Silicon/Linux/Windows)
+2. Tool failure notifications to users (no more silent failures)
+3. Specific exception handling (validation/programming/system errors)
+4. Validation blocking logic (distinguish critical vs. warnings)
+5. CLI initialization error handling with helpful messages
+
+**Type Safety:**
+6. Added `__post_init__` validation to all dataclasses
+7. Validated numeric ranges (temperature, max_tokens)
+8. Validated string enums (citation_format, combine_results)
+9. Enforced invariants (ToolResult success/error relationship)
+
+**Error Handling:**
+10. Streaming API error recovery (timeout, rate limit)
+11. HyDE/decomposition authentication vs. transient errors
+12. Comprehensive error messages with fix instructions
+
+**Documentation:**
+13. Updated comments for history trimming implications
+14. Fixed HyDE temperature description
+15. Dynamic tool count (no more hardcoded values)
+
+**See:** `README_AGENT.md` for complete documentation
+
+---
+
+**Last Updated:** 2025-01-15
+**Current Status:** PHASE 1-7 Complete ✅ (Full SOTA 2025 RAG System with Interactive Agent)
+**Completed:**
 1. ✅ PHASE 5A: Knowledge Graph - **DONE!**
 2. ✅ PHASE 5B: Hybrid Search (BM25 + RRF) - **DONE!**
 3. ✅ PHASE 5C: Cross-Encoder Reranking - **DONE!**
 4. ✅ PHASE 5D: Graph-Vector Integration - **DONE!**
 5. ✅ PHASE 6: Context Assembly (strip SAC, add citations) - **DONE!**
-6. ⏳ PHASE 7: Answer Generation (GPT-4 with mandatory citations)
+6. ✅ PHASE 7: RAG Agent CLI (Claude SDK, 17 tools, streaming) - **DONE!**
 
 **Achieved Impact:**
 - ✅ PHASE 1-6: Complete SOTA 2025 Retrieval + Context Assembly Pipeline

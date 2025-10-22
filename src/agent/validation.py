@@ -18,6 +18,12 @@ class ValidationResult:
     def __init__(
         self, name: str, passed: bool, message: str, details: Optional[Dict[str, Any]] = None
     ):
+        # Validate inputs
+        if not name or not name.strip():
+            raise ValueError("Validation name cannot be empty")
+        if not message or not message.strip():
+            raise ValueError("Validation message cannot be empty")
+
         self.name = name
         self.passed = passed
         self.message = message

@@ -82,6 +82,21 @@ class ToolConfig:
     lazy_load_graph: bool = True
     cache_embeddings: bool = True
 
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.default_k <= 0:
+            raise ValueError(f"default_k must be positive, got {self.default_k}")
+        if self.reranker_candidates < self.default_k:
+            raise ValueError(
+                f"reranker_candidates ({self.reranker_candidates}) must be >= default_k ({self.default_k})"
+            )
+        if not 0.0 <= self.graph_boost_weight <= 1.0:
+            raise ValueError(f"graph_boost_weight must be in [0, 1], got {self.graph_boost_weight}")
+        if not 0.0 <= self.compliance_threshold <= 1.0:
+            raise ValueError(f"compliance_threshold must be in [0, 1], got {self.compliance_threshold}")
+        if self.max_document_compare <= 0:
+            raise ValueError(f"max_document_compare must be positive, got {self.max_document_compare}")
+
 
 @dataclass
 class HyDEConfig:
@@ -93,6 +108,15 @@ class HyDEConfig:
     max_tokens: int = 300
     temperature: float = 0.5
 
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.num_hypothetical_docs <= 0:
+            raise ValueError(f"num_hypothetical_docs must be positive, got {self.num_hypothetical_docs}")
+        if self.max_tokens <= 0:
+            raise ValueError(f"max_tokens must be positive, got {self.max_tokens}")
+        if not 0.0 <= self.temperature <= 1.0:
+            raise ValueError(f"temperature must be in [0.0, 1.0], got {self.temperature}")
+
 
 @dataclass
 class QueryDecompositionConfig:
@@ -102,6 +126,16 @@ class QueryDecompositionConfig:
     max_sub_queries: int = 3
     combine_results: str = "rrf"  # "rrf", "concat", "ranked"
     llm_model: str = "claude-haiku-4-5"
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.max_sub_queries < 2:
+            raise ValueError(f"max_sub_queries must be >= 2, got {self.max_sub_queries}")
+        valid_strategies = ["rrf", "concat", "ranked"]
+        if self.combine_results not in valid_strategies:
+            raise ValueError(
+                f"combine_results must be one of {valid_strategies}, got '{self.combine_results}'"
+            )
 
 
 @dataclass
@@ -121,6 +155,16 @@ class CLIConfig:
     save_history: bool = True
     history_file: Path = field(default_factory=lambda: Path(".agent_history"))
     max_history_items: int = 1000
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        valid_formats = ["inline", "footnote", "detailed", "simple"]
+        if self.citation_format not in valid_formats:
+            raise ValueError(
+                f"citation_format must be one of {valid_formats}, got '{self.citation_format}'"
+            )
+        if self.max_history_items <= 0:
+            raise ValueError(f"max_history_items must be positive, got {self.max_history_items}")
 
 
 @dataclass
@@ -210,21 +254,52 @@ TIER 3 - Analysis & Insights (deep, 1-3s):
     )
 
     def validate(self) -> None:
-        """Validate configuration."""
+        """
+        Validate configuration.
+
+        Checks:
+        - API key presence and format
+        - Numeric ranges (max_tokens, temperature)
+        - Path existence
+        - Model name validity
+        - Sub-config validation (automatically via __post_init__)
+        """
+        # API key validation
         if not self.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY not set. Set via environment variable or config.")
 
+        if not self.anthropic_api_key.startswith("sk-"):
+            raise ValueError("Anthropic API key has invalid format (should start with sk-)")
+
+        # Numeric range validation
+        if self.max_tokens <= 0:
+            raise ValueError(f"max_tokens must be positive, got {self.max_tokens}")
+
+        if self.max_tokens > 200000:  # Claude's context window limit
+            raise ValueError(f"max_tokens exceeds maximum (200000), got {self.max_tokens}")
+
+        if not 0.0 <= self.temperature <= 1.0:
+            raise ValueError(f"temperature must be in [0.0, 1.0], got {self.temperature}")
+
+        # Model name validation
+        if "claude" not in self.model.lower():
+            raise ValueError(f"Model name should contain 'claude': {self.model}")
+
+        # Path validation
         if not self.vector_store_path.exists():
             raise FileNotFoundError(
                 f"Vector store not found: {self.vector_store_path}. "
                 f"Run indexing pipeline first."
             )
 
+        # Knowledge graph validation
         if self.enable_knowledge_graph and not self.knowledge_graph_path:
             raise ValueError(
                 "Knowledge graph enabled but path not specified. "
                 "Set knowledge_graph_path in config."
             )
+
+        # Sub-configs are automatically validated via their __post_init__ methods
 
     @classmethod
     def from_env(cls, **overrides) -> "AgentConfig":

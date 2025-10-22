@@ -27,6 +27,23 @@ class HyDEResult:
     hypothetical_documents: List[str]
     combined_query: Optional[str] = None
 
+    def __post_init__(self):
+        """Validate HyDEResult invariants."""
+        if not self.original_query or not self.original_query.strip():
+            raise ValueError("Original query cannot be empty")
+
+        # Validate hypothetical documents are non-empty strings
+        for i, doc in enumerate(self.hypothetical_documents):
+            if not doc or not doc.strip():
+                raise ValueError(f"Hypothetical document {i} is empty")
+
+        # If combined_query is None, default to original_query
+        if self.combined_query is None:
+            object.__setattr__(self, 'combined_query', self.original_query)
+
+        if not self.combined_query or not self.combined_query.strip():
+            raise ValueError("Combined query cannot be empty")
+
 
 class HyDEGenerator:
     """

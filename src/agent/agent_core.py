@@ -182,62 +182,62 @@ class AgentCore:
 
             while True:
                 with self.client.messages.stream(
-                model=self.config.model,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-                system=self.config.system_prompt,
-                messages=self.conversation_history,
-                tools=tools,
-            ) as stream:
-                # Collect assistant message
-                assistant_message = {"role": "assistant", "content": []}
-                tool_uses = []
+                    model=self.config.model,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    system=self.config.system_prompt,
+                    messages=self.conversation_history,
+                    tools=tools,
+                ) as stream:
+                    # Collect assistant message
+                    assistant_message = {"role": "assistant", "content": []}
+                    tool_uses = []
 
-                # Stream text and collect tool uses
-                for event in stream:
-                    if event.type == "content_block_start":
-                        if event.content_block.type == "text":
-                            assistant_message["content"].append({"type": "text", "text": ""})
+                    # Stream text and collect tool uses
+                    for event in stream:
+                        if event.type == "content_block_start":
+                            if event.content_block.type == "text":
+                                assistant_message["content"].append({"type": "text", "text": ""})
 
-                    elif event.type == "content_block_delta":
-                        if event.delta.type == "text_delta":
-                            # Stream text to user
-                            yield event.delta.text
+                        elif event.type == "content_block_delta":
+                            if event.delta.type == "text_delta":
+                                # Stream text to user
+                                yield event.delta.text
 
-                            # Add to message content
-                            for block in assistant_message["content"]:
-                                if block["type"] == "text":
-                                    block["text"] += event.delta.text
-                                    break
+                                # Add to message content
+                                for block in assistant_message["content"]:
+                                    if block["type"] == "text":
+                                        block["text"] += event.delta.text
+                                        break
 
-                    elif event.type == "content_block_stop":
-                        if (
-                            hasattr(event, "content_block")
-                            and event.content_block.type == "tool_use"
-                        ):
-                            tool_uses.append(event.content_block)
-                            assistant_message["content"].append(
-                                {
-                                    "type": "tool_use",
-                                    "id": event.content_block.id,
-                                    "name": event.content_block.name,
-                                    "input": event.content_block.input,
-                                }
-                            )
+                        elif event.type == "content_block_stop":
+                            if (
+                                hasattr(event, "content_block")
+                                and event.content_block.type == "tool_use"
+                            ):
+                                tool_uses.append(event.content_block)
+                                assistant_message["content"].append(
+                                    {
+                                        "type": "tool_use",
+                                        "id": event.content_block.id,
+                                        "name": event.content_block.name,
+                                        "input": event.content_block.input,
+                                    }
+                                )
 
-                # Get final message
-                final_message = stream.get_final_message()
+                    # Get final message
+                    final_message = stream.get_final_message()
 
-                # Extract tool uses from final message
-                for block in final_message.content:
-                    if block.type == "tool_use":
-                        tool_uses.append(block)
+                    # Extract tool uses from final message
+                    for block in final_message.content:
+                        if block.type == "tool_use":
+                            tool_uses.append(block)
 
-                # Add assistant message to history
-                if assistant_message["content"]:
-                    self.conversation_history.append(assistant_message)
+                    # Add assistant message to history
+                    if assistant_message["content"]:
+                        self.conversation_history.append(assistant_message)
 
-                # Check stop reason
+                # Check stop reason (outside of with block but inside while)
                 if final_message.stop_reason == "end_turn":
                     # Done - no tool calls
                     break

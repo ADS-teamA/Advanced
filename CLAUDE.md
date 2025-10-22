@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MY_SUJBOT is a research-based RAG (Retrieval-Augmented Generation) pipeline optimized for legal and technical documents. The system implements state-of-the-art techniques from multiple research papers to achieve superior retrieval quality through hierarchical structure extraction, contextual chunking, multi-layer embeddings, knowledge graph construction, and context assembly.
+MY_SUJBOT is a research-based RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. The system implements state-of-the-art techniques from multiple research papers to achieve superior retrieval quality through hierarchical structure extraction, contextual chunking, multi-layer embeddings, knowledge graph construction, context assembly, and an interactive agent interface.
 
-**Current Status:** PHASE 1-6 Complete (Full SOTA 2025 Retrieval + Context Assembly)
-**Next Steps:** PHASE 7 (Answer Generation with LLM)
+**Current Status:** PHASE 1-7 Complete (Full SOTA 2025 RAG System with Interactive Agent)
+**Latest:** RAG Agent CLI with Claude SDK integration, 17 specialized tools, streaming responses, and production-ready validation
 
 ## Core Architecture
 
@@ -23,6 +23,7 @@ The pipeline follows a multi-phase architecture where each phase builds on the p
 7. **PHASE 5C:** Cross-Encoder Reranking (two-stage retrieval, +25% accuracy)
 8. **PHASE 5D:** Graph-Vector Integration (triple-modal fusion, +60% multi-hop)
 9. **PHASE 6:** Context Assembly (SAC stripping, citations, provenance tracking)
+10. **PHASE 7:** RAG Agent CLI (Claude SDK integration, 17 tools, streaming interface)
 
 ### Key Design Principles
 - **Contextual Retrieval:** Chunks are augmented with LLM-generated context before embedding (-49% retrieval errors)
@@ -47,13 +48,27 @@ src/
 ├── graph_retrieval.py          # PHASE 5D: Graph-vector integration
 ├── context_assembly.py         # PHASE 6: Context assembly for LLM
 ├── indexing_pipeline.py        # Main orchestrator for PHASE 1-6
-└── graph/                      # PHASE 5A: Knowledge Graph
-    ├── models.py               # Entity, Relationship, KnowledgeGraph
-    ├── config.py               # KG configuration
-    ├── entity_extractor.py     # LLM-based entity extraction
-    ├── relationship_extractor.py # LLM-based relationship extraction
-    ├── graph_builder.py        # Graph storage backends
-    └── kg_pipeline.py          # KG orchestrator
+├── graph/                      # PHASE 5A: Knowledge Graph
+│   ├── models.py               # Entity, Relationship, KnowledgeGraph
+│   ├── config.py               # KG configuration
+│   ├── entity_extractor.py     # LLM-based entity extraction
+│   ├── relationship_extractor.py # LLM-based relationship extraction
+│   ├── graph_builder.py        # Graph storage backends
+│   └── kg_pipeline.py          # KG orchestrator
+└── agent/                      # PHASE 7: RAG Agent CLI
+    ├── agent_core.py           # Core agent loop with Claude SDK
+    ├── cli.py                  # Interactive CLI interface
+    ├── config.py               # Agent configuration
+    ├── validation.py           # Comprehensive validation system
+    ├── query/                  # Query enhancement
+    │   ├── decomposition.py    # Query decomposition
+    │   └── hyde.py             # HyDE (Hypothetical Document Embeddings)
+    └── tools/                  # Tool ecosystem (17 tools)
+        ├── base.py             # BaseTool abstraction
+        ├── registry.py         # Tool registry
+        ├── tier1/              # Basic retrieval (6 tools)
+        ├── tier2/              # Advanced retrieval (6 tools)
+        └── tier3/              # Analysis tools (5 tools)
 
 tests/
 ├── test_pipeline.py              # Integration tests
@@ -62,7 +77,11 @@ tests/
 ├── test_phase5c_reranking.py     # PHASE 5C tests
 ├── test_phase5d_graph_retrieval.py # PHASE 5D tests
 ├── test_phase6_context_assembly.py # PHASE 6 tests
-└── graph/                        # PHASE 5A tests
+├── graph/                        # PHASE 5A tests
+└── agent/                        # PHASE 7 tests
+    ├── test_agent_core.py        # Agent core tests
+    ├── test_validation.py        # Validation tests
+    └── tools/                    # Tool tests
 ```
 
 ## Environment Setup
@@ -124,7 +143,7 @@ API keys are **required** for the pipeline to function:
 
 ## Common Commands
 
-### Running the Pipeline
+### Running the Indexing Pipeline
 
 ```bash
 # Single document (all formats supported: PDF, DOCX, PPTX, XLSX, HTML)
@@ -147,6 +166,22 @@ pipeline = IndexingPipeline(config)
 result = pipeline.index_document(Path('data/doc.pdf'))
 result['vector_store'].save('output/vector_store')
 "
+```
+
+### Running the RAG Agent CLI
+
+```bash
+# Launch interactive agent (default settings)
+python -m src.agent.cli
+
+# With debug mode
+python -m src.agent.cli --debug
+
+# With custom vector store path
+python -m src.agent.cli --vector-store output/custom_vector_store
+
+# Disable streaming for simpler output
+python -m src.agent.cli --no-streaming
 ```
 
 ### Testing
@@ -398,6 +433,194 @@ See `src/context_assembly.py` for full implementation details.
 
 ---
 
+## RAG Agent CLI (PHASE 7)
+
+PHASE 7 provides an interactive command-line interface for querying indexed documents using Claude as the orchestration layer. The agent uses Claude SDK to intelligently select and execute tools from a comprehensive ecosystem of 17 specialized retrieval and analysis tools.
+
+### Key Features
+
+- **Claude SDK Integration**: Official Anthropic SDK for reliable LLM orchestration
+- **17 Specialized Tools**: Three-tier tool ecosystem for retrieval, analysis, and knowledge graph queries
+- **Streaming Responses**: Real-time output with tool execution visibility
+- **Query Enhancement**: Automatic query decomposition and HyDE (Hypothetical Document Embeddings)
+- **Comprehensive Validation**: Production-ready startup validation with actionable error messages
+- **Platform Detection**: Automatic embedding model selection based on platform (Apple Silicon, Linux GPU, Windows)
+- **Conversation History**: Context-aware multi-turn conversations with automatic trimming
+
+### Tool Ecosystem (17 Tools)
+
+**Tier 1: Basic Retrieval (6 tools)**
+- `basic_search`: Simple keyword search
+- `semantic_search`: Dense vector similarity
+- `hierarchical_search`: Multi-layer retrieval (doc → section → chunk)
+- `hybrid_search`: BM25 + Dense + RRF fusion
+- `reranked_search`: Two-stage retrieval with cross-encoder
+- `metadata_search`: Filter by document metadata
+
+**Tier 2: Advanced Retrieval (6 tools)**
+- `graph_search`: Graph-enhanced retrieval (entities + relationships)
+- `multi_hop_search`: Follow entity relationships across documents
+- `citation_search`: Find documents citing specific sources
+- `temporal_search`: Time-based filtering
+- `topic_search`: Topic-based retrieval
+- `regulation_search`: Regulation-specific queries
+
+**Tier 3: Analysis (5 tools)**
+- `document_summary`: Generate document summaries
+- `compare_documents`: Compare multiple documents
+- `extract_entities`: Extract named entities
+- `analyze_compliance`: Compliance analysis
+- `find_conflicts`: Identify conflicting clauses
+
+### Usage
+
+```bash
+# Launch interactive CLI
+python -m src.agent.cli
+
+# Direct usage with custom config
+python -c "
+from src.agent.cli import AgentCLI
+from src.agent.config import AgentConfig
+
+config = AgentConfig(
+    model='claude-sonnet-4-5',
+    temperature=0.3,
+    enable_streaming=True
+)
+cli = AgentCLI(config)
+cli.run()
+"
+```
+
+### Example Session
+
+```
+Starting Agent CLI...
+✅ API Key: ANTHROPIC
+✅ API Key: OPENAI
+✅ Embedder initialized
+✅ Vector Store loaded
+✅ Tool Registry initialized (17 tools)
+✅ Agent Core initialized
+
+Agent ready! Type your question or 'exit' to quit.
+
+> What are the waste disposal requirements in GRI 306?
+
+[Using hierarchical_search...]
+[Using extract_entities...]
+
+According to GRI 306, waste disposal requirements include:
+
+1. Total weight of hazardous waste [Chunk 3]
+2. Total weight of non-hazardous waste [Chunk 3]
+3. Disposal method for each waste category [Chunk 5]
+4. Reporting of waste diverted from disposal [Chunk 7]
+
+The standard requires organizations to track and report all waste generated
+by operations, categorized by composition, disposal method, and whether it's
+hazardous or non-hazardous.
+
+Citations:
+[Chunk 3] GRI 306, Section 3.2, Page 15
+[Chunk 5] GRI 306, Section 3.4, Page 17
+[Chunk 7] GRI 306, Section 4.1, Page 19
+
+> Follow-up: How does this compare to GRI 305?
+
+[Using compare_documents...]
+
+...
+```
+
+### Implementation Details
+
+- **Agent Core** (`src/agent/agent_core.py`): Main orchestration loop with Claude SDK
+  - Streaming and non-streaming modes
+  - Tool execution with error handling
+  - Conversation history management (max 50 messages)
+  - Tool failure notifications to users
+
+- **CLI Interface** (`src/agent/cli.py`): Interactive command-line interface
+  - Component initialization with comprehensive error handling
+  - Platform-specific embedding model detection
+  - Graceful degradation for optional components (reranker, knowledge graph)
+  - Session statistics and debugging
+
+- **Validation System** (`src/agent/validation.py`): Production-ready validation
+  - API key validation (format + connectivity)
+  - Component health checks (vector store, embedder, tools)
+  - Blocking vs. warning failures
+  - Special handling for platform-specific configs (e.g., local embeddings don't need OpenAI key)
+
+- **Query Enhancement** (`src/agent/query/`):
+  - **HyDE** (`hyde.py`): Generate hypothetical documents to improve retrieval
+  - **Decomposition** (`decomposition.py`): Break complex queries into sub-queries
+
+- **Tool System** (`src/agent/tools/`):
+  - **BaseTool** (`base.py`): Lightweight abstraction with validation, error handling, statistics
+  - **Registry** (`registry.py`): Central tool management and Claude SDK integration
+  - **Tier 1-3 Tools**: Specialized implementations inheriting from BaseTool
+
+### Configuration
+
+Agent behavior is controlled via `AgentConfig` in `src/agent/config.py`:
+
+```python
+@dataclass
+class AgentConfig:
+    # LLM settings
+    model: str = "claude-sonnet-4-5"
+    temperature: float = 0.3
+    max_tokens: int = 4096
+
+    # System prompt
+    system_prompt: str = "You are a helpful RAG assistant..."
+
+    # API keys
+    anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
+    openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
+
+    # Paths
+    vector_store_path: Path = Path("output/vector_store")
+    knowledge_graph_path: Optional[Path] = None
+
+    # CLI settings
+    cli_config: CLIConfig = field(default_factory=CLIConfig)
+
+    # Tool settings
+    tool_config: ToolConfig = field(default_factory=ToolConfig)
+```
+
+### Recent Improvements (PR #3)
+
+1. **Platform-Specific Embedding Detection**: Automatic model selection (Apple Silicon → bge-m3, Windows → text-embedding-3-large)
+2. **Tool Failure Notifications**: Users are notified when tools fail in streaming mode
+3. **Specific Exception Handling**: Separated validation, programming, and system errors
+4. **Validation Blocking Logic**: Distinguish critical vs. warning failures
+5. **CLI Initialization Errors**: Helpful error messages with fix instructions
+6. **Streaming Error Handling**: Graceful degradation for API timeouts, rate limits
+7. **Type Validation**: Comprehensive `__post_init__` validation across all dataclasses
+8. **Dynamic Tool Counting**: Minimum tool count validation instead of exact match
+
+### Testing
+
+```bash
+# Run agent tests
+pytest tests/agent/ -v
+
+# Test with coverage
+pytest tests/agent/ --cov=src/agent --cov-report=html
+
+# Test specific components
+pytest tests/agent/test_agent_core.py -v
+pytest tests/agent/test_validation.py -v
+pytest tests/agent/tools/ -v
+```
+
+---
+
 ## Supported Document Formats
 
 The pipeline supports multiple document formats through Docling:
@@ -448,9 +671,9 @@ output/<document_name>/
 - **Docstrings:** Required for public classes and functions
 - **Logging:** Use `logging` module, not print statements
 
-## Future Development (PHASE 7)
+## Development Roadmap
 
-The roadmap for SOTA 2025 upgrade is documented in `PIPELINE.md`:
+The system has successfully completed all planned phases of the SOTA 2025 RAG upgrade:
 
 ### ✅ PHASE 5B: Hybrid Search - COMPLETE
 - BM25 sparse retrieval with contextual indexing
@@ -473,12 +696,20 @@ The roadmap for SOTA 2025 upgrade is documented in `PIPELINE.md`:
 - Add provenance tracking with multiple citation formats
 - Module: `src/context_assembly.py`
 
-### ⏳ PHASE 7: Answer Generation - PENDING
-- GPT-4 or Mixtral 8x7B for answer generation
-- Mandatory citations from retrieved chunks
-- Temperature: 0.1-0.3 for consistency
-- System prompt engineering for legal domain
-- Citation validation and enforcement
+### ✅ PHASE 7: RAG Agent CLI - COMPLETE
+- Interactive CLI with Claude SDK integration
+- 17 specialized tools (3 tiers: basic, advanced, analysis)
+- Streaming responses with tool execution visibility
+- Query enhancement (HyDE, decomposition)
+- Production-ready validation and error handling
+- Platform-specific optimizations
+
+### Future Enhancements (Optional)
+- **Web Interface**: Flask/FastAPI web UI for non-technical users
+- **Batch Query Processing**: Process multiple queries in parallel
+- **Answer Caching**: Cache frequently asked questions
+- **Custom Tool Development**: Plugin system for domain-specific tools
+- **Multi-Document Reasoning**: Cross-document inference and synthesis
 
 ## Important Notes for Claude Code
 

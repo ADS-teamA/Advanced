@@ -27,6 +27,25 @@ class DecomposedQuery:
     sub_queries: List[str]
     is_complex: bool  # Whether decomposition was necessary
 
+    def __post_init__(self):
+        """Validate DecomposedQuery invariants."""
+        if not self.original_query or not self.original_query.strip():
+            raise ValueError("Original query cannot be empty")
+
+        if not self.sub_queries:
+            raise ValueError("Must have at least one sub-query")
+
+        # Validate sub-queries are non-empty
+        for i, sq in enumerate(self.sub_queries):
+            if not sq or not sq.strip():
+                raise ValueError(f"Sub-query {i} is empty")
+
+        # Validate is_complex matches sub_queries count
+        if self.is_complex and len(self.sub_queries) < 2:
+            raise ValueError(f"Complex queries must have 2+ sub-queries, got {len(self.sub_queries)}")
+        if not self.is_complex and len(self.sub_queries) != 1:
+            raise ValueError(f"Simple queries must have exactly 1 sub-query, got {len(self.sub_queries)}")
+
 
 class QueryDecomposer:
     """
