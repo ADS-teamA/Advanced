@@ -41,6 +41,15 @@ class EmbeddingConfig:
     cache_enabled: bool = True  # Enable LRU cache for embeddings
     cache_max_size: int = 1000  # Max cache entries (40-80% hit rate expected)
 
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+        if self.dimensions is not None and self.dimensions <= 0:
+            raise ValueError(f"dimensions must be positive if specified, got {self.dimensions}")
+        if self.cache_max_size <= 0:
+            raise ValueError(f"cache_max_size must be positive, got {self.cache_max_size}")
+
 
 class EmbeddingGenerator:
     """
@@ -199,20 +208,39 @@ class EmbeddingGenerator:
 
         # Check cache if enabled
         if self._cache_enabled:
-            cache_key = self._generate_cache_key(texts)
-            if cache_key in self._embedding_cache:
-                self._cache_hits += 1
-                # Move to end (LRU)
-                self._embedding_cache.move_to_end(cache_key)
-                cached_embedding = self._embedding_cache[cache_key]
-                logger.debug(
-                    f"Cache HIT: {len(texts)} texts "
-                    f"(hit_rate: {self._get_cache_hit_rate():.1%})"
-                )
-                return cached_embedding
-            else:
+            try:
+                cache_key = self._generate_cache_key(texts)
+                if cache_key in self._embedding_cache:
+                    self._cache_hits += 1
+                    # Move to end (LRU)
+                    self._embedding_cache.move_to_end(cache_key)
+                    cached_embedding = self._embedding_cache[cache_key]
+
+                    # Validate cached data
+                    if not isinstance(cached_embedding, np.ndarray):
+                        logger.error(f"Invalid cache entry type: {type(cached_embedding)}")
+                        self._embedding_cache.pop(cache_key)
+                        self._cache_misses += 1
+                    elif cached_embedding.shape[1] != self.dimensions:
+                        logger.error(
+                            f"Cache dimension mismatch: expected {self.dimensions}, "
+                            f"got {cached_embedding.shape[1]}"
+                        )
+                        self._embedding_cache.pop(cache_key)
+                        self._cache_misses += 1
+                    else:
+                        logger.debug(
+                            f"Cache HIT: {len(texts)} texts "
+                            f"(hit_rate: {self._get_cache_hit_rate():.1%})"
+                        )
+                        return cached_embedding
+                else:
+                    self._cache_misses += 1
+                    logger.debug(f"Cache MISS: {len(texts)} texts")
+            except Exception as e:
+                logger.error(f"Cache lookup failed, falling back to embedding: {e}", exc_info=True)
                 self._cache_misses += 1
-                logger.debug(f"Cache MISS: {len(texts)} texts")
+                # Continue to embedding below
 
         logger.info(f"Embedding {len(texts)} texts...")
 
@@ -231,7 +259,14 @@ class EmbeddingGenerator:
 
         # Store in cache if enabled
         if self._cache_enabled:
-            self._add_to_cache(cache_key, embeddings)
+            try:
+                self._add_to_cache(cache_key, embeddings)
+            except MemoryError as e:
+                logger.warning(f"Cache storage failed due to memory: {e}. Cache disabled for this session.")
+                self._cache_enabled = False  # Disable cache on memory error
+            except Exception as e:
+                logger.error(f"Failed to store embeddings in cache: {e}", exc_info=True)
+                # Continue execution - cache failure shouldn't break embedding
 
         logger.info(f"Embeddings generated: shape {embeddings.shape}")
         return embeddings

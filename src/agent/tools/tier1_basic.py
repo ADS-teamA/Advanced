@@ -142,14 +142,14 @@ class EntitySearchTool(BaseTool):
         ]
 
         return ToolResult(
-            success=True if filtered else False,
+            success=True,  # Search succeeded, just no results if filtered is empty
             data=formatted,
-            error=None if filtered else f"No chunks found mentioning '{entity_value}'",
             citations=citations,
             metadata={
                 "entity": entity_value,
                 "k": k,
                 "matches_found": len(filtered),
+                "no_results": len(filtered) == 0,
             },
         )
 
@@ -198,11 +198,11 @@ class DocumentSearchTool(BaseTool):
         chunks = [c for c in results["layer3"] if c.get("document_id") == document_id]
 
         if not chunks:
+            logger.info(f"No results found in document '{document_id}' for query '{query}'")
             return ToolResult(
-                success=False,
+                success=True,  # Search succeeded, just no results
                 data=[],
-                error=f"No results found in document '{document_id}' for query '{query}'",
-                metadata={"query": query, "document_id": document_id},
+                metadata={"query": query, "document_id": document_id, "no_results": True},
             )
 
         formatted = [format_chunk_result(c) for c in chunks[:k]]
@@ -266,11 +266,11 @@ class SectionSearchTool(BaseTool):
         ][:k]
 
         if not chunks:
+            logger.info(f"No results found in sections matching '{section_title}'")
             return ToolResult(
-                success=False,
+                success=True,  # Search succeeded, just no results
                 data=[],
-                error=f"No results found in sections matching '{section_title}'",
-                metadata={"query": query, "section_title": section_title},
+                metadata={"query": query, "section_title": section_title, "no_results": True},
             )
 
         formatted = [format_chunk_result(c) for c in chunks]
@@ -454,11 +454,11 @@ class GetDocumentSummaryTool(BaseTool):
                 break
 
         if not doc_summary:
+            logger.info(f"Document '{document_id}' not found or has no summary")
             return ToolResult(
-                success=False,
+                success=True,  # Lookup succeeded, document just not found
                 data=None,
-                error=f"Document '{document_id}' not found or has no summary",
-                metadata={"document_id": document_id},
+                metadata={"document_id": document_id, "found": False},
             )
 
         return ToolResult(
@@ -515,11 +515,11 @@ class GetDocumentSectionsTool(BaseTool):
                 sections.append(section_info)
 
         if not sections:
+            logger.info(f"Document '{document_id}' not found or has no sections")
             return ToolResult(
-                success=False,
+                success=True,  # Lookup succeeded, document just not found
                 data=None,
-                error=f"Document '{document_id}' not found or has no sections",
-                metadata={"document_id": document_id},
+                metadata={"document_id": document_id, "found": False},
             )
 
         # Sort sections by section_id (preserves document order)
@@ -582,11 +582,11 @@ class GetSectionDetailsTool(BaseTool):
                 break
 
         if not section_data:
+            logger.info(f"Section '{section_id}' not found in document '{document_id}'")
             return ToolResult(
-                success=False,
+                success=True,  # Lookup succeeded, section just not found
                 data=None,
-                error=f"Section '{section_id}' not found in document '{document_id}'",
-                metadata={"document_id": document_id, "section_id": section_id},
+                metadata={"document_id": document_id, "section_id": section_id, "found": False},
             )
 
         # Get chunk count for this section (Layer 3)
@@ -692,11 +692,11 @@ class GetDocumentMetadataTool(BaseTool):
 
         # Check if document exists
         if not metadata.get("summary") and metadata["section_count"] == 0:
+            logger.info(f"Document '{document_id}' not found")
             return ToolResult(
-                success=False,
+                success=True,  # Lookup succeeded, document just not found
                 data=None,
-                error=f"Document '{document_id}' not found",
-                metadata={"document_id": document_id},
+                metadata={"document_id": document_id, "found": False},
             )
 
         return ToolResult(

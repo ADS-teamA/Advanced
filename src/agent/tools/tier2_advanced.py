@@ -705,6 +705,11 @@ class ExpandSearchContextTool(BaseTool):
 
     def _expand_by_similarity(self, target_chunk: Dict, k: int) -> List[Dict]:
         """Expand by finding semantically similar chunks."""
+        # Validate embedder is available
+        if not self.embedder:
+            logger.error("Embedder not initialized - cannot perform similarity expansion")
+            return []
+
         # Use chunk content to find similar chunks
         content = target_chunk.get("content", "")
         if not content:
@@ -789,6 +794,15 @@ class ChunkSimilaritySearchTool(BaseTool):
                     success=False,
                     data=None,
                     error=f"Chunk '{chunk_id}' has no content",
+                    metadata={"chunk_id": chunk_id},
+                )
+
+            # Validate embedder is available
+            if not self.embedder:
+                return ToolResult(
+                    success=False,
+                    data=None,
+                    error="Embedder not initialized - cannot perform similarity search",
                     metadata={"chunk_id": chunk_id},
                 )
 
