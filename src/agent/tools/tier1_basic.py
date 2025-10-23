@@ -410,3 +410,421 @@ class GetDocumentListTool(BaseTool):
             data={"documents": document_list, "count": len(document_list)},
             metadata={"total_documents": len(document_list)},
         )
+
+
+# === Tool 7: Get Document Summary ===
+
+
+class GetDocumentSummaryInput(ToolInput):
+    """Input for get_document_summary tool."""
+
+    document_id: str = Field(..., description="Document ID to get summary for")
+
+
+@register_tool
+class GetDocumentSummaryTool(BaseTool):
+    """
+    Get document-level summary (Layer 1).
+
+    Uses: Layer 1 metadata (generic summary from PHASE 2)
+    Speed: <10ms
+    Use for: Quick overview of what a document is about
+    """
+
+    name = "get_document_summary"
+    description = "Get a high-level summary of a document by document ID"
+    tier = 1
+    input_schema = GetDocumentSummaryInput
+
+    def execute_impl(self, document_id: str) -> ToolResult:
+        # Get Layer 1 (document-level) metadata
+        layer1_chunks = []
+
+        # Try different approaches depending on store type
+        if hasattr(self.vector_store, "metadata_layer1"):
+            layer1_chunks = self.vector_store.metadata_layer1
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer1_chunks = self.vector_store.faiss_store.metadata_layer1
+
+        # Find document summary
+        doc_summary = None
+        for meta in layer1_chunks:
+            if meta.get("document_id") == document_id:
+                doc_summary = meta.get("content")
+                break
+
+        if not doc_summary:
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Document '{document_id}' not found or has no summary",
+                metadata={"document_id": document_id},
+            )
+
+        return ToolResult(
+            success=True,
+            data={"document_id": document_id, "summary": doc_summary},
+            metadata={"document_id": document_id, "summary_length": len(doc_summary)},
+        )
+
+
+# === Tool 8: Get Document Sections ===
+
+
+class GetDocumentSectionsInput(ToolInput):
+    """Input for get_document_sections tool."""
+
+    document_id: str = Field(..., description="Document ID to get sections for")
+
+
+@register_tool
+class GetDocumentSectionsTool(BaseTool):
+    """
+    List all sections in a document.
+
+    Uses: Layer 2 metadata (section-level)
+    Speed: <20ms
+    Use for: Discovering document structure and navigation
+    """
+
+    name = "get_document_sections"
+    description = "Get a list of all sections in a document by document ID"
+    tier = 1
+    input_schema = GetDocumentSectionsInput
+
+    def execute_impl(self, document_id: str) -> ToolResult:
+        # Get Layer 2 (section-level) metadata
+        layer2_chunks = []
+
+        # Try different approaches depending on store type
+        if hasattr(self.vector_store, "metadata_layer2"):
+            layer2_chunks = self.vector_store.metadata_layer2
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer2_chunks = self.vector_store.faiss_store.metadata_layer2
+
+        # Find sections for this document
+        sections = []
+        for meta in layer2_chunks:
+            if meta.get("document_id") == document_id:
+                section_info = {
+                    "section_id": meta.get("section_id"),
+                    "section_title": meta.get("section_title"),
+                    "section_path": meta.get("section_path"),
+                    "page_number": meta.get("page_number"),
+                }
+                sections.append(section_info)
+
+        if not sections:
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Document '{document_id}' not found or has no sections",
+                metadata={"document_id": document_id},
+            )
+
+        # Sort sections by section_id (preserves document order)
+        sections.sort(key=lambda x: x.get("section_id", ""))
+
+        return ToolResult(
+            success=True,
+            data={"document_id": document_id, "sections": sections, "count": len(sections)},
+            metadata={"document_id": document_id, "section_count": len(sections)},
+        )
+
+
+# === Tool 9: Get Section Details ===
+
+
+class GetSectionDetailsInput(ToolInput):
+    """Input for get_section_details tool."""
+
+    document_id: str = Field(..., description="Document ID")
+    section_id: str = Field(..., description="Section ID within the document")
+
+
+@register_tool
+class GetSectionDetailsTool(BaseTool):
+    """
+    Get detailed information about a specific section.
+
+    Uses: Layer 2 metadata (section summary from PHASE 2)
+    Speed: <20ms
+    Use for: Quick section overview before deeper search
+    """
+
+    name = "get_section_details"
+    description = "Get detailed information about a specific section including summary and metadata"
+    tier = 1
+    input_schema = GetSectionDetailsInput
+
+    def execute_impl(self, document_id: str, section_id: str) -> ToolResult:
+        # Get Layer 2 (section-level) metadata
+        layer2_chunks = []
+
+        # Try different approaches depending on store type
+        if hasattr(self.vector_store, "metadata_layer2"):
+            layer2_chunks = self.vector_store.metadata_layer2
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer2_chunks = self.vector_store.faiss_store.metadata_layer2
+
+        # Find specific section
+        section_data = None
+        for meta in layer2_chunks:
+            if meta.get("document_id") == document_id and meta.get("section_id") == section_id:
+                section_data = {
+                    "document_id": document_id,
+                    "section_id": section_id,
+                    "section_title": meta.get("section_title"),
+                    "section_path": meta.get("section_path"),
+                    "summary": meta.get("content"),  # Section summary from PHASE 2
+                    "page_number": meta.get("page_number"),
+                }
+                break
+
+        if not section_data:
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Section '{section_id}' not found in document '{document_id}'",
+                metadata={"document_id": document_id, "section_id": section_id},
+            )
+
+        # Get chunk count for this section (Layer 3)
+        layer3_chunks = []
+        if hasattr(self.vector_store, "metadata_layer3"):
+            layer3_chunks = self.vector_store.metadata_layer3
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer3_chunks = self.vector_store.faiss_store.metadata_layer3
+
+        chunk_count = sum(
+            1
+            for meta in layer3_chunks
+            if meta.get("document_id") == document_id and meta.get("section_id") == section_id
+        )
+
+        section_data["chunk_count"] = chunk_count
+
+        return ToolResult(
+            success=True,
+            data=section_data,
+            metadata={
+                "document_id": document_id,
+                "section_id": section_id,
+                "chunk_count": chunk_count,
+            },
+        )
+
+
+# === Tool 10: Get Document Metadata ===
+
+
+class GetDocumentMetadataInput(ToolInput):
+    """Input for get_document_metadata tool."""
+
+    document_id: str = Field(..., description="Document ID to get metadata for")
+
+
+@register_tool
+class GetDocumentMetadataTool(BaseTool):
+    """
+    Get comprehensive document metadata.
+
+    Uses: Layer 1 + Layer 2 + Layer 3 metadata aggregation
+    Speed: <50ms
+    Use for: Discovering document properties, statistics, and structure
+    """
+
+    name = "get_document_metadata"
+    description = "Get comprehensive metadata about a document including stats, structure, and properties"
+    tier = 1
+    input_schema = GetDocumentMetadataInput
+
+    def execute_impl(self, document_id: str) -> ToolResult:
+        # Collect metadata from all layers
+        metadata = {"document_id": document_id}
+
+        # Layer 1: Document summary
+        layer1_chunks = []
+        if hasattr(self.vector_store, "metadata_layer1"):
+            layer1_chunks = self.vector_store.metadata_layer1
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer1_chunks = self.vector_store.faiss_store.metadata_layer1
+
+        for meta in layer1_chunks:
+            if meta.get("document_id") == document_id:
+                metadata["summary"] = meta.get("content")
+                break
+
+        # Layer 2: Section count and list
+        layer2_chunks = []
+        if hasattr(self.vector_store, "metadata_layer2"):
+            layer2_chunks = self.vector_store.metadata_layer2
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer2_chunks = self.vector_store.faiss_store.metadata_layer2
+
+        sections = [
+            meta.get("section_title")
+            for meta in layer2_chunks
+            if meta.get("document_id") == document_id
+        ]
+        metadata["section_count"] = len(sections)
+        metadata["sections"] = sections
+
+        # Layer 3: Chunk count
+        layer3_chunks = []
+        if hasattr(self.vector_store, "metadata_layer3"):
+            layer3_chunks = self.vector_store.metadata_layer3
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer3_chunks = self.vector_store.faiss_store.metadata_layer3
+
+        chunk_count = sum(1 for meta in layer3_chunks if meta.get("document_id") == document_id)
+        metadata["chunk_count"] = chunk_count
+
+        # Estimate document length (from chunks)
+        total_chars = 0
+        for meta in layer3_chunks:
+            if meta.get("document_id") == document_id:
+                content = meta.get("content", "")
+                total_chars += len(content)
+
+        metadata["estimated_chars"] = total_chars
+        metadata["estimated_words"] = total_chars // 5  # Rough estimate: 5 chars per word
+
+        # Check if document exists
+        if not metadata.get("summary") and metadata["section_count"] == 0:
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Document '{document_id}' not found",
+                metadata={"document_id": document_id},
+            )
+
+        return ToolResult(
+            success=True,
+            data=metadata,
+            metadata={"document_id": document_id, "total_sections": len(sections)},
+        )
+
+
+# === Tool 11: Get Chunk Context ===
+
+
+class GetChunkContextInput(ToolInput):
+    """Input for get_chunk_context tool."""
+
+    chunk_id: str = Field(..., description="Chunk ID to get context for")
+
+
+@register_tool
+class GetChunkContextTool(BaseTool):
+    """
+    Get a chunk with surrounding chunks for context.
+
+    Returns the target chunk plus context_window chunks before and after.
+    Useful for understanding chunk content in broader narrative flow.
+
+    Uses: Layer 3 metadata with adjacency detection
+    Speed: <100ms
+    Use for: Expanding a single chunk result with surrounding context
+    """
+
+    name = "get_chunk_context"
+    description = "Get a chunk with surrounding chunks (before/after) for better context. Use when you need to understand a chunk in its broader narrative context."
+    tier = 1
+    input_schema = GetChunkContextInput
+
+    def execute_impl(self, chunk_id: str) -> ToolResult:
+        # Get Layer 3 (chunk-level) metadata
+        layer3_chunks = []
+        if hasattr(self.vector_store, "metadata_layer3"):
+            layer3_chunks = self.vector_store.metadata_layer3
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer3_chunks = self.vector_store.faiss_store.metadata_layer3
+
+        # Find target chunk
+        target_chunk = None
+        for meta in layer3_chunks:
+            if meta.get("chunk_id") == chunk_id:
+                target_chunk = meta
+                break
+
+        if not target_chunk:
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Chunk '{chunk_id}' not found",
+                metadata={"chunk_id": chunk_id},
+            )
+
+        # Extract document_id and section_id from target chunk
+        document_id = target_chunk.get("document_id")
+        section_id = target_chunk.get("section_id")
+
+        # Build adjacency map: Find all chunks from same document and section
+        same_section_chunks = []
+        for i, meta in enumerate(layer3_chunks):
+            if (
+                meta.get("document_id") == document_id
+                and meta.get("section_id") == section_id
+            ):
+                same_section_chunks.append((i, meta))
+
+        # Sort by chunk_id (assumes lexicographic order preserves sequential ordering)
+        same_section_chunks.sort(key=lambda x: x[1].get("chunk_id", ""))
+
+        # Find target chunk index in sorted list
+        target_position = None
+        for pos, (_, meta) in enumerate(same_section_chunks):
+            if meta.get("chunk_id") == chunk_id:
+                target_position = pos
+                break
+
+        if target_position is None:
+            # Fallback: Return just the target chunk
+            logger.warning(
+                f"Could not determine chunk position for {chunk_id}, returning without context"
+            )
+            return ToolResult(
+                success=True,
+                data={
+                    "target_chunk": format_chunk_result(target_chunk),
+                    "context_before": [],
+                    "context_after": [],
+                    "context_window": 0,
+                },
+                metadata={"chunk_id": chunk_id, "has_context": False},
+            )
+
+        # Get context_window from config (default: 2)
+        context_window = self.config.context_window if self.config else 2
+
+        # Extract context chunks
+        start_pos = max(0, target_position - context_window)
+        end_pos = min(len(same_section_chunks), target_position + context_window + 1)
+
+        context_before = [
+            format_chunk_result(same_section_chunks[i][1])
+            for i in range(start_pos, target_position)
+        ]
+        context_after = [
+            format_chunk_result(same_section_chunks[i][1])
+            for i in range(target_position + 1, end_pos)
+        ]
+
+        return ToolResult(
+            success=True,
+            data={
+                "target_chunk": format_chunk_result(target_chunk),
+                "context_before": context_before,
+                "context_after": context_after,
+                "context_window": context_window,
+                "document_id": document_id,
+                "section_id": section_id,
+            },
+            metadata={
+                "chunk_id": chunk_id,
+                "has_context": True,
+                "context_count": len(context_before) + len(context_after),
+            },
+            citations=[document_id],
+        )

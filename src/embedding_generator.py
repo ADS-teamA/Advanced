@@ -21,8 +21,10 @@ Implementation:
 
 import logging
 import os
+import hashlib
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
+from collections import OrderedDict
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,9 @@ class EmbeddingConfig:
     batch_size: int = 32  # Optimized for local inference
     normalize: bool = True  # For cosine similarity (FAISS IndexFlatIP)
     dimensions: Optional[int] = None  # Auto-detected from model
+    # Embedding cache configuration (similar_query_cache infrastructure)
+    cache_enabled: bool = True  # Enable LRU cache for embeddings
+    cache_max_size: int = 1000  # Max cache entries (40-80% hit rate expected)
 
 
 class EmbeddingGenerator:
@@ -62,7 +67,16 @@ class EmbeddingGenerator:
         self.model_name = self.config.model
         self.batch_size = self.config.batch_size
 
+        # Initialize embedding cache (similar_query_cache infrastructure)
+        self._cache_enabled = self.config.cache_enabled
+        self._cache_max_size = self.config.cache_max_size
+        self._embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+        self._cache_hits = 0
+        self._cache_misses = 0
+
         logger.info(f"Initializing EmbeddingGenerator with model: {self.model_name}")
+        if self._cache_enabled:
+            logger.info(f"Embedding cache enabled: max_size={self._cache_max_size}")
 
         # Initialize model based on type
         if "voyage" in self.model_name.lower() or "kanon" in self.model_name.lower():
@@ -169,7 +183,10 @@ class EmbeddingGenerator:
 
     def embed_texts(self, texts: List[str]) -> np.ndarray:
         """
-        Embed a list of texts.
+        Embed a list of texts with LRU caching.
+
+        Cache key is generated from joined text strings (hash-based).
+        Expected 40-80% cache hit rate reducing API costs and latency.
 
         Args:
             texts: List of text strings to embed
@@ -179,6 +196,23 @@ class EmbeddingGenerator:
         """
         if not texts:
             return np.array([])
+
+        # Check cache if enabled
+        if self._cache_enabled:
+            cache_key = self._generate_cache_key(texts)
+            if cache_key in self._embedding_cache:
+                self._cache_hits += 1
+                # Move to end (LRU)
+                self._embedding_cache.move_to_end(cache_key)
+                cached_embedding = self._embedding_cache[cache_key]
+                logger.debug(
+                    f"Cache HIT: {len(texts)} texts "
+                    f"(hit_rate: {self._get_cache_hit_rate():.1%})"
+                )
+                return cached_embedding
+            else:
+                self._cache_misses += 1
+                logger.debug(f"Cache MISS: {len(texts)} texts")
 
         logger.info(f"Embedding {len(texts)} texts...")
 
@@ -195,8 +229,41 @@ class EmbeddingGenerator:
         if self.config.normalize:
             embeddings = self._normalize_embeddings(embeddings)
 
+        # Store in cache if enabled
+        if self._cache_enabled:
+            self._add_to_cache(cache_key, embeddings)
+
         logger.info(f"Embeddings generated: shape {embeddings.shape}")
         return embeddings
+
+    def _generate_cache_key(self, texts: List[str]) -> str:
+        """Generate cache key from text list (SHA256 hash)."""
+        combined = "|".join(texts)
+        return hashlib.sha256(combined.encode()).hexdigest()
+
+    def _add_to_cache(self, cache_key: str, embeddings: np.ndarray) -> None:
+        """Add embeddings to LRU cache with max_size enforcement."""
+        # Remove oldest if at capacity
+        if len(self._embedding_cache) >= self._cache_max_size:
+            self._embedding_cache.popitem(last=False)  # Remove oldest (FIFO)
+
+        self._embedding_cache[cache_key] = embeddings
+
+    def _get_cache_hit_rate(self) -> float:
+        """Calculate cache hit rate."""
+        total = self._cache_hits + self._cache_misses
+        return self._cache_hits / total if total > 0 else 0.0
+
+    def get_cache_stats(self) -> Dict:
+        """Get cache statistics for monitoring."""
+        return {
+            "enabled": self._cache_enabled,
+            "max_size": self._cache_max_size,
+            "current_size": len(self._embedding_cache),
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate": self._get_cache_hit_rate(),
+        }
 
     def _embed_voyage(self, texts: List[str]) -> np.ndarray:
         """Embed texts using Voyage AI API."""

@@ -87,8 +87,8 @@ class IndexingConfig:
     embedding_batch_size: int = 100
     normalize_embeddings: bool = True
 
-    # PHASE 5A: Knowledge Graph (optional)
-    enable_knowledge_graph: bool = False
+    # PHASE 5A: Knowledge Graph (enabled by default for SOTA 2025)
+    enable_knowledge_graph: bool = True  # ✅ Changed: enabled by default
     kg_llm_provider: str = "openai"
     kg_llm_model: str = "gpt-4o-mini"
     kg_backend: str = "simple"  # simple, neo4j, networkx
@@ -614,7 +614,8 @@ class IndexingPipeline:
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize pipeline with research-optimal settings + Knowledge Graph
+    # Initialize pipeline with research-optimal settings
+    # Knowledge Graph is now enabled by default (PHASE 5A)
     config = IndexingConfig(
         # PHASE 1-2
         enable_smart_hierarchy=True,
@@ -629,8 +630,8 @@ if __name__ == "__main__":
         embedding_model="text-embedding-3-large",
         normalize_embeddings=True,
 
-        # PHASE 5A: Knowledge Graph (NEW!)
-        enable_knowledge_graph=True,
+        # PHASE 5A: Knowledge Graph (enabled by default)
+        # enable_knowledge_graph=True,  # ✅ No need to set - default is True
         kg_llm_provider="openai",
         kg_llm_model="gpt-4o-mini",
         kg_backend="simple",  # simple, neo4j, or networkx
