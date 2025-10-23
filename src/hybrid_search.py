@@ -491,22 +491,28 @@ class HybridVectorStore:
         Combines dense and sparse rankings using RRF formula:
             RRF_score = 1/(fusion_k + rank_dense) + 1/(fusion_k + rank_sparse)
 
+        Preserves intermediate scores (bm25_score, dense_score) for debugging
+        and explainability via explain_search_results tool.
+
         Args:
             dense_results: Results from FAISS (with 'chunk_id', 'score')
             sparse_results: Results from BM25 (with 'chunk_id', 'score')
             k: Number of final results to return
 
         Returns:
-            Sorted list of results with 'rrf_score' added
+            Sorted list of results with 'rrf_score', 'bm25_score', 'dense_score', 'fusion_method'
         """
         rrf_scores = defaultdict(float)
         all_chunks = {}
+        dense_scores = {}  # Track original dense scores
+        sparse_scores = {}  # Track original sparse (BM25) scores
 
         # Accumulate scores from dense retrieval (by rank)
         for rank, result in enumerate(dense_results, start=1):
             chunk_id = result["chunk_id"]
             rrf_scores[chunk_id] += 1.0 / (self.fusion_k + rank)
             all_chunks[chunk_id] = result
+            dense_scores[chunk_id] = result.get("score", 0.0)
 
         # Accumulate scores from sparse retrieval (by rank)
         for rank, result in enumerate(sparse_results, start=1):
@@ -514,6 +520,7 @@ class HybridVectorStore:
             rrf_scores[chunk_id] += 1.0 / (self.fusion_k + rank)
             if chunk_id not in all_chunks:
                 all_chunks[chunk_id] = result
+            sparse_scores[chunk_id] = result.get("score", 0.0)
 
         # Sort by RRF score
         sorted_ids = sorted(
@@ -522,11 +529,14 @@ class HybridVectorStore:
             reverse=True
         )
 
-        # Build final results (top k)
+        # Build final results (top k) with all scores preserved
         results = []
         for chunk_id, rrf_score in sorted_ids[:k]:
             result = all_chunks[chunk_id].copy()
             result["rrf_score"] = rrf_score
+            result["bm25_score"] = sparse_scores.get(chunk_id, 0.0)
+            result["dense_score"] = dense_scores.get(chunk_id, 0.0)
+            result["fusion_method"] = "rrf"
             results.append(result)
 
         logger.info(
