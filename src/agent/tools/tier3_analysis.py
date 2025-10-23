@@ -500,3 +500,96 @@ class GetStatisticsTool(BaseTool):
         except Exception as e:
             logger.error(f"Get statistics failed: {e}", exc_info=True)
             return ToolResult(success=False, data=None, error=str(e))
+
+
+class GetIndexStatisticsInput(ToolInput):
+    include_cache_stats: bool = Field(
+        False, description="Include embedding cache statistics"
+    )
+
+
+@register_tool
+class GetIndexStatisticsTool(BaseTool):
+    """Get comprehensive index statistics and metadata."""
+
+    name = "get_index_statistics"
+    description = "Get comprehensive statistics about the indexed corpus including document counts, embedding model info, cache statistics, and system configuration. Use for queries like 'what documents are indexed?' or 'show me system statistics'"
+    tier = 3
+    input_schema = GetIndexStatisticsInput
+
+    def execute_impl(self, include_cache_stats: bool = False) -> ToolResult:
+        """Get comprehensive index statistics."""
+        try:
+            stats = {}
+
+            # Vector store statistics
+            vs_stats = self.vector_store.get_stats()
+            stats["vector_store"] = vs_stats
+
+            # Detect if hybrid search is enabled
+            stats["hybrid_search_enabled"] = vs_stats.get("hybrid_enabled", False)
+
+            # Embedding model information
+            if self.embedder:
+                stats["embedding_model"] = {
+                    "model_name": self.embedder.model_name,
+                    "dimensions": self.embedder.dimensions,
+                    "model_type": self.embedder.model_type,
+                }
+
+                # Cache statistics if requested
+                if include_cache_stats and hasattr(self.embedder, "get_cache_stats"):
+                    stats["embedding_cache"] = self.embedder.get_cache_stats()
+
+            # Knowledge graph statistics
+            if self.knowledge_graph:
+                entity_types = Counter()
+                relationship_types = Counter()
+
+                for entity in self.knowledge_graph.entities.values():
+                    entity_types[entity.type] += 1
+
+                for rel in self.knowledge_graph.relationships.values():
+                    relationship_types[rel.type] += 1
+
+                stats["knowledge_graph"] = {
+                    "total_entities": len(self.knowledge_graph.entities),
+                    "total_relationships": len(self.knowledge_graph.relationships),
+                    "entity_types": dict(entity_types),
+                    "relationship_types": dict(relationship_types),
+                }
+            else:
+                stats["knowledge_graph"] = None
+
+            # Get document list
+            # Sample layer 1 to get unique documents
+            sample_results = self.vector_store.hierarchical_search(
+                query_text="",
+                query_embedding=None,
+                k_layer1=100,
+            )
+
+            unique_docs = set()
+            for doc in sample_results.get("layer1", []):
+                unique_docs.add(doc.get("document_id", "Unknown"))
+
+            stats["documents"] = {
+                "count": len(unique_docs),
+                "document_ids": sorted(list(unique_docs)),
+            }
+
+            # System configuration
+            stats["configuration"] = {
+                "reranking_enabled": hasattr(self, "reranker") and self.reranker is not None,
+                "context_assembler_enabled": hasattr(self, "context_assembler") and self.context_assembler is not None,
+            }
+
+            return ToolResult(
+                success=True,
+                data=stats,
+                metadata={"stat_categories": list(stats.keys())},
+            )
+
+        except Exception as e:
+            logger.error(f"Get index statistics failed: {e}", exc_info=True)
+            return ToolResult(success=False, data=None, error=str(e))

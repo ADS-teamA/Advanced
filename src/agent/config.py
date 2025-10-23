@@ -78,6 +78,9 @@ class ToolConfig:
     max_document_compare: int = 3
     compliance_threshold: float = 0.7
 
+    # Context expansion settings (for get_chunk_context tool)
+    context_window: int = 2  # Number of chunks before/after for context expansion
+
     # Performance
     lazy_load_reranker: bool = True
     lazy_load_graph: bool = True
@@ -97,6 +100,8 @@ class ToolConfig:
             raise ValueError(f"compliance_threshold must be in [0, 1], got {self.compliance_threshold}")
         if self.max_document_compare <= 0:
             raise ValueError(f"max_document_compare must be positive, got {self.max_document_compare}")
+        if self.context_window < 0:
+            raise ValueError(f"context_window must be non-negative, got {self.context_window}")
 
 
 @dataclass
