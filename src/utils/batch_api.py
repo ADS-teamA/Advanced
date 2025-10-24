@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from .security import sanitize_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -183,7 +185,7 @@ class BatchAPIClient:
                 request = create_request_fn(item, idx)
                 requests.append(request)
             except Exception as e:
-                self.logger.error(f"Failed to create request for item {idx}: {e}")
+                self.logger.error(f"Failed to create request for item {idx}: {sanitize_error(e)}")
                 raise
 
         self.logger.info(f"✓ Created {len(requests)} batch requests")
@@ -238,8 +240,12 @@ class BatchAPIClient:
             # Clean up temp file
             try:
                 Path(temp_path).unlink()
-            except:
-                pass
+            except FileNotFoundError:
+                pass  # File already deleted, no action needed
+            except PermissionError as e:
+                logger.warning(f"Could not delete temp file {temp_path}: Permission denied")
+            except Exception as e:
+                logger.warning(f"Failed to delete temp file {temp_path}: {type(e).__name__}")
 
     def _poll_batch(
         self,
@@ -362,7 +368,7 @@ class BatchAPIClient:
                 # Check for errors
                 if response.get('error'):
                     error_msg = response['error']
-                    self.logger.error(f"Request {custom_id} failed: {error_msg}")
+                    self.logger.error(f"Request {custom_id} failed: {sanitize_error(str(error_msg))}")
                     results[custom_id] = None
                     continue
 
@@ -383,11 +389,11 @@ class BatchAPIClient:
                     parsed_result = parse_response_fn(response_body)
                     results[custom_id] = parsed_result
                 except Exception as e:
-                    self.logger.error(f"Failed to parse response for {custom_id}: {e}")
+                    self.logger.error(f"Failed to parse response for {custom_id}: {sanitize_error(e)}")
                     results[custom_id] = None
 
             except json.JSONDecodeError as e:
-                self.logger.error(f"Failed to parse line {line_num}: {e}")
+                self.logger.error(f"Failed to parse line {line_num}: {sanitize_error(e)}")
                 continue
 
         # Track costs if tracker available
@@ -401,7 +407,7 @@ class BatchAPIClient:
                     operation=operation
                 )
             except Exception as e:
-                self.logger.warning(f"Failed to track costs: {e}")
+                self.logger.warning(f"Failed to track costs: {sanitize_error(e)}")
 
         self.logger.info(
             f"✓ Parsed {len(results)} results "
