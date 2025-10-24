@@ -204,9 +204,9 @@ class IndexingPipeline:
         Initialize indexing pipeline.
 
         Args:
-            config: IndexingConfig instance (defaults to research-optimal settings)
+            config: IndexingConfig instance (defaults loaded from .env)
         """
-        self.config = config or IndexingConfig()
+        self.config = config or IndexingConfig.from_env()
 
         logger.info("Initializing IndexingPipeline...")
 

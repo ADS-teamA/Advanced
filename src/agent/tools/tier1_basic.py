@@ -335,11 +335,11 @@ class KeywordSearchTool(BaseTool):
             results = results_dict["layer3"]
 
         if not results:
+            logger.info(f"No results found for keywords '{keywords}'")
             return ToolResult(
-                success=False,
+                success=True,  # Search succeeded, just no matches
                 data=[],
-                error=f"No results found for keywords '{keywords}'",
-                metadata={"keywords": keywords},
+                metadata={"keywords": keywords, "no_results": True},
             )
 
         formatted = [format_chunk_result(c) for c in results]

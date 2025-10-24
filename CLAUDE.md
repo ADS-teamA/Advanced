@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MY_SUJBOT is a research-based RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. The system implements state-of-the-art techniques from multiple research papers to achieve superior retrieval quality through hierarchical structure extraction, contextual chunking, multi-layer embeddings, knowledge graph construction, context assembly, and an interactive agent interface.
 
 **Current Status:** PHASE 1-7 Complete (Full SOTA 2025 RAG System with Interactive Agent)
-**Latest:** RAG Agent CLI with Claude SDK integration, **26 specialized tools** (5 new in Phase 7B: context expansion, similarity search, explainability!), embedding cache, and production-ready validation
+**Latest:** RAG Agent CLI with Claude SDK integration, **27 specialized tools** (5 new in Phase 7B: context expansion, similarity search, explainability!), embedding cache, and production-ready validation
 
 ## Core Architecture
 
@@ -15,7 +15,7 @@ The pipeline follows a multi-phase architecture where each phase builds on the p
 
 ### Phase Flow
 1. **PHASE 1:** Font-size based hierarchical structure extraction (Docling)
-2. **PHASE 2:** Generic summary generation (gpt-4o-mini, 150 chars)
+2. **PHASE 2:** Generic summary generation (LLM-based, configurable via .env, 150 chars)
 3. **PHASE 3:** Multi-layer chunking with Summary-Augmented Chunks (RCTS 500 chars)
 4. **PHASE 4:** Embedding generation and FAISS indexing (text-embedding-3-large, 3072D)
 5. **PHASE 5A:** Knowledge Graph construction (entities and relationships)
@@ -23,7 +23,7 @@ The pipeline follows a multi-phase architecture where each phase builds on the p
 7. **PHASE 5C:** Cross-Encoder Reranking (two-stage retrieval, +25% accuracy)
 8. **PHASE 5D:** Graph-Vector Integration (triple-modal fusion, +60% multi-hop)
 9. **PHASE 6:** Context Assembly (SAC stripping, citations, provenance tracking)
-10. **PHASE 7:** RAG Agent CLI (Claude SDK integration, **26 tools** with context expansion & caching, streaming interface)
+10. **PHASE 7:** RAG Agent CLI (Claude SDK integration, **27 tools** with context expansion & caching, streaming interface)
 
 ### Key Design Principles
 - **Contextual Retrieval:** Chunks are augmented with LLM-generated context before embedding (-49% retrieval errors)
@@ -63,12 +63,12 @@ src/
     ├── query/                  # Query enhancement
     │   ├── decomposition.py    # Query decomposition
     │   └── hyde.py             # HyDE (Hypothetical Document Embeddings)
-    └── tools/                  # Tool ecosystem (26 tools: 11 basic + 9 advanced + 6 analysis)
+    └── tools/                  # Tool ecosystem (27 tools: 12 basic + 9 advanced + 6 analysis)
         ├── base.py             # BaseTool abstraction
         ├── registry.py         # Tool registry
-        ├── tier1/              # Basic retrieval (6 tools)
-        ├── tier2/              # Advanced retrieval (6 tools)
-        └── tier3/              # Analysis tools (5 tools)
+        ├── tier1_basic.py      # Basic retrieval (12 tools)
+        ├── tier2_advanced.py   # Advanced retrieval (9 tools)
+        └── tier3_analysis.py   # Analysis tools (6 tools)
 
 tests/
 ├── test_pipeline.py              # Integration tests
@@ -680,12 +680,12 @@ See `src/context_assembly.py` for full implementation details.
 
 ## RAG Agent CLI (PHASE 7)
 
-PHASE 7 provides an interactive command-line interface for querying indexed documents using Claude as the orchestration layer. The agent uses Claude SDK to intelligently select and execute tools from a comprehensive ecosystem of **26 specialized retrieval and analysis tools** (5 new in Phase 7B!).
+PHASE 7 provides an interactive command-line interface for querying indexed documents using Claude as the orchestration layer. The agent uses Claude SDK to intelligently select and execute tools from a comprehensive ecosystem of **27 specialized retrieval and analysis tools** (5 new in Phase 7B!).
 
 ### Key Features
 
 - **Claude SDK Integration**: Official Anthropic SDK for reliable LLM orchestration
-- **26 Specialized Tools**: Three-tier tool ecosystem for retrieval, analysis, and knowledge graph queries (11 basic + 9 advanced + 6 analysis)
+- **27 Specialized Tools**: Three-tier tool ecosystem for retrieval, analysis, and knowledge graph queries (12 basic + 9 advanced + 6 analysis)
 - **Embedding Cache**: LRU cache for embeddings with 40-80% hit rate, reducing latency by 100-200ms
 - **Score Preservation**: Hybrid search preserves BM25, Dense, and RRF scores for explainability
 - **Streaming Responses**: Real-time output with tool execution visibility
@@ -694,9 +694,9 @@ PHASE 7 provides an interactive command-line interface for querying indexed docu
 - **Platform Detection**: Automatic embedding model selection based on platform (Apple Silicon, Linux GPU, Windows)
 - **Conversation History**: Context-aware multi-turn conversations with automatic trimming
 
-### Tool Ecosystem (26 Tools)
+### Tool Ecosystem (27 Tools)
 
-**Tier 1: Basic Retrieval (11 tools - fast, <100ms)**
+**Tier 1: Basic Retrieval (12 tools - fast, <100ms)**
 - `simple_search`: Hybrid search with reranking (use for most queries)
 - `entity_search`: Find chunks mentioning specific entities
 - `document_search`: Search within specific document(s)
@@ -708,6 +708,7 @@ PHASE 7 provides an interactive command-line interface for querying indexed docu
 - `get_section_details`: Get section metadata and summary
 - `get_document_metadata`: Get comprehensive document metadata
 - `get_chunk_context`: Get chunk with surrounding chunks for context ✨ **NEW**
+- `list_available_tools`: List all available tools with descriptions
 
 **Tier 2: Advanced Retrieval (9 tools - quality, 500-1000ms)**
 - `multi_hop_search`: Graph traversal for multi-hop queries
@@ -757,7 +758,7 @@ Starting Agent CLI...
 ✅ API Key: OPENAI
 ✅ Embedder initialized
 ✅ Vector Store loaded
-✅ Tool Registry initialized (26 tools)
+✅ Tool Registry initialized (27 tools)
 ✅ Agent Core initialized
 
 Agent ready! Type your question or 'exit' to quit.
@@ -954,7 +955,7 @@ The system has successfully completed all planned phases of the SOTA 2025 RAG up
 
 ### ✅ PHASE 7: RAG Agent CLI - COMPLETE
 - Interactive CLI with Claude SDK integration
-- **26 specialized tools** (3 tiers: 11 basic + 9 advanced + 6 analysis)
+- **27 specialized tools** (3 tiers: 12 basic + 9 advanced + 6 analysis)
 - Streaming responses with tool execution visibility
 - Query enhancement (HyDE, decomposition)
 - Production-ready validation and error handling
@@ -968,7 +969,7 @@ The system has successfully completed all planned phases of the SOTA 2025 RAG up
 
 **Tool Breakdown:**
 
-**TIER 1 - Basic Retrieval (11 tools, <100ms):**
+**TIER 1 - Basic Retrieval (12 tools, <100ms):**
 - **Search:** simple_search, entity_search, document_search, section_search, keyword_search
 - **Navigation:**
   - `get_document_list` - List all indexed documents
@@ -977,6 +978,7 @@ The system has successfully completed all planned phases of the SOTA 2025 RAG up
   - `get_section_details` - Quick section overview with summary
   - `get_document_metadata` - Comprehensive document stats
 - **Context:** `get_chunk_context` ✨ **NEW** - Get chunk with surrounding chunks
+- **Meta:** `list_available_tools` - List all available tools with descriptions
 
 **TIER 2 - Advanced Retrieval (9 tools, 500-1000ms):**
 - multi_hop_search, compare_documents, find_related_chunks

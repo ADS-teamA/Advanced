@@ -262,7 +262,7 @@ class AgentCore:
         Trim conversation history to prevent unbounded memory growth.
 
         IMPORTANT IMPLICATIONS:
-        - User is NOT notified when history is trimmed (silent truncation)
+        - User IS notified when history is trimmed (transparency)
         - Claude loses access to earlier conversation context
         - May break multi-turn reasoning across >50 message exchanges
         - Tool results in trimmed messages are lost permanently
@@ -272,13 +272,26 @@ class AgentCore:
         - Each "message" may contain multiple tool results (lines 270, 344)
         - Actual context size varies significantly per message
         - Keeps the last MAX_HISTORY_MESSAGES messages
+        - Adds notification message to conversation explaining trimming
         """
         if len(self.conversation_history) > MAX_HISTORY_MESSAGES:
             old_len = len(self.conversation_history)
+            messages_removed = old_len - MAX_HISTORY_MESSAGES
             self.conversation_history = self.conversation_history[-MAX_HISTORY_MESSAGES:]
-            logger.info(
-                f"Trimmed conversation history: {old_len} → {len(self.conversation_history)} messages"
+
+            logger.warning(
+                f"Conversation history trimmed: {old_len} → {MAX_HISTORY_MESSAGES} messages "
+                f"({messages_removed} messages removed)"
             )
+
+            # CRITICAL: Notify user about trimming
+            # Add a system message explaining what happened
+            system_notice = {
+                "role": "assistant",
+                "content": f"[Note: Conversation history was trimmed. I can only access the last {MAX_HISTORY_MESSAGES} messages. Earlier context ({messages_removed} messages) is no longer available.]"
+            }
+            # Insert notice at beginning of trimmed history so Claude sees it
+            self.conversation_history.insert(0, system_notice)
 
     def process_message(
         self, user_message: str, stream: bool = None

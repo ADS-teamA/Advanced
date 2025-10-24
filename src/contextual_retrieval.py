@@ -720,7 +720,47 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
                 contexts_map = self._generate_contexts_with_openai_batch(chunks)
                 logger.info(f"✓ Batch API succeeded: {len(contexts_map)} contexts generated")
             except Exception as e:
-                logger.warning(f"Batch API failed ({e}), falling back to parallel mode")
+                # Classify error type for better user guidance
+                error_str = str(e).lower()
+                if "timeout" in error_str or "time" in error_str:
+                    logger.warning(
+                        f"⚠️  Batch API timeout ({e}). Batch processing took >12 hours. "
+                        f"Falling back to fast mode (full price). Consider indexing smaller batches."
+                    )
+                    print("\n⚠️  ECO MODE TIMEOUT")
+                    print(f"   Reason: Batch processing exceeded 12-hour limit")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document")
+                    print("   Suggestion: Index smaller documents or use fast mode\n")
+                elif "auth" in error_str or "key" in error_str:
+                    logger.error(
+                        f"❌ Batch API authentication failed ({e}). Check OPENAI_API_KEY. "
+                        f"Falling back to fast mode (full price)."
+                    )
+                    print("\n❌ ECO MODE UNAVAILABLE - Authentication Error")
+                    print(f"   Reason: {e}")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document")
+                    print("   Fix: Verify OPENAI_API_KEY in .env\n")
+                elif "rate" in error_str or "quota" in error_str:
+                    logger.warning(
+                        f"⚠️  Batch API rate limit/quota exceeded ({e}). "
+                        f"Falling back to fast mode (full price). Try again later."
+                    )
+                    print("\n⚠️  ECO MODE UNAVAILABLE - Rate Limit")
+                    print(f"   Reason: {e}")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document")
+                    print("   Suggestion: Wait before indexing more documents\n")
+                else:
+                    logger.warning(
+                        f"⚠️  Batch API failed ({e}). "
+                        f"Falling back to fast mode (full price). See error above for details."
+                    )
+                    print("\n⚠️  ECO MODE UNAVAILABLE")
+                    print(f"   Reason: {e}")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document\n")
                 contexts_map = {}
 
         # If Batch API succeeded, build results from contexts_map

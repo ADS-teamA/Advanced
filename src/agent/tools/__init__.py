@@ -1,14 +1,14 @@
 """
 RAG Tools
 
-26 specialized tools organized by tier (basic, advanced, analysis).
+27 specialized tools organized by tier (basic, advanced, analysis).
 """
 
 from .base import BaseTool, ToolInput, ToolResult
 from .registry import ToolRegistry, get_registry
 
 # Import all tools to trigger registration
-# TIER 1: Basic Retrieval (11 tools)
+# TIER 1: Basic Retrieval (12 tools)
 from . import tier1_basic
 
 # TIER 2: Advanced Retrieval (9 tools)

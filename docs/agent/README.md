@@ -93,9 +93,9 @@ Average time per call: 234ms
 
 ## 📚 Tool Architecture
 
-The agent has access to 17 specialized tools organized in 3 performance tiers:
+The agent has access to 27 specialized tools organized in 3 performance tiers:
 
-### Tier 1: Basic Tools (6 tools, ~100-300ms)
+### Tier 1: Basic Tools (12 tools, ~100ms)
 
 Fast, frequently-used tools for common retrieval tasks:
 
