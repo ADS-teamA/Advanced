@@ -100,7 +100,7 @@ class IndexingConfig:
 
     # PHASE 5C: Cross-Encoder Reranking (optional)
     enable_reranking: bool = False  # Two-stage retrieval: hybrid → rerank
-    reranker_model: str = "ms-marco-mini"  # or "accurate", "sota"
+    reranker_model: str = "bge-reranker-large"  # SOTA accuracy (aliases: "accurate", "sota")
     reranker_candidates: int = 50  # Retrieve 50 via hybrid search
     reranker_top_k: int = 6  # Rerank to top 6
 
