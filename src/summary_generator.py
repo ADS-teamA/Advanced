@@ -21,8 +21,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Import centralized configuration
 try:
     from .config import SummarizationConfig, resolve_model_alias
+    from .cost_tracker import get_global_tracker
 except ImportError:
     from config import SummarizationConfig, resolve_model_alias
+    from cost_tracker import get_global_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,9 @@ class SummaryGenerator:
         self.min_text_length = self.config.min_text_length
         self.temperature = self.config.temperature
         self.max_tokens = self.config.max_tokens
+
+        # Initialize cost tracker
+        self.tracker = get_global_tracker()
 
         # Detect provider from model name
         if "claude" in self.model.lower():
@@ -285,6 +290,16 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             temperature=self.temperature,
             messages=[{"role": "user", "content": prompt}]
         )
+
+        # Track cost
+        self.tracker.track_llm(
+            provider="anthropic",
+            model=self.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            operation="summary"
+        )
+
         return response.content[0].text.strip()
 
     def _generate_with_openai(self, prompt: str, max_tokens: Optional[int] = None) -> str:
@@ -299,6 +314,16 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             temperature=self.temperature,
             max_tokens=max_tokens or self.max_tokens
         )
+
+        # Track cost
+        self.tracker.track_llm(
+            provider="openai",
+            model=self.model,
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+            operation="summary"
+        )
+
         return response.choices[0].message.content.strip()
 
     def generate_document_summary_strict(self, document_text: str) -> str:

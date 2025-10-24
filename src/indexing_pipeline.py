@@ -45,6 +45,7 @@ from src.docling_extractor_v2 import DoclingExtractorV2
 from src.multi_layer_chunker import MultiLayerChunker
 from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 from src.faiss_vector_store import FAISSVectorStore
+from src.cost_tracker import get_global_tracker, reset_global_tracker
 
 # Knowledge Graph imports (optional)
 try:
@@ -311,6 +312,9 @@ class IndexingPipeline:
         logger.info(f"Indexing document: {document_path.name}")
         logger.info("="*80)
 
+        # Reset cost tracker for this document
+        reset_global_tracker()
+
         # PHASE 1+2: Extract + Summaries
         logger.info("PHASE 1+2: Extraction + Summaries")
         result = self.extractor.extract(document_path)
@@ -441,6 +445,11 @@ class IndexingPipeline:
                 chunks=chunks,
                 chunking_stats=chunking_stats
             )
+
+        # Display cost summary
+        tracker = get_global_tracker()
+        if tracker.get_total_cost() > 0:
+            logger.info("\n" + tracker.get_summary())
 
         logger.info("="*80)
         logger.info(f"✓ Indexing complete: {document_path.name}")

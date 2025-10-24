@@ -28,8 +28,10 @@ import time
 # Import config
 try:
     from .config import ContextGenerationConfig, resolve_model_alias
+    from .cost_tracker import get_global_tracker
 except ImportError:
     from config import ContextGenerationConfig, resolve_model_alias
+    from cost_tracker import get_global_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,9 @@ class ContextualRetrieval:
         """
         self.config = config or ContextGenerationConfig()
         self.model = resolve_model_alias(self.config.model)
+
+        # Initialize cost tracker
+        self.tracker = get_global_tracker()
 
         # Use API key from config if not provided explicitly
         if api_key is None:
@@ -343,6 +348,16 @@ Please give a short succinct context (50-100 words) to situate this chunk within
                     temperature=self.config.temperature,
                     messages=[{"role": "user", "content": prompt}]
                 )
+
+                # Track cost
+                self.tracker.track_llm(
+                    provider="anthropic",
+                    model=self.model,
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens,
+                    operation="context"
+                )
+
                 return response.content[0].text
             except Exception as e:
                 error_str = str(e).lower()
@@ -374,6 +389,16 @@ Please give a short succinct context (50-100 words) to situate this chunk within
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens
                 )
+
+                # Track cost
+                self.tracker.track_llm(
+                    provider="openai",
+                    model=self.model,
+                    input_tokens=response.usage.prompt_tokens,
+                    output_tokens=response.usage.completion_tokens,
+                    operation="context"
+                )
+
                 return response.choices[0].message.content
             except Exception as e:
                 error_str = str(e).lower()
