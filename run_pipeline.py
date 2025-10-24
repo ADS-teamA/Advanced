@@ -178,13 +178,13 @@ def run_single_document(document_path: Path, output_base: Path = None):
 
     # Create pipeline with FULL SOTA configuration from .env
     print_info("Initializing pipeline with SOTA 2025 configuration...")
-    config = IndexingConfig()  # Loads all settings from .env
+    config = IndexingConfig.from_env()  # Loads all settings from .env
 
     # Print active configuration
-    print_info(f"LLM Model: {config.summary_model}")
-    print_info(f"Embedding Model: {config.embedding_model}")
-    print_info(f"Chunk Size: {config.chunk_size} chars")
-    print_info(f"SAC (Contextual Retrieval): {'ON' if config.enable_sac else 'OFF'}")
+    print_info(f"LLM Model: {config.summarization_config.model}")
+    print_info(f"Embedding Model: {config.embedding_config.model}")
+    print_info(f"Chunk Size: {config.chunking_config.chunk_size} chars")
+    print_info(f"SAC (Contextual Retrieval): {'ON' if config.chunking_config.enable_contextual else 'OFF'}")
     print_info(f"Hybrid Search (BM25+Dense): {'ON ✅' if config.enable_hybrid_search else 'OFF'}")
     print_info(f"Knowledge Graph: {'ON ✅' if config.enable_knowledge_graph else 'OFF'}")
     print_info(f"Output: {output_dir}")
