@@ -133,9 +133,25 @@ MODEL_ALIASES = {
     "claude-haiku-4-5": "claude-haiku-4-5-20251001",
     "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
 
-    # OpenAI models
+    # OpenAI GPT-4o models
     "gpt-4o-mini": "gpt-4o-mini",
     "gpt-4o": "gpt-4o",
+
+    # OpenAI GPT-5 models (August 2025)
+    "gpt-5": "gpt-5",
+    "gpt-5-mini": "gpt-5-mini",
+    "gpt-5-nano": "gpt-5-nano",
+    "gpt-5-pro": "gpt-5-pro",
+    "gpt-5-codex": "gpt-5-codex",
+    "gpt-5-chat": "gpt-5-chat",
+
+    # OpenAI O-series (reasoning models)
+    "o1": "o1",
+    "o1-mini": "o1-mini",
+    "o3": "o3",
+    "o3-mini": "o3-mini",
+    "o3-pro": "o3-pro",
+    "o4-mini": "o4-mini",
 
     # Local Legal LLM models (via Ollama or Transformers)
     "saul-7b": "Equall/Saul-7B-Instruct-v1",  # Legal Mistral fine-tune
