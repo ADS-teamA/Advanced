@@ -16,6 +16,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .models import Entity, EntityType
 from .config import EntityExtractionConfig
 
+try:
+    from ..cost_tracker import get_global_tracker
+except ImportError:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from cost_tracker import get_global_tracker
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +50,9 @@ class EntityExtractor:
         """
         self.config = config
         self.api_key = api_key
+
+        # Initialize cost tracker
+        self.tracker = get_global_tracker()
 
         # Initialize LLM client based on provider
         self._initialize_llm_client()
@@ -262,6 +273,16 @@ class EntityExtractor:
                         temperature=self.config.temperature,
                         max_tokens=4000,
                     )
+
+                    # Track cost
+                    self.tracker.track_llm(
+                        provider="openai",
+                        model=self.config.llm_model,
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                        operation="kg_extraction"
+                    )
+
                     return response.choices[0].message.content.strip()
 
                 elif self.config.llm_provider == "anthropic":
@@ -274,6 +295,16 @@ class EntityExtractor:
                         ],
                         system="You are an expert at extracting structured entities from legal documents. Always return valid JSON.",
                     )
+
+                    # Track cost
+                    self.tracker.track_llm(
+                        provider="anthropic",
+                        model=self.config.llm_model,
+                        input_tokens=response.usage.input_tokens,
+                        output_tokens=response.usage.output_tokens,
+                        operation="kg_extraction"
+                    )
+
                     return response.content[0].text.strip()
 
             except Exception as e:

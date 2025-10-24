@@ -27,6 +27,11 @@ from dataclasses import dataclass
 from collections import OrderedDict
 import numpy as np
 
+try:
+    from .cost_tracker import get_global_tracker
+except ImportError:
+    from cost_tracker import get_global_tracker
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,6 +87,9 @@ class EmbeddingGenerator:
         self._embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self._cache_hits = 0
         self._cache_misses = 0
+
+        # Initialize cost tracker
+        self.tracker = get_global_tracker()
 
         logger.info(f"Initializing EmbeddingGenerator with model: {self.model_name}")
         if self._cache_enabled:
@@ -348,6 +356,15 @@ class EmbeddingGenerator:
                 input_type="document"  # For indexing/storage
             )
 
+            # Track cost (Voyage API returns total_tokens)
+            if hasattr(result, 'total_tokens'):
+                self.tracker.track_embedding(
+                    provider="voyage",
+                    model=self.model_name,
+                    tokens=result.total_tokens,
+                    operation="embedding"
+                )
+
             batch_embeddings = result.embeddings
             all_embeddings.extend(batch_embeddings)
 
@@ -369,6 +386,14 @@ class EmbeddingGenerator:
                 encoding_format="float"
             )
 
+            # Track cost
+            self.tracker.track_embedding(
+                provider="openai",
+                model=self.model_name,
+                tokens=response.usage.total_tokens,
+                operation="embedding"
+            )
+
             batch_embeddings = [data.embedding for data in response.data]
             all_embeddings.extend(batch_embeddings)
 
@@ -383,6 +408,9 @@ class EmbeddingGenerator:
             convert_to_numpy=True,
             normalize_embeddings=False  # We handle normalization separately
         )
+
+        # No cost tracking needed - local model (FREE)
+        # BGE-M3 runs locally and has $0.00 cost
 
         return embeddings.astype(np.float32)
 

@@ -18,6 +18,14 @@ from .config import AgentConfig
 from .tools.base import ToolResult
 from .tools.registry import get_registry
 
+try:
+    from ..cost_tracker import get_global_tracker
+except ImportError:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from cost_tracker import get_global_tracker
+
 logger = logging.getLogger(__name__)
 
 # Configuration constants
@@ -44,6 +52,9 @@ class AgentCore:
             config: AgentConfig instance
         """
         self.config = config
+
+        # Initialize cost tracker
+        self.tracker = get_global_tracker()
 
         if config.debug_mode:
             logger.debug("Initializing AgentCore...")
@@ -228,6 +239,15 @@ class AgentCore:
                     # Get final message
                     final_message = stream.get_final_message()
 
+                    # Track cost
+                    self.tracker.track_llm(
+                        provider="anthropic",
+                        model=self.config.model,
+                        input_tokens=final_message.usage.input_tokens,
+                        output_tokens=final_message.usage.output_tokens,
+                        operation="agent"
+                    )
+
                     # Extract tool uses from final message
                     for block in final_message.content:
                         if block.type == "tool_use":
@@ -330,6 +350,15 @@ class AgentCore:
                 system=self.config.system_prompt,
                 messages=self.conversation_history,
                 tools=tools,
+            )
+
+            # Track cost
+            self.tracker.track_llm(
+                provider="anthropic",
+                model=self.config.model,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                operation="agent"
             )
 
             # Add assistant message to history
