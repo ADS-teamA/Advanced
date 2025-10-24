@@ -22,9 +22,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
     from .config import SummarizationConfig, resolve_model_alias
     from .cost_tracker import get_global_tracker
+    from .utils.security import sanitize_error
+    from .utils.api_clients import APIClientFactory
+    from .utils.batch_api import BatchAPIClient, BatchRequest
 except ImportError:
     from config import SummarizationConfig, resolve_model_alias
     from cost_tracker import get_global_tracker
+    from utils.security import sanitize_error
+    from utils.api_clients import APIClientFactory
+    from utils.batch_api import BatchAPIClient, BatchRequest
 
 logger = logging.getLogger(__name__)
 
@@ -94,43 +100,13 @@ class SummaryGenerator:
         )
 
     def _init_claude(self, api_key: Optional[str]):
-        """Initialize Anthropic Claude client."""
-        try:
-            from anthropic import Anthropic
-        except ImportError:
-            raise ImportError(
-                "anthropic package required for Claude models. "
-                "Install with: uv pip install anthropic"
-            )
-
-        api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Anthropic API key required for Claude models. "
-                "Set ANTHROPIC_API_KEY env var or pass api_key parameter."
-            )
-
-        self.client = Anthropic(api_key=api_key)
+        """Initialize Anthropic Claude client using centralized factory."""
+        self.client = APIClientFactory.create_anthropic(api_key=api_key)
         logger.info("Claude client initialized")
 
     def _init_openai(self, api_key: Optional[str]):
-        """Initialize OpenAI client."""
-        try:
-            from openai import OpenAI
-        except ImportError:
-            raise ImportError(
-                "openai package required for OpenAI models. "
-                "Install with: uv pip install openai"
-            )
-
-        api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OpenAI API key required for OpenAI models. "
-                "Set OPENAI_API_KEY env var or pass api_key parameter."
-            )
-
-        self.client = OpenAI(api_key=api_key)
+        """Initialize OpenAI client using centralized factory."""
+        self.client = APIClientFactory.create_openai(api_key=api_key)
         logger.info("OpenAI client initialized")
 
     def generate_document_summary(
@@ -207,7 +183,7 @@ Summary (max {self.max_chars} characters):"""
                 return summary
 
             except Exception as e:
-                logger.error(f"Failed to generate document summary: {e}")
+                logger.error(f"Failed to generate document summary: {sanitize_error(e)}")
                 # Fallback: simple truncation
                 return document_text[:self.max_chars].strip() + "..."
 
@@ -278,7 +254,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             return summary
 
         except Exception as e:
-            logger.error(f"Failed to generate hierarchical summary: {e}")
+            logger.error(f"Failed to generate hierarchical summary: {sanitize_error(e)}")
             # Fallback: combine first chars of each section summary
             fallback = " ".join(section_summaries)
             return fallback[:self.max_chars].strip() + "..."
@@ -369,7 +345,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             return summary[:self.max_chars]  # Hard truncate if needed
 
         except Exception as e:
-            logger.error(f"Failed to generate strict summary: {e}")
+            logger.error(f"Failed to generate strict summary: {sanitize_error(e)}")
             return document_text[:self.max_chars].strip() + "..."
 
     def generate_section_summary(
@@ -417,229 +393,11 @@ Summary (max {self.max_chars} characters):"""
             return summary
 
         except Exception as e:
-            logger.error(f"Failed to generate section summary: {e}")
+            logger.error(f"Failed to generate section summary: {sanitize_error(e)}")
             # Fallback
             return section_text[:self.max_chars].strip() + "..."
 
-    def _create_batch_requests(
-        self,
-        sections: list[tuple[int, str, str]]  # [(index, text, title), ...]
-    ) -> list[dict]:
-        """
-        Create batch API requests for OpenAI Batch API.
-
-        Args:
-            sections: List of (index, text, title) tuples
-
-        Returns:
-            List of batch request dicts in JSONL format
-        """
-        batch_requests = []
-
-        for idx, text, title in sections:
-            # Truncate text for efficiency
-            text_preview = text[:2000]
-            title_context = f"Section title: {title}\n\n" if title else ""
-
-            prompt = f"""Summarize this document section concisely.
-
-{title_context}Section content:
-{text_preview}
-
-CRITICAL: Provide a summary that is EXACTLY {self.max_chars} characters or less (current limit: {self.max_chars} chars).
-Focus on the main topic and key information. This is a hard constraint.
-
-Summary (max {self.max_chars} characters):"""
-
-            # Create batch request
-            request = {
-                "custom_id": f"section_{idx}",
-                "method": "POST",
-                "url": "/v1/chat/completions",
-                "body": {
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": self.max_tokens,
-                    "temperature": self.temperature
-                }
-            }
-
-            batch_requests.append(request)
-
-        return batch_requests
-
-    def _submit_batch(self, requests: list[dict]) -> str:
-        """
-        Submit batch job to OpenAI Batch API.
-
-        Args:
-            requests: List of batch request dicts
-
-        Returns:
-            Batch job ID
-
-        Raises:
-            Exception if batch submission fails
-        """
-        import tempfile
-        import json
-
-        if self.provider != "openai":
-            raise ValueError("Batch API only available for OpenAI provider")
-
-        try:
-            # Create temporary JSONL file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
-                for request in requests:
-                    f.write(json.dumps(request) + '\n')
-                jsonl_path = f.name
-
-            # Upload file to OpenAI
-            with open(jsonl_path, 'rb') as f:
-                file_response = self.client.files.create(
-                    file=f,
-                    purpose='batch'
-                )
-
-            # Create batch job
-            batch_response = self.client.batches.create(
-                input_file_id=file_response.id,
-                endpoint="/v1/chat/completions",
-                completion_window="24h"
-            )
-
-            logger.info(f"Batch job created: {batch_response.id} (file: {file_response.id})")
-            return batch_response.id
-
-        except Exception as e:
-            logger.error(f"Failed to submit batch job: {e}")
-            raise
-
-        finally:
-            # Cleanup temporary file
-            import os
-            try:
-                os.unlink(jsonl_path)
-            except:
-                pass
-
-    def _poll_batch(self, batch_id: str) -> dict:
-        """
-        Poll batch job status until completion.
-
-        Args:
-            batch_id: Batch job ID
-
-        Returns:
-            Batch completion response
-
-        Raises:
-            TimeoutError if batch doesn't complete within timeout
-            Exception if batch fails
-        """
-        import time
-
-        start_time = time.time()
-        poll_count = 0
-
-        logger.info(
-            f"Polling batch {batch_id} (timeout: {self.batch_api_timeout}s, "
-            f"interval: {self.batch_api_poll_interval}s)"
-        )
-
-        while True:
-            poll_count += 1
-            elapsed = time.time() - start_time
-
-            # Check timeout
-            if elapsed > self.batch_api_timeout:
-                raise TimeoutError(
-                    f"Batch job {batch_id} did not complete within {self.batch_api_timeout}s"
-                )
-
-            # Get batch status
-            batch = self.client.batches.retrieve(batch_id)
-            status = batch.status
-
-            logger.debug(
-                f"Poll #{poll_count}: status={status}, elapsed={elapsed:.1f}s, "
-                f"completed={batch.request_counts.completed}/{batch.request_counts.total}"
-            )
-
-            if status == "completed":
-                logger.info(
-                    f"Batch completed: {batch.request_counts.completed} requests in {elapsed:.1f}s"
-                )
-                return batch
-
-            elif status == "failed":
-                raise Exception(f"Batch job {batch_id} failed: {batch.errors}")
-
-            elif status in ["expired", "cancelled"]:
-                raise Exception(f"Batch job {batch_id} was {status}")
-
-            # Wait before next poll
-            time.sleep(self.batch_api_poll_interval)
-
-    def _parse_batch_results(self, batch: dict) -> dict[str, str]:
-        """
-        Download and parse batch results.
-
-        Args:
-            batch: Batch completion response
-
-        Returns:
-            Dict mapping custom_id to summary text
-        """
-        import json
-
-        try:
-            # Download output file
-            output_file_id = batch.output_file_id
-            file_content = self.client.files.content(output_file_id)
-
-            # Parse JSONL results
-            results = {}
-            for line in file_content.text.strip().split('\n'):
-                if not line:
-                    continue
-
-                result = json.loads(line)
-                custom_id = result['custom_id']
-                response = result['response']
-
-                # Extract summary from response
-                if response['status_code'] == 200:
-                    body = response['body']
-                    summary = body['choices'][0]['message']['content'].strip()
-
-                    # Enforce length limit
-                    if len(summary) > self.max_chars + self.tolerance:
-                        summary = summary[:self.max_chars]
-
-                    results[custom_id] = summary
-
-                    # Track cost
-                    usage = body.get('usage', {})
-                    if usage:
-                        self.tracker.track_llm(
-                            provider="openai",
-                            model=self.model,
-                            input_tokens=usage.get('prompt_tokens', 0),
-                            output_tokens=usage.get('completion_tokens', 0),
-                            operation="summary_batch"
-                        )
-                else:
-                    logger.warning(
-                        f"Request {custom_id} failed: {response.get('error', 'Unknown error')}"
-                    )
-
-            logger.info(f"Parsed {len(results)} successful results from batch")
-            return results
-
-        except Exception as e:
-            logger.error(f"Failed to parse batch results: {e}")
-            raise
+    # ===== OpenAI Batch API (centralized in utils.batch_api) =====
 
     def _generate_batch_summaries_with_openai_batch(
         self,
@@ -647,6 +405,8 @@ Summary (max {self.max_chars} characters):"""
     ) -> dict[int, str]:
         """
         Generate summaries using OpenAI Batch API (50% cheaper, async).
+
+        Uses centralized BatchAPIClient for all batch processing logic.
 
         Args:
             filtered_texts: List of (index, text, title) tuples
@@ -662,35 +422,82 @@ Summary (max {self.max_chars} characters):"""
             f"(50% cost savings, async processing)"
         )
 
+        # Create batch API client
+        batch_client = BatchAPIClient(
+            openai_client=self.client,
+            logger_instance=logger,
+            cost_tracker=self.tracker
+        )
+
+        # Define request creation function
+        def create_request(item: tuple[int, str, str], idx: int) -> BatchRequest:
+            section_idx, text, title = item
+
+            # Truncate text for efficiency
+            text_preview = text[:2000]
+            title_context = f"Section title: {title}\n\n" if title else ""
+
+            prompt = f"""Summarize this document section concisely.
+
+{title_context}Section content:
+{text_preview}
+
+CRITICAL: Provide a summary that is EXACTLY {self.max_chars} characters or less (current limit: {self.max_chars} chars).
+Focus on the main topic and key information. This is a hard constraint.
+
+Summary (max {self.max_chars} characters):"""
+
+            return BatchRequest(
+                custom_id=f"section_{section_idx}",
+                method="POST",
+                url="/v1/chat/completions",
+                body={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": self.max_tokens,
+                    "temperature": self.temperature
+                }
+            )
+
+        # Define response parsing function
+        def parse_response(response: dict) -> str:
+            """Extract and validate summary from API response."""
+            summary = response['choices'][0]['message']['content'].strip()
+
+            # Enforce length limit
+            if len(summary) > self.max_chars + self.tolerance:
+                summary = summary[:self.max_chars]
+
+            return summary
+
+        # Process batch using centralized client
         try:
-            # Step 1: Create batch requests
-            requests = self._create_batch_requests(filtered_texts)
-            logger.debug(f"Created {len(requests)} batch requests")
+            results_by_custom_id = batch_client.process_batch(
+                items=filtered_texts,
+                create_request_fn=create_request,
+                parse_response_fn=parse_response,
+                poll_interval=self.batch_api_poll_interval,
+                timeout_hours=self.batch_api_timeout // 3600,
+                operation="summary",
+                model=self.model
+            )
 
-            # Step 2: Submit batch job
-            batch_id = self._submit_batch(requests)
-
-            # Step 3: Poll for completion
-            batch = self._poll_batch(batch_id)
-
-            # Step 4: Parse results
-            results_by_custom_id = self._parse_batch_results(batch)
-
-            # Step 5: Map back to indices
+            # Map results back to section indices
             summaries_map = {}
-            for idx, text, title in filtered_texts:
-                custom_id = f"section_{idx}"
+            for section_idx, text, title in filtered_texts:
+                custom_id = f"section_{section_idx}"
                 if custom_id in results_by_custom_id:
-                    summaries_map[idx] = results_by_custom_id[custom_id]
+                    summaries_map[section_idx] = results_by_custom_id[custom_id]
                 else:
                     # Fallback: truncate text
-                    logger.warning(f"No summary for section {idx}, using fallback")
-                    summaries_map[idx] = text[:self.max_chars].strip() + "..."
+                    logger.warning(f"No summary for section {section_idx}, using fallback")
+                    summaries_map[section_idx] = text[:self.max_chars].strip() + "..."
 
+            logger.info(f"✓ Batch API succeeded: {len(summaries_map)} summaries generated")
             return summaries_map
 
         except Exception as e:
-            logger.error(f"Batch API failed: {e}, falling back to parallel mode")
+            logger.error(f"Batch API failed: {sanitize_error(e)}, falling back to parallel mode")
             raise
 
     def _batch_summarize_with_prompt(
@@ -899,7 +706,7 @@ Generate summaries (MUST be valid JSON):"""
                             summary = self.generate_section_summary(text, title)
                             return (idx, summary, True)
                         except Exception as e2:
-                            logger.error(f"Failed to generate summary for '{title}': {e2}")
+                            logger.error(f"Failed to generate summary for '{title}': {sanitize_error(e2)}")
                             fallback = text[:self.max_chars].strip() + "..."
                             return (idx, fallback, False)
 
@@ -949,7 +756,7 @@ Generate summaries (MUST be valid JSON):"""
                     summary = self.generate_section_summary(text, title)
                     return (idx, summary, True)  # Success
                 except Exception as e:
-                    logger.error(f"Failed to generate summary for '{title}': {e}")
+                    logger.error(f"Failed to generate summary for '{title}': {sanitize_error(e)}")
                     fallback = text[:self.max_chars].strip() + "..."
                     return (idx, fallback, False)  # Failure
 

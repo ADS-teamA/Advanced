@@ -29,9 +29,11 @@ import numpy as np
 try:
     from .cost_tracker import get_global_tracker
     from .config import EmbeddingConfig  # Import unified config from src.config
+    from .utils.security import sanitize_error
 except ImportError:
     from cost_tracker import get_global_tracker
     from config import EmbeddingConfig  # Import unified config from src.config
+    from utils.security import sanitize_error
 
 # Re-export for backward compatibility (will be removed in v2.0)
 # This allows existing code importing from embedding_generator to continue working
@@ -250,7 +252,7 @@ class EmbeddingGenerator:
                 self._cache_misses += 1
                 logger.debug(f"Cache MISS: {len(texts)} texts")
             except Exception as e:
-                logger.error(f"Cache lookup failed, falling back to embedding: {e}", exc_info=True)
+                logger.error(f"Cache lookup failed, falling back to embedding: {sanitize_error(e)}", exc_info=True)
                 self._cache_misses += 1
                 self._cache_errors += 1
 
@@ -283,12 +285,12 @@ class EmbeddingGenerator:
             try:
                 self._add_to_cache(cache_key, embeddings)
             except MemoryError as e:
-                logger.warning(f"Cache storage failed due to memory: {e}. Clearing cache and disabling.")
+                logger.warning(f"Cache storage failed due to memory: {sanitize_error(e)}. Clearing cache and disabling.")
                 self._embedding_cache.clear()  # Free memory
                 self._cache_enabled = False  # Disable cache on memory error
                 self._cache_errors += 1
             except Exception as e:
-                logger.error(f"Failed to store embeddings in cache: {e}", exc_info=True)
+                logger.error(f"Failed to store embeddings in cache: {sanitize_error(e)}", exc_info=True)
                 self._cache_errors += 1
 
                 # Disable cache after too many storage errors

@@ -29,9 +29,17 @@ import time
 try:
     from .config import ContextGenerationConfig, resolve_model_alias
     from .cost_tracker import get_global_tracker
+    from .utils.security import sanitize_error
+    from .utils.api_clients import APIClientFactory
+    from .utils.retry import retry_with_exponential_backoff, is_retryable_error
+    from .utils.batch_api import BatchAPIClient, BatchRequest
 except ImportError:
     from config import ContextGenerationConfig, resolve_model_alias
     from cost_tracker import get_global_tracker
+    from utils.security import sanitize_error
+    from utils.api_clients import APIClientFactory
+    from utils.retry import retry_with_exponential_backoff, is_retryable_error
+    from utils.batch_api import BatchAPIClient, BatchRequest
 
 logger = logging.getLogger(__name__)
 
@@ -104,44 +112,14 @@ class ContextualRetrieval:
         )
 
     def _init_anthropic(self, api_key: Optional[str]):
-        """Initialize Anthropic Claude client."""
-        try:
-            from anthropic import Anthropic
-        except ImportError:
-            raise ImportError(
-                "anthropic package required for Claude. "
-                "Install with: pip install anthropic"
-            )
-
-        api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Anthropic API key required. "
-                "Set ANTHROPIC_API_KEY env var or pass api_key parameter."
-            )
-
-        self.client = Anthropic(api_key=api_key)
+        """Initialize Anthropic Claude client using centralized factory."""
+        self.client = APIClientFactory.create_anthropic(api_key=api_key)
         self.provider_type = "anthropic"
         logger.info("Anthropic client initialized")
 
     def _init_openai(self, api_key: Optional[str]):
-        """Initialize OpenAI client."""
-        try:
-            from openai import OpenAI
-        except ImportError:
-            raise ImportError(
-                "openai package required for OpenAI. "
-                "Install with: pip install openai"
-            )
-
-        api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OpenAI API key required. "
-                "Set OPENAI_API_KEY env var or pass api_key parameter."
-            )
-
-        self.client = OpenAI(api_key=api_key)
+        """Initialize OpenAI client using centralized factory."""
+        self.client = APIClientFactory.create_openai(api_key=api_key)
         self.provider_type = "openai"
         logger.info("OpenAI client initialized")
 
@@ -336,97 +314,73 @@ Please give a short succinct context (50-100 words) to situate this chunk within
 
         return prompt
 
+    @retry_with_exponential_backoff(
+        max_retries=3,
+        base_delay=2.0,
+        retry_condition=is_retryable_error
+    )
     def _generate_with_anthropic(self, prompt: str) -> str:
         """
         Generate context using Anthropic Claude.
 
-        Includes retry logic with exponential backoff for rate limits.
+        Uses centralized retry logic with exponential backoff for rate limits.
         """
-        max_retries = 3
-        base_delay = 2  # seconds
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=self.config.max_tokens,
+            temperature=self.config.temperature,
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-        for attempt in range(max_retries):
-            try:
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self.config.max_tokens,
-                    temperature=self.config.temperature,
-                    messages=[{"role": "user", "content": prompt}]
-                )
+        # Track cost
+        self.tracker.track_llm(
+            provider="anthropic",
+            model=self.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            operation="context"
+        )
 
-                # Track cost
-                self.tracker.track_llm(
-                    provider="anthropic",
-                    model=self.model,
-                    input_tokens=response.usage.input_tokens,
-                    output_tokens=response.usage.output_tokens,
-                    operation="context"
-                )
+        return response.content[0].text
 
-                return response.content[0].text
-            except Exception as e:
-                error_str = str(e).lower()
-                # Check if it's a rate limit error
-                if "rate" in error_str or "429" in error_str:
-                    if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)  # Exponential backoff
-                        logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
-                        time.sleep(delay)
-                        continue
-                # Re-raise if not rate limit or last attempt
-                logger.error(f"Anthropic API error: {self._sanitize_error(str(e))}")
-                raise
-
+    @retry_with_exponential_backoff(
+        max_retries=3,
+        base_delay=2.0,
+        retry_condition=is_retryable_error
+    )
     def _generate_with_openai(self, prompt: str) -> str:
         """
         Generate context using OpenAI.
 
-        Includes retry logic with exponential backoff for rate limits.
+        Uses centralized retry logic with exponential backoff for rate limits.
         """
-        max_retries = 3
-        base_delay = 2  # seconds
+        # GPT-5 and O-series models use max_completion_tokens instead of max_tokens
+        # GPT-5 models only support temperature=1.0 (default)
+        if self.model.startswith(('gpt-5', 'o1', 'o3', 'o4')):
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=1.0,  # GPT-5 only supports default temperature
+                max_completion_tokens=self.config.max_tokens
+            )
+        else:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens
+            )
 
-        for attempt in range(max_retries):
-            try:
-                # GPT-5 and O-series models use max_completion_tokens instead of max_tokens
-                # GPT-5 models only support temperature=1.0 (default)
-                if self.model.startswith(('gpt-5', 'o1', 'o3', 'o4')):
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=1.0,  # GPT-5 only supports default temperature
-                        max_completion_tokens=self.config.max_tokens
-                    )
-                else:
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=self.config.temperature,
-                        max_tokens=self.config.max_tokens
-                    )
+        # Track cost
+        self.tracker.track_llm(
+            provider="openai",
+            model=self.model,
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+            operation="context"
+        )
 
-                # Track cost
-                self.tracker.track_llm(
-                    provider="openai",
-                    model=self.model,
-                    input_tokens=response.usage.prompt_tokens,
-                    output_tokens=response.usage.completion_tokens,
-                    operation="context"
-                )
-
-                return response.choices[0].message.content
-            except Exception as e:
-                error_str = str(e).lower()
-                # Check if it's a rate limit error
-                if "rate" in error_str or "429" in error_str:
-                    if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)  # Exponential backoff
-                        logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
-                        time.sleep(delay)
-                        continue
-                # Re-raise if not rate limit or last attempt
-                logger.error(f"OpenAI API error: {self._sanitize_error(str(e))}")
-                raise
+        return response.choices[0].message.content
 
     def _generate_with_ollama(self, prompt: str) -> str:
         """Generate context using Ollama."""
@@ -476,24 +430,6 @@ Please give a short succinct context (50-100 words) to situate this chunk within
 
         return context
 
-    def _sanitize_error(self, error_msg: str) -> str:
-        """
-        Sanitize error messages to remove potential API keys.
-
-        Args:
-            error_msg: Raw error message
-
-        Returns:
-            Sanitized error message with API keys masked
-        """
-        # Mask Anthropic API keys (sk-ant-...)
-        error_msg = re.sub(r'sk-ant-[a-zA-Z0-9_-]{32,}', 'sk-ant-***', error_msg)
-        # Mask OpenAI API keys (sk-...)
-        error_msg = re.sub(r'sk-[a-zA-Z0-9]{32,}', 'sk-***', error_msg)
-        # Mask generic bearer tokens
-        error_msg = re.sub(r'Bearer [a-zA-Z0-9_-]{20,}', 'Bearer ***', error_msg)
-        return error_msg
-
     def _escape_xml_tags(self, text: str) -> str:
         """
         Escape XML tags in text to prevent prompt injection.
@@ -511,20 +447,32 @@ Please give a short succinct context (50-100 words) to situate this chunk within
 
     # ===== OpenAI Batch API Methods (50% cost savings) =====
 
-    def _create_batch_requests(
+    def _generate_contexts_with_openai_batch(
         self,
-        chunks: List[Tuple[str, dict]]  # [(chunk_text, metadata), ...]
-    ) -> list[dict]:
-        """Create batch API requests for OpenAI Batch API."""
-        batch_requests = []
+        chunks: List[Tuple[str, dict]]
+    ) -> dict:
+        """
+        Generate contexts using OpenAI Batch API (50% cost savings).
 
-        for idx, (chunk_text, metadata) in enumerate(chunks):
+        Uses centralized BatchAPIClient for all batch processing logic.
+        """
+        logger.info(f"Using OpenAI Batch API: {len(chunks)} chunks (50% cost savings, async processing)")
+
+        # Create batch API client
+        batch_client = BatchAPIClient(
+            openai_client=self.client,
+            logger_instance=logger,
+            cost_tracker=self.tracker
+        )
+
+        # Define request creation function
+        def create_request(item: Tuple[str, dict], idx: int) -> BatchRequest:
+            chunk_text, metadata = item
+
             # Build context prompt
             doc_summary = metadata.get("document_summary", "")
             section_title = metadata.get("section_title", "")
             section_path = metadata.get("section_path", "")
-
-            # Build prompt (similar to generate_context but simpler)
             chunk_preview = chunk_text[:1500]  # Limit chunk size for context
 
             prompt = f"""Document: {doc_summary}
@@ -536,160 +484,33 @@ Chunk content:
 
 Provide a brief context (50-100 words) explaining what this chunk discusses within the document."""
 
-            request = {
-                "custom_id": f"chunk_{idx}",
-                "method": "POST",
-                "url": "/v1/chat/completions",
-                "body": {
+            return BatchRequest(
+                custom_id=f"chunk_{idx}",
+                method="POST",
+                url="/v1/chat/completions",
+                body={
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": self.config.max_tokens,
                     "temperature": self.config.temperature
                 }
-            }
-            batch_requests.append(request)
+            )
 
-        return batch_requests
+        # Define response parsing function
+        def parse_response(response: dict) -> str:
+            """Extract context from API response."""
+            return response['choices'][0]['message']['content'].strip()
 
-    def _submit_batch(self, requests: list[dict]) -> str:
-        """Submit batch job to OpenAI Batch API."""
-        import tempfile
-        import json
-
-        # Create temporary JSONL file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
-            for request in requests:
-                f.write(json.dumps(request) + '\n')
-            jsonl_path = f.name
-
-        # Upload file to OpenAI
-        with open(jsonl_path, 'rb') as f:
-            file_response = self.client.files.create(file=f, purpose='batch')
-
-        # Create batch job
-        batch_response = self.client.batches.create(
-            input_file_id=file_response.id,
-            endpoint="/v1/chat/completions",
-            completion_window="24h"
+        # Process batch using centralized client
+        results_map = batch_client.process_batch(
+            items=chunks,
+            create_request_fn=create_request,
+            parse_response_fn=parse_response,
+            poll_interval=self.batch_api_poll_interval,
+            timeout_hours=self.batch_api_timeout // 3600,
+            operation="context",
+            model=self.model
         )
-
-        logger.info(f"Batch job created: {batch_response.id} (file: {file_response.id})")
-
-        # Track batch ID for cost
-        self.tracker.add_batch_job(
-            provider="openai",
-            model=self.model,
-            operation="context_generation",
-            batch_id=batch_response.id
-        )
-
-        # Clean up temp file
-        import os
-        os.unlink(jsonl_path)
-
-        return batch_response.id
-
-    def _poll_batch(self, batch_id: str) -> dict:
-        """Poll batch job status until completion."""
-        import time
-        start_time = time.time()
-        poll_count = 0
-
-        while True:
-            poll_count += 1
-            elapsed = time.time() - start_time
-
-            # Check timeout
-            if elapsed > self.batch_api_timeout:
-                raise TimeoutError(
-                    f"Batch job {batch_id} did not complete within {self.batch_api_timeout}s"
-                )
-
-            # Poll status
-            batch = self.client.batches.retrieve(batch_id)
-            status = batch.status
-
-            logger.info(f"Batch {batch_id} status: {status} (poll {poll_count}, {elapsed:.0f}s elapsed)")
-
-            if status == "completed":
-                logger.info(f"✓ Batch job {batch_id} completed successfully")
-                return batch
-            elif status in ["failed", "expired", "cancelled"]:
-                error_msg = f"Batch job {batch_id} {status}"
-                if hasattr(batch, 'errors') and batch.errors:
-                    error_msg += f": {batch.errors}"
-                raise Exception(error_msg)
-            elif status in ["validating", "in_progress", "finalizing"]:
-                # Expected states - keep polling
-                time.sleep(self.batch_api_poll_interval)
-            else:
-                # Unknown status - keep polling but warn
-                logger.warning(f"Unknown batch status: {status}")
-                time.sleep(self.batch_api_poll_interval)
-
-    def _parse_batch_results(self, batch: dict, chunks: List[Tuple[str, dict]]) -> dict:
-        """Parse batch results from OpenAI Batch API."""
-        import json
-        import tempfile
-
-        # Download output file
-        output_file_id = batch.output_file_id
-        content = self.client.files.content(output_file_id)
-
-        # Save to temp file and parse
-        results_map = {}
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as f:
-            f.write(content.read())
-            temp_path = f.name
-
-        # Parse JSONL results
-        with open(temp_path, 'r') as f:
-            for line in f:
-                if line.strip():
-                    result = json.loads(line)
-                    custom_id = result['custom_id']
-                    idx = int(custom_id.split('_')[1])  # Extract index from "chunk_123"
-
-                    # Extract context from response
-                    if result['response']['status_code'] == 200:
-                        body = result['response']['body']
-                        context = body['choices'][0]['message']['content'].strip()
-                        results_map[idx] = context
-                    else:
-                        logger.warning(f"Chunk {idx} failed: {result['response']}")
-                        results_map[idx] = ""  # Empty context for failed chunks
-
-        # Clean up
-        import os
-        os.unlink(temp_path)
-
-        # Track cost for batch
-        self.tracker.finalize_batch_job(batch.id, batch)
-
-        return results_map
-
-    def _generate_contexts_with_openai_batch(
-        self,
-        chunks: List[Tuple[str, dict]]
-    ) -> dict:
-        """Generate contexts using OpenAI Batch API (50% cost savings)."""
-        logger.info(f"Using OpenAI Batch API: {len(chunks)} chunks (50% cost savings, async processing)")
-
-        # Step 1: Create batch requests
-        requests = self._create_batch_requests(chunks)
-
-        # Step 2: Submit batch
-        batch_id = self._submit_batch(requests)
-
-        # Step 3: Poll for completion
-        logger.info(
-            f"Polling batch {batch_id} "
-            f"(timeout: {self.batch_api_timeout}s, interval: {self.batch_api_poll_interval}s)"
-        )
-        batch = self._poll_batch(batch_id)
-
-        # Step 4: Parse results
-        results_map = self._parse_batch_results(batch, chunks)
 
         logger.info(f"✓ Batch API succeeded: {len(results_map)} contexts generated")
         return results_map

@@ -45,25 +45,10 @@ except ImportError:
         "Install with: pip install sentence-transformers"
     )
 
+# Import ModelRegistry for centralized model management
+from src.utils.model_registry import ModelRegistry
+
 logger = logging.getLogger(__name__)
-
-
-# Model registry with recommended models for legal documents
-RERANKER_MODELS = {
-    # MS MARCO models (general domain, baseline)
-    "ms-marco-mini": "cross-encoder/ms-marco-MiniLM-L-6-v2",  # Fast, good baseline
-    "ms-marco-base": "cross-encoder/ms-marco-MiniLM-L-12-v2",  # Better accuracy
-
-    # BAAI models (Chinese company, good multilingual support)
-    "bge-reranker-base": "BAAI/bge-reranker-base",  # Good for general text
-    "bge-reranker-large": "BAAI/bge-reranker-large",  # SOTA accuracy
-
-    # Aliases for convenience
-    "default": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "fast": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "accurate": "cross-encoder/ms-marco-MiniLM-L-12-v2",
-    "sota": "BAAI/bge-reranker-large",
-}
 
 
 @dataclass
@@ -112,13 +97,13 @@ class CrossEncoderReranker:
         Initialize cross-encoder reranker.
 
         Args:
-            model_name: Model name or alias from RERANKER_MODELS
+            model_name: Model name or alias from ModelRegistry.RERANKER_MODELS
             device: Device for inference ('cpu', 'cuda', 'mps')
             max_length: Maximum sequence length (default: 512)
             batch_size: Batch size for inference (default: 32)
         """
-        # Resolve model alias
-        self.model_name = RERANKER_MODELS.get(model_name, model_name)
+        # Resolve model alias using centralized ModelRegistry
+        self.model_name = ModelRegistry.resolve_reranker(model_name)
         self.device = device
         self.max_length = max_length
         self.batch_size = batch_size
@@ -408,7 +393,7 @@ if __name__ == "__main__":
 
     print("5. Model registry:")
     print("   Available models:")
-    for alias, model in RERANKER_MODELS.items():
+    for alias, model in ModelRegistry.RERANKER_MODELS.items():
         print(f"      {alias:20s} → {model}")
     print("")
 

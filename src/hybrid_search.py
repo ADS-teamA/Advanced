@@ -40,7 +40,6 @@ Usage:
 """
 
 import logging
-import pickle
 from pathlib import Path
 from typing import List, Dict, Optional
 from collections import defaultdict
@@ -53,6 +52,9 @@ except ImportError:
         "rank-bm25 required for hybrid search. "
         "Install with: pip install rank-bm25"
     )
+
+# Import utilities
+from src.utils.persistence import PersistenceManager
 
 logger = logging.getLogger(__name__)
 
@@ -215,11 +217,12 @@ class BM25Index:
         self.tokenized_corpus.extend(other.tokenized_corpus)
         self.metadata.extend(other.metadata)
 
-        # Update doc_id_map with offset indices
-        for doc_id, indices in other.doc_id_map.items():
-            if doc_id not in self.doc_id_map:
-                self.doc_id_map[doc_id] = []
-            self.doc_id_map[doc_id].extend([idx + base_idx for idx in indices])
+        # Update doc_id_map with offset indices using centralized utility
+        PersistenceManager.update_doc_id_indices(
+            self.doc_id_map,
+            other.doc_id_map,
+            base_idx
+        )
 
         # Rebuild BM25 index with merged corpus
         self.bm25 = BM25Okapi(self.tokenized_corpus)
@@ -228,48 +231,88 @@ class BM25Index:
 
     def save(self, path: Path) -> None:
         """
-        Save BM25 index to disk.
+        Save BM25 index to disk using hybrid serialization.
 
         Args:
-            path: Path to save pickle file
+            path: Base path (without extension) to save files
+                  Creates: {path}_config.json and {path}_arrays.pkl
         """
-        data = {
+        path = Path(path)
+
+        # Config (JSON - human-readable)
+        config = {
+            "corpus_count": len(self.corpus),
+            "format_version": "1.0"
+        }
+        config_path = path.parent / f"{path.stem}_config.json"
+        PersistenceManager.save_json(config_path, config)
+
+        # Arrays (Pickle - performance)
+        arrays = {
             "corpus": self.corpus,
             "chunk_ids": self.chunk_ids,
             "metadata": self.metadata,
             "doc_id_map": self.doc_id_map
         }
+        arrays_path = path.parent / f"{path.stem}_arrays.pkl"
+        PersistenceManager.save_pickle(arrays_path, arrays)
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
-
-        logger.info(f"BM25 index saved: {path}")
+        logger.info(f"BM25 index saved: {config_path}, {arrays_path}")
 
     @classmethod
     def load(cls, path: Path) -> "BM25Index":
         """
-        Load BM25 index from disk.
+        Load BM25 index from disk with backward compatibility.
+
+        Supports:
+        - Old format: {path}.pkl (single pickle file)
+        - New format: {path}_config.json + {path}_arrays.pkl
 
         Args:
-            path: Path to pickle file
+            path: Base path to load from
 
         Returns:
             BM25Index instance
         """
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+        path = Path(path)
 
-        index = cls()
-        index.corpus = data["corpus"]
-        index.chunk_ids = data["chunk_ids"]
-        index.metadata = data["metadata"]
-        index.doc_id_map = data["doc_id_map"]
+        # Try new format first
+        config_path = path.parent / f"{path.stem}_config.json"
+        arrays_path = path.parent / f"{path.stem}_arrays.pkl"
+
+        if config_path.exists() and arrays_path.exists():
+            # New format - hybrid serialization
+            logger.info(f"Loading BM25 index (new format): {path}")
+
+            # Load arrays
+            arrays = PersistenceManager.load_pickle(arrays_path)
+
+            index = cls()
+            index.corpus = arrays["corpus"]
+            index.chunk_ids = arrays["chunk_ids"]
+            index.metadata = arrays["metadata"]
+            index.doc_id_map = arrays["doc_id_map"]
+
+        else:
+            # Old format - single pickle file
+            logger.warning(
+                f"Loading BM25 index (old format): {path}. "
+                "Consider re-saving in new format."
+            )
+
+            data = PersistenceManager.load_pickle(path)
+
+            index = cls()
+            index.corpus = data["corpus"]
+            index.chunk_ids = data["chunk_ids"]
+            index.metadata = data["metadata"]
+            index.doc_id_map = data["doc_id_map"]
 
         # Rebuild BM25 index and tokenized corpus
         index.tokenized_corpus = [index._tokenize(doc) for doc in index.corpus]
         index.bm25 = BM25Okapi(index.tokenized_corpus)
 
-        logger.info(f"BM25 index loaded: {path}")
+        logger.info(f"BM25 index loaded: {len(index.corpus)} documents")
 
         return index
 
@@ -638,17 +681,23 @@ class HybridVectorStore:
         # Save BM25 store
         self.bm25_store.save(output_dir)
 
-        # Save config
-        config = {"fusion_k": self.fusion_k}
-        with open(output_dir / "hybrid_config.pkl", "wb") as f:
-            pickle.dump(config, f)
+        # Save config (JSON - human-readable)
+        config = {
+            "fusion_k": self.fusion_k,
+            "format_version": "1.0"
+        }
+        PersistenceManager.save_json(output_dir / "hybrid_config.json", config)
 
         logger.info("Hybrid store saved")
 
     @classmethod
     def load(cls, input_dir: Path) -> "HybridVectorStore":
         """
-        Load both FAISS and BM25 stores.
+        Load both FAISS and BM25 stores with backward compatibility.
+
+        Supports:
+        - Old format: hybrid_config.pkl
+        - New format: hybrid_config.json
 
         Args:
             input_dir: Directory containing stores
@@ -670,9 +719,25 @@ class HybridVectorStore:
         # Load BM25 store
         bm25_store = BM25Store.load(input_dir)
 
-        # Load config
-        with open(input_dir / "hybrid_config.pkl", "rb") as f:
-            config = pickle.load(f)
+        # Load config (try new format first, fallback to old)
+        json_config_path = input_dir / "hybrid_config.json"
+        pkl_config_path = input_dir / "hybrid_config.pkl"
+
+        if json_config_path.exists():
+            # New format (JSON)
+            config = PersistenceManager.load_json(json_config_path)
+        elif pkl_config_path.exists():
+            # Old format (pickle)
+            logger.warning(
+                "Loading hybrid config (old format). "
+                "Consider re-saving in new format."
+            )
+            config = PersistenceManager.load_pickle(pkl_config_path)
+        else:
+            raise FileNotFoundError(
+                f"No hybrid config found in {input_dir}. "
+                "Expected hybrid_config.json or hybrid_config.pkl"
+            )
 
         logger.info("Hybrid store loaded")
 
