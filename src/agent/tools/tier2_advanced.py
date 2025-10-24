@@ -646,10 +646,22 @@ class ExpandSearchContextTool(BaseTool):
 
                 # Similarity-based expansion
                 if expansion_strategy in ["similarity", "hybrid"]:
-                    similarity_chunks = self._expand_by_similarity(
-                        target_chunk, k=k if expansion_strategy == "similarity" else k // 2
-                    )
-                    expansion["expanded_chunks"].extend(similarity_chunks)
+                    try:
+                        similarity_chunks = self._expand_by_similarity(
+                            target_chunk, k=k if expansion_strategy == "similarity" else k // 2
+                        )
+                        expansion["expanded_chunks"].extend(similarity_chunks)
+                    except Exception as e:
+                        logger.error(f"Similarity-based expansion failed: {e}")
+                        if expansion_strategy == "similarity":
+                            # Pure similarity strategy failed completely
+                            return ToolResult(
+                                success=False,
+                                data=None,
+                                error=f"Similarity expansion failed: {e}",
+                            )
+                        # For hybrid, continue with section-based only but warn user
+                        expansion["expansion_warning"] = f"Similarity expansion failed: {str(e)}"
 
                 # Remove duplicates (keep first occurrence)
                 seen_ids = {target_chunk.get("chunk_id")}
@@ -684,54 +696,80 @@ class ExpandSearchContextTool(BaseTool):
 
     def _expand_by_section(self, target_chunk: Dict, all_chunks: List[Dict], k: int) -> List[Dict]:
         """Expand by finding neighboring chunks from same section."""
-        document_id = target_chunk.get("document_id")
-        section_id = target_chunk.get("section_id")
-        chunk_id = target_chunk.get("chunk_id")
+        try:
+            document_id = target_chunk.get("document_id")
+            section_id = target_chunk.get("section_id")
+            chunk_id = target_chunk.get("chunk_id")
 
-        # Find chunks from same section
-        same_section = [
-            chunk
-            for chunk in all_chunks
-            if chunk.get("document_id") == document_id
-            and chunk.get("section_id") == section_id
-            and chunk.get("chunk_id") != chunk_id
-        ]
+            if not document_id or not section_id:
+                logger.warning("Target chunk missing document_id or section_id for section expansion")
+                return []
 
-        # Sort by chunk_id (preserves order)
-        same_section.sort(key=lambda x: x.get("chunk_id", ""))
+            if not all_chunks:
+                logger.warning("No chunks available for section expansion")
+                return []
 
-        # Return up to k chunks
-        return [format_chunk_result(chunk) for chunk in same_section[:k]]
+            # Find chunks from same section
+            same_section = [
+                chunk
+                for chunk in all_chunks
+                if isinstance(chunk, dict)
+                and chunk.get("document_id") == document_id
+                and chunk.get("section_id") == section_id
+                and chunk.get("chunk_id") != chunk_id
+            ]
+
+            # Sort by chunk_id (preserves order)
+            same_section.sort(key=lambda x: x.get("chunk_id", ""))
+
+            # Return up to k chunks
+            return [format_chunk_result(chunk) for chunk in same_section[:k]]
+
+        except Exception as e:
+            logger.error(f"Section-based expansion failed: {e}", exc_info=True)
+            return []  # Return empty instead of crashing
 
     def _expand_by_similarity(self, target_chunk: Dict, k: int) -> List[Dict]:
-        """Expand by finding semantically similar chunks."""
-        # Validate embedder is available
-        if not self.embedder:
-            logger.error("Embedder not initialized - cannot perform similarity expansion")
-            return []
+        """
+        Expand by finding semantically similar chunks.
+
+        Raises:
+            ValueError: If embedder is not initialized
+            Exception: If embedding or search fails
+        """
+        # Validate embedder is available and initialized
+        if not self.embedder or not hasattr(self.embedder, 'dimensions') or not self.embedder.dimensions:
+            logger.error("Embedder not properly initialized - cannot perform similarity expansion")
+            raise ValueError("Embedder not available for similarity-based expansion")
 
         # Use chunk content to find similar chunks
         content = target_chunk.get("content", "")
         if not content:
+            logger.warning(f"Chunk {target_chunk.get('chunk_id')} has no content for similarity expansion")
             return []
 
-        # Embed target chunk content
-        query_embedding = self.embedder.embed_texts([content])
+        try:
+            # Embed target chunk content
+            query_embedding = self.embedder.embed_texts([content])
 
-        # Search for similar chunks
-        results = self.vector_store.hierarchical_search(
-            query_text=content,
-            query_embedding=query_embedding,
-            k_layer3=k + 1,  # +1 to exclude self
-        )
+            # Search for similar chunks
+            results = self.vector_store.hierarchical_search(
+                query_text=content,
+                query_embedding=query_embedding,
+                k_layer3=k + 1,  # +1 to exclude self
+            )
 
-        chunks = results.get("layer3", [])
+            chunks = results.get("layer3", [])
 
-        # Filter out the target chunk itself
-        target_id = target_chunk.get("chunk_id")
-        similar_chunks = [chunk for chunk in chunks if chunk.get("chunk_id") != target_id]
+            # Filter out the target chunk itself
+            target_id = target_chunk.get("chunk_id")
+            similar_chunks = [chunk for chunk in chunks if chunk.get("chunk_id") != target_id]
 
-        return [format_chunk_result(chunk) for chunk in similar_chunks[:k]]
+            return [format_chunk_result(chunk) for chunk in similar_chunks[:k]]
+
+        except Exception as e:
+            logger.error(f"Similarity expansion failed during embedding/search: {e}", exc_info=True)
+            raise  # Propagate to parent for proper error handling
 
 
 class ChunkSimilaritySearchInput(ToolInput):
@@ -797,25 +835,34 @@ class ChunkSimilaritySearchTool(BaseTool):
                     metadata={"chunk_id": chunk_id},
                 )
 
-            # Validate embedder is available
-            if not self.embedder:
+            # Validate embedder is available and initialized
+            if not self.embedder or not hasattr(self.embedder, 'dimensions') or not self.embedder.dimensions:
                 return ToolResult(
                     success=False,
                     data=None,
-                    error="Embedder not initialized - cannot perform similarity search",
+                    error="Embedder not properly initialized - cannot perform similarity search",
                     metadata={"chunk_id": chunk_id},
                 )
 
-            # Embed target chunk
-            query_embedding = self.embedder.embed_texts([content])
+            try:
+                # Embed target chunk
+                query_embedding = self.embedder.embed_texts([content])
 
-            # Search for similar chunks
-            results = self.vector_store.hierarchical_search(
-                query_text=content,
-                query_embedding=query_embedding,
-                k_layer3=k * 2 + 1,  # Retrieve more, filter later
-                use_doc_filtering=not cross_document,
-            )
+                # Search for similar chunks
+                results = self.vector_store.hierarchical_search(
+                    query_text=content,
+                    query_embedding=query_embedding,
+                    k_layer3=k * 2 + 1,  # Retrieve more, filter later
+                    use_doc_filtering=not cross_document,
+                )
+            except Exception as e:
+                logger.error(f"Embedding or search failed in chunk_similarity_search: {e}", exc_info=True)
+                return ToolResult(
+                    success=False,
+                    data=None,
+                    error=f"Similarity search failed: {type(e).__name__}: {str(e)}",
+                    metadata={"chunk_id": chunk_id, "error_type": type(e).__name__},
+                )
 
             chunks = results.get("layer3", [])
 
