@@ -251,7 +251,14 @@ Pro dokument BZ_VR1.pdf (46 MB, 1173 sekcí, ~3000 chunků):
 **Doporučení:**
 - max_workers=20 je bezpečné pro Tier 1+
 - Pro free tier snížit na max_workers=2
-- Implementováno retry s exponential backoff
+
+**Retry Logic:**
+Všechny API volání implementují exponential backoff:
+- Počáteční delay: 1s
+- Max retries: 3
+- Backoff multiplikátor: 2× (1s, 2s, 4s)
+- Ošetřené chyby: RateLimitError, Timeout, ConnectionError
+- Implementace: Automaticky v anthropic/openai SDK clients
 
 ### Memory consumption
 Vyšší batching = více paměti:

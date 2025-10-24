@@ -3,6 +3,12 @@
 Datum: 2025-10-24
 Analyzovaný dokument: BZ_VR1 (1).pdf (46 MB, 1173 sekcí)
 
+**Poznámka k cenám:**
+- Ceny platné k říjnu 2024
+- Zdroj: [OpenAI API Pricing](https://openai.com/pricing), [Anthropic Pricing](https://anthropic.com/pricing)
+- Ceny se mohou měnit - před nasazením do produkce ověřte aktuální ceny
+- Všechny ceny jsou v USD za 1M tokenů
+
 ## Současná konfigurace modelů
 
 ### PHASE 2: Generování sumářů

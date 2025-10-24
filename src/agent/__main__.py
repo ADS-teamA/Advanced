@@ -4,11 +4,14 @@ Entry point for agent CLI when invoked as: python -m src.agent.cli
 
 import sys
 import argparse
+import logging
 from pathlib import Path
 
 # Use absolute imports for -m invocation
 from src.agent.config import AgentConfig, CLIConfig
 from src.agent.cli import main
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -53,7 +56,7 @@ if __name__ == "__main__":
 
     try:
         args = parse_args()
-        print(f"📝 Args parsed: vector_store={args.vector_store}")
+        logger.debug(f"Args parsed: vector_store={args.vector_store}, model={args.model}, debug={args.debug}")
 
         # Create config from args
         config = AgentConfig(
@@ -64,10 +67,10 @@ if __name__ == "__main__":
                 enable_streaming=not args.no_streaming
             )
         )
-        print(f"✅ Config created")
+        logger.debug("Config created successfully")
 
         # Run main
-        print(f"🔧 Calling main()...")
+        logger.debug("Calling main()")
         main(config)
 
     except KeyboardInterrupt:

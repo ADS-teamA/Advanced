@@ -233,6 +233,20 @@ class AgentCLI:
         # Create agent
         self.agent = AgentCore(self.config)
 
+        # Check for degraded mode
+        degraded_features = []
+        if self.config.enable_knowledge_graph and knowledge_graph is None:
+            degraded_features.append("Knowledge Graph (graph tools unavailable)")
+        if self.config.tool_config.enable_reranking and reranker is None:
+            degraded_features.append("Reranking (search quality reduced)")
+
+        if degraded_features:
+            print("⚠️  DEGRADED MODE ACTIVE:")
+            for feature in degraded_features:
+                print(f"   • {feature}")
+            print("\nAgent will run with limited functionality.")
+            print("To enable missing features, check configuration and dependencies.\n")
+
         print("✅ Agent ready!\n")
 
     def run_repl(self):

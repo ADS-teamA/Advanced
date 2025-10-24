@@ -176,13 +176,15 @@ config = IndexingConfig(
 pipeline = IndexingPipeline(config)
 ```
 
-**Tesseract Language Codes:**
+**Commonly Used Tesseract Language Codes:**
 - `ces` - Czech (Čeština)
 - `eng` - English
 - `deu` - German (Deutsch)
 - `slk` - Slovak (Slovenčina)
 - `pol` - Polish (Polski)
 - `auto` - Automatic language detection
+
+**Full list:** See [Tesseract Language Codes](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html) for all supported languages (100+)
 
 ### Czech Character Fix for Malformed PDFs
 
