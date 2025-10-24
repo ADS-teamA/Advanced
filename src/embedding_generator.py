@@ -23,37 +23,21 @@ import logging
 import os
 import hashlib
 from typing import List, Dict, Optional, Union
-from dataclasses import dataclass
 from collections import OrderedDict
 import numpy as np
 
 try:
     from .cost_tracker import get_global_tracker
+    from .config import EmbeddingConfig  # Import unified config from src.config
 except ImportError:
     from cost_tracker import get_global_tracker
+    from config import EmbeddingConfig  # Import unified config from src.config
+
+# Re-export for backward compatibility (will be removed in v2.0)
+# This allows existing code importing from embedding_generator to continue working
+__all__ = ['EmbeddingGenerator', 'EmbeddingConfig']
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class EmbeddingConfig:
-    """Configuration for embedding generation."""
-    model: str = "bge-m3"  # Default: BGE-M3-v2 (multilingual, local, M1 optimized)
-    batch_size: int = 32  # Optimized for local inference
-    normalize: bool = True  # For cosine similarity (FAISS IndexFlatIP)
-    dimensions: Optional[int] = None  # Auto-detected from model
-    # Embedding cache configuration (similar_query_cache infrastructure)
-    cache_enabled: bool = True  # Enable cache for embeddings
-    cache_max_size: int = 1000  # Max cache entries (hit rate depends on query patterns)
-
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        if self.batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
-        if self.dimensions is not None and self.dimensions <= 0:
-            raise ValueError(f"dimensions must be positive if specified, got {self.dimensions}")
-        if self.cache_max_size <= 0:
-            raise ValueError(f"cache_max_size must be positive, got {self.cache_max_size}")
 
 
 class EmbeddingGenerator:
@@ -87,6 +71,7 @@ class EmbeddingGenerator:
         self._embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self._cache_hits = 0
         self._cache_misses = 0
+        self._cache_errors = 0  # Track cache failures
 
         # Initialize cost tracker
         self.tracker = get_global_tracker()
@@ -267,6 +252,15 @@ class EmbeddingGenerator:
             except Exception as e:
                 logger.error(f"Cache lookup failed, falling back to embedding: {e}", exc_info=True)
                 self._cache_misses += 1
+                self._cache_errors += 1
+
+                # Disable cache after too many errors
+                if self._cache_errors > 10:
+                    logger.error(
+                        f"❌ Cache disabled due to repeated errors ({self._cache_errors} failures). "
+                        f"Performance degraded. Check logs for details."
+                    )
+                    self._cache_enabled = False
                 # Continue to embedding below
 
         logger.info(f"Embedding {len(texts)} texts...")
@@ -292,8 +286,18 @@ class EmbeddingGenerator:
                 logger.warning(f"Cache storage failed due to memory: {e}. Clearing cache and disabling.")
                 self._embedding_cache.clear()  # Free memory
                 self._cache_enabled = False  # Disable cache on memory error
+                self._cache_errors += 1
             except Exception as e:
                 logger.error(f"Failed to store embeddings in cache: {e}", exc_info=True)
+                self._cache_errors += 1
+
+                # Disable cache after too many storage errors
+                if self._cache_errors > 10:
+                    logger.error(
+                        f"❌ Cache disabled due to storage errors ({self._cache_errors} failures). "
+                        f"Performance degraded."
+                    )
+                    self._cache_enabled = False
                 # Continue execution - cache failure shouldn't break embedding
 
         logger.info(f"Embeddings generated: shape {embeddings.shape}")
@@ -331,13 +335,17 @@ class EmbeddingGenerator:
 
     def get_cache_stats(self) -> Dict:
         """Get cache statistics for monitoring."""
+        total_requests = self._cache_hits + self._cache_misses
+        error_rate = self._cache_errors / total_requests if total_requests > 0 else 0
         return {
             "enabled": self._cache_enabled,
             "max_size": self._cache_max_size,
             "current_size": len(self._embedding_cache),
             "hits": self._cache_hits,
             "misses": self._cache_misses,
+            "errors": self._cache_errors,
             "hit_rate": self._get_cache_hit_rate(),
+            "error_rate": error_rate,
         }
 
     def _embed_voyage(self, texts: List[str]) -> np.ndarray:

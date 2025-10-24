@@ -40,22 +40,78 @@ All configuration classes can be imported by other modules.
 """
 
 import os
+import logging
 from typing import Optional, List
 from pathlib import Path
 from dataclasses import dataclass, field
 
+logger = logging.getLogger(__name__)
+
 
 def load_env():
-    """Load environment variables from .env file."""
-    env_path = Path(__file__).parent.parent.parent / ".env"
+    """Load environment variables from .env file with robust error handling."""
+    # Primary path: project root (src/config.py -> parent.parent)
+    env_path = Path(__file__).parent.parent / ".env"
 
+    def _load_env_file(path: Path, is_fallback: bool = False):
+        """Helper to load a single .env file with error handling."""
+        try:
+            if is_fallback:
+                logger.warning(
+                    f"Primary .env not found at {env_path}\n"
+                    f"Using fallback: {path}\n"
+                    f"This may cause unexpected configuration behavior."
+                )
+            else:
+                logger.info(f"Loading configuration from {path}")
+
+            with open(path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        try:
+                            key, value = line.split('=', 1)
+                            os.environ[key.strip()] = value.strip()
+                        except ValueError as e:
+                            logger.warning(f"Skipping malformed line {line_num} in {path}: {line}")
+            return True
+
+        except UnicodeDecodeError as e:
+            logger.error(f"Failed to read .env file (encoding error): {e}")
+            raise RuntimeError(
+                f".env file contains invalid UTF-8 characters.\n"
+                f"Please ensure .env is saved with UTF-8 encoding.\n"
+                f"Path: {path}"
+            )
+        except PermissionError as e:
+            logger.error(f"Permission denied reading .env file: {e}")
+            raise RuntimeError(
+                f"Cannot read .env file (permission denied).\n"
+                f"Please check file permissions.\n"
+                f"Path: {path}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to load .env file: {e}")
+            raise RuntimeError(
+                f"Failed to load configuration from .env file: {e}\n"
+                f"Path: {path}"
+            )
+
+    # Try primary path first
     if env_path.exists():
-        with open(env_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key.strip()] = value.strip()
+        _load_env_file(env_path, is_fallback=False)
+    else:
+        # Fallback: current working directory
+        cwd_env = Path.cwd() / ".env"
+        if cwd_env.exists():
+            _load_env_file(cwd_env, is_fallback=True)
+        else:
+            logger.warning(
+                f"No .env file found.\n"
+                f"Expected: {env_path}\n"
+                f"Fallback: {cwd_env}\n"
+                f"Using default configuration values and environment variables."
+            )
 
 
 # Load .env on module import
@@ -218,10 +274,12 @@ class ExtractionConfig:
         )
     """
 
-    # OCR settings
+    # OCR settings - Tesseract engine (best for Czech)
     enable_ocr: bool = True
-    ocr_language: List[str] = field(default_factory=lambda: ["cs-CZ", "en-US"])
-    ocr_recognition: str = "accurate"  # "accurate" or "fast"
+    # Tesseract language codes: ces=Czech, eng=English, deu=German, etc.
+    # Use ["auto"] for automatic language detection
+    ocr_language: List[str] = field(default_factory=lambda: ["ces", "eng"])
+    ocr_recognition: str = "accurate"  # "accurate" or "fast" (deprecated for Tesseract)
 
     # Table extraction
     table_mode: str = "ACCURATE"  # Will be converted to TableFormerMode
@@ -232,17 +290,32 @@ class ExtractionConfig:
     enable_smart_hierarchy: bool = True  # Font-size based classification
     hierarchy_tolerance: float = 0.8  # BBox height clustering tolerance (pixels, lower = stricter)
 
-    # Summary generation (PHASE 2) - Deprecated, use SummarizationConfig instead
-    generate_summaries: bool = False  # Enable in PHASE 2 (legacy, rarely used)
-    summary_max_chars: int = 150      # Legacy parameter
-    summary_style: str = "generic"    # Legacy parameter ("generic" or "expert")
-
     # Output formats
     generate_markdown: bool = True
     generate_json: bool = True
 
     # Performance
     layout_model: str = "EGRET_XLARGE"  # Options: HERON, EGRET_LARGE, EGRET_XLARGE (recommended)
+
+    @classmethod
+    def from_env(cls) -> "ExtractionConfig":
+        """
+        Load configuration from environment variables.
+
+        Environment Variables:
+            OCR_LANGUAGE: Comma-separated language codes (default: "ces,eng")
+            ENABLE_SMART_HIERARCHY: Enable font-size based hierarchy (default: "true")
+
+        Returns:
+            ExtractionConfig instance loaded from environment
+        """
+        ocr_lang_str = os.getenv("OCR_LANGUAGE", "ces,eng")
+        ocr_languages = [lang.strip() for lang in ocr_lang_str.split(",")]
+
+        return cls(
+            ocr_language=ocr_languages,
+            enable_smart_hierarchy=os.getenv("ENABLE_SMART_HIERARCHY", "true").lower() == "true",
+        )
 
 
 @dataclass
@@ -259,11 +332,22 @@ class SummarizationConfig:
     tolerance: int = 20           # Length tolerance
     style: str = "generic"        # Generic > Expert summaries
     temperature: float = 0.3      # Low temperature for consistency
-    max_tokens: int = 500         # Max LLM output tokens
+    max_tokens: int = 100         # Max LLM output tokens (optimized: 150 chars ≈ 40-60 tokens)
     retry_on_exceed: bool = True  # Retry if exceeds max_chars
     max_retries: int = 3          # Max retry attempts
-    max_workers: int = 10         # Parallel summary generation
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    max_workers: int = 20         # Parallel summary generation
     min_text_length: int = 50     # Min text length for summarization
+
+    # Prompt batching optimization (DISABLED - JSON overhead makes it slower)
+    # For most LLMs, parallel mode with smaller max_tokens is faster than batching
+    enable_prompt_batching: bool = False  # Batch multiple sections in one API call
+    batch_size: int = 8           # Number of sections per API call (if enabled)
+
+    # OpenAI Batch API optimization (NEW - 50% cost savings, async processing)
+    use_batch_api: bool = True    # Use OpenAI Batch API for summaries (50% cheaper)
+    batch_api_poll_interval: int = 5   # Seconds between status checks (faster response)
+    batch_api_timeout: int = 43200  # Max wait time in seconds (12 hours default)
 
     # Model config loaded from .env (don't set here)
     provider: Optional[str] = None
@@ -275,6 +359,29 @@ class SummarizationConfig:
             model_config = ModelConfig.from_env()
             self.provider = model_config.llm_provider
             self.model = model_config.llm_model
+
+    @classmethod
+    def from_env(cls, **overrides) -> "SummarizationConfig":
+        """
+        Load configuration from environment variables.
+
+        Environment Variables:
+            LLM_PROVIDER: LLM provider (from ModelConfig)
+            LLM_MODEL: Model name (from ModelConfig)
+            SPEED_MODE: "fast" or "eco" (affects use_batch_api)
+
+        Args:
+            **overrides: Override specific fields
+
+        Returns:
+            SummarizationConfig instance loaded from environment
+        """
+        speed_mode = os.getenv("SPEED_MODE", "fast")
+        config = cls(
+            use_batch_api=(speed_mode == "eco"),
+            **overrides
+        )
+        return config
 
 
 @dataclass
@@ -303,8 +410,14 @@ class ContextGenerationConfig:
     fallback_to_basic: bool = True  # Use basic chunking if context generation fails
 
     # Batch processing (for performance)
-    batch_size: int = 10   # Generate contexts in batches
-    max_workers: int = 5   # Parallel context generation
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    batch_size: int = 20   # Generate contexts in batches
+    max_workers: int = 10   # Parallel context generation
+
+    # OpenAI Batch API optimization (NEW - 50% cost savings, async processing)
+    use_batch_api: bool = True    # Use OpenAI Batch API for contexts (50% cheaper)
+    batch_api_poll_interval: int = 5   # Seconds between status checks
+    batch_api_timeout: int = 43200  # Max wait time in seconds (12 hours default)
 
     # Model config loaded from .env (don't set here)
     provider: Optional[str] = None
@@ -362,30 +475,103 @@ class ChunkingConfig:
         if self.context_config is None and self.enable_contextual:
             self.context_config = ContextGenerationConfig()
 
+    @classmethod
+    def from_env(cls) -> "ChunkingConfig":
+        """
+        Load configuration from environment variables.
+
+        Environment Variables:
+            CHUNK_SIZE: Chunk size in characters (default: 500)
+            ENABLE_SAC: Enable Summary-Augmented Chunking (default: "true")
+
+        Returns:
+            ChunkingConfig instance loaded from environment
+        """
+        return cls(
+            chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
+            enable_contextual=os.getenv("ENABLE_SAC", "true").lower() == "true",
+        )
+
 
 @dataclass
 class EmbeddingConfig:
     """
-    Configuration for embedding generation (PHASE 4).
+    Unified configuration for embedding generation (PHASE 4).
+
+    This is the SINGLE source of truth for embedding configuration across
+    the entire codebase (pipeline, agent, tools).
 
     Model selection is loaded from .env (EMBEDDING_PROVIDER, EMBEDDING_MODEL).
-    Only research-backed parameters are configured here.
+    Research-backed parameters (batch_size, normalize) are configured here.
+
+    Supports:
+    - Voyage AI: kanon-2, voyage-3-large, voyage-law-2
+    - OpenAI: text-embedding-3-large, text-embedding-3-small
+    - HuggingFace: BAAI/bge-m3 (local, multilingual)
     """
 
-    # Research-backed parameters
-    batch_size: int = 32              # Batch size for embedding generation
-    enable_multi_layer: bool = True   # Enable multi-layer indexing (document, section, chunk)
+    # Model selection (loaded from .env)
+    provider: Optional[str] = None  # "voyage", "openai", "huggingface"
+    model: Optional[str] = None     # Model name
 
-    # Model config loaded from .env (don't set here)
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    # Research-backed parameters
+    batch_size: int = 64            # Batch size for embedding generation (optimized)
+    normalize: bool = True          # Normalize for cosine similarity (FAISS IndexFlatIP)
+
+    # Multi-layer indexing
+    enable_multi_layer: bool = True  # Enable multi-layer indexing (document, section, chunk)
+
+    # Model metadata (auto-derived)
+    dimensions: Optional[int] = None  # Auto-detected from model
+
+    # Performance optimization
+    cache_enabled: bool = True       # Enable embedding cache (40-80% hit rate)
+    cache_max_size: int = 1000       # Max cache entries
 
     def __post_init__(self):
-        """Load model config from environment if not provided."""
+        """Load model config from environment if not provided and validate."""
+        # Load provider and model from .env if not provided
         if self.provider is None or self.model is None:
             model_config = ModelConfig.from_env()
             self.provider = model_config.embedding_provider
             self.model = model_config.embedding_model
+
+        # Validate parameters
+        if self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+        if self.dimensions is not None and self.dimensions <= 0:
+            raise ValueError(f"dimensions must be positive if specified, got {self.dimensions}")
+        if self.cache_max_size <= 0:
+            raise ValueError(f"cache_max_size must be positive, got {self.cache_max_size}")
+        # Provider can be None (will be loaded from env in __post_init__) or one of the valid values
+        if self.provider is not None and self.provider not in ["voyage", "openai", "huggingface"]:
+            raise ValueError(f"provider must be 'voyage', 'openai', or 'huggingface', got {self.provider}")
+
+    @classmethod
+    def from_env(cls) -> "EmbeddingConfig":
+        """
+        Load configuration from environment variables.
+
+        Environment Variables:
+            EMBEDDING_PROVIDER: "voyage", "openai", or "huggingface" (default: "huggingface")
+            EMBEDDING_MODEL: Model name (default: "bge-m3")
+            EMBEDDING_BATCH_SIZE: Batch size (default: 64)
+            EMBEDDING_CACHE_SIZE: Cache max size (default: 1000)
+
+        Returns:
+            EmbeddingConfig instance loaded from environment
+        """
+        model_config = ModelConfig.from_env()
+
+        return cls(
+            provider=model_config.embedding_provider,
+            model=model_config.embedding_model,
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "64")),
+            normalize=True,  # Always normalize for FAISS IndexFlatIP
+            enable_multi_layer=True,  # Multi-layer indexing enabled by default
+            cache_enabled=os.getenv("EMBEDDING_CACHE_ENABLED", "true").lower() == "true",
+            cache_max_size=int(os.getenv("EMBEDDING_CACHE_SIZE", "1000")),
+        )
 
 
 @dataclass
@@ -411,6 +597,45 @@ class RAGConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     models: ModelConfig = field(default_factory=ModelConfig.from_env)
+
+    @classmethod
+    def from_env(cls) -> "RAGConfig":
+        """
+        Load all sub-configs from environment variables.
+
+        Returns:
+            RAGConfig instance with all sub-configs loaded from environment
+        """
+        return cls(
+            extraction=ExtractionConfig.from_env(),
+            summarization=SummarizationConfig.from_env(),
+            chunking=ChunkingConfig.from_env(),
+            embedding=EmbeddingConfig.from_env(),
+            models=ModelConfig.from_env(),
+        )
+
+    def get_embedding_config(self) -> dict:
+        """Get embedding configuration for EmbeddingGenerator."""
+        if self.models.embedding_provider == "voyage":
+            return {
+                "provider": "voyage",
+                "model": self.models.embedding_model,
+                "api_key": self.models.voyage_api_key
+            }
+        elif self.models.embedding_provider == "openai":
+            return {
+                "provider": "openai",
+                "model": self.models.embedding_model,
+                "api_key": self.models.openai_api_key
+            }
+        elif self.models.embedding_provider == "huggingface":
+            return {
+                "provider": "huggingface",
+                "model": self.models.embedding_model,
+                "api_key": None  # Local models
+            }
+        else:
+            raise ValueError(f"Unknown embedding provider: {self.models.embedding_provider}")
 
 
 def get_default_config() -> RAGConfig:

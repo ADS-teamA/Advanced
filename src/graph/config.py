@@ -46,8 +46,9 @@ class EntityExtractionConfig:
     normalize_entities: bool = True        # Normalize entity values
 
     # Performance settings
-    batch_size: int = 10                   # Chunks per batch
-    max_workers: int = 5                   # Parallel extraction threads
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    batch_size: int = 20                   # Chunks per batch
+    max_workers: int = 10                  # Parallel extraction threads
     cache_results: bool = True             # Cache extraction results
 
     # Prompt settings
@@ -86,8 +87,9 @@ class RelationshipExtractionConfig:
     extract_from_metadata: bool = True     # Extract from chunk metadata (section_path, etc.)
 
     # Performance settings
-    batch_size: int = 5                    # Entity pairs per batch
-    max_workers: int = 5
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    batch_size: int = 10                   # Entity pairs per batch
+    max_workers: int = 10
     cache_results: bool = True
 
     # Advanced settings

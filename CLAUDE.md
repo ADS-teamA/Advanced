@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MY_SUJBOT is a research-based RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. The system implements state-of-the-art techniques from multiple research papers to achieve superior retrieval quality through hierarchical structure extraction, contextual chunking, multi-layer embeddings, knowledge graph construction, context assembly, and an interactive agent interface.
 
 **Current Status:** PHASE 1-7 Complete (Full SOTA 2025 RAG System with Interactive Agent)
-**Latest:** RAG Agent CLI with Claude SDK integration, **26 specialized tools** (5 new in Phase 7B: context expansion, similarity search, explainability!), embedding cache, and production-ready validation
+**Latest:** RAG Agent CLI with Claude SDK integration, **27 specialized tools** (5 new in Phase 7B: context expansion, similarity search, explainability!), embedding cache, and production-ready validation
 
 ## Core Architecture
 
@@ -15,7 +15,7 @@ The pipeline follows a multi-phase architecture where each phase builds on the p
 
 ### Phase Flow
 1. **PHASE 1:** Font-size based hierarchical structure extraction (Docling)
-2. **PHASE 2:** Generic summary generation (gpt-4o-mini, 150 chars)
+2. **PHASE 2:** Generic summary generation (LLM-based, configurable via .env, 150 chars)
 3. **PHASE 3:** Multi-layer chunking with Summary-Augmented Chunks (RCTS 500 chars)
 4. **PHASE 4:** Embedding generation and FAISS indexing (text-embedding-3-large, 3072D)
 5. **PHASE 5A:** Knowledge Graph construction (entities and relationships)
@@ -23,7 +23,7 @@ The pipeline follows a multi-phase architecture where each phase builds on the p
 7. **PHASE 5C:** Cross-Encoder Reranking (two-stage retrieval, +25% accuracy)
 8. **PHASE 5D:** Graph-Vector Integration (triple-modal fusion, +60% multi-hop)
 9. **PHASE 6:** Context Assembly (SAC stripping, citations, provenance tracking)
-10. **PHASE 7:** RAG Agent CLI (Claude SDK integration, **26 tools** with context expansion & caching, streaming interface)
+10. **PHASE 7:** RAG Agent CLI (Claude SDK integration, **27 tools** with context expansion & caching, streaming interface)
 
 ### Key Design Principles
 - **Contextual Retrieval:** Chunks are augmented with LLM-generated context before embedding (-49% retrieval errors)
@@ -63,12 +63,12 @@ src/
     ├── query/                  # Query enhancement
     │   ├── decomposition.py    # Query decomposition
     │   └── hyde.py             # HyDE (Hypothetical Document Embeddings)
-    └── tools/                  # Tool ecosystem (26 tools: 11 basic + 9 advanced + 6 analysis)
+    └── tools/                  # Tool ecosystem (27 tools: 12 basic + 9 advanced + 6 analysis)
         ├── base.py             # BaseTool abstraction
         ├── registry.py         # Tool registry
-        ├── tier1/              # Basic retrieval (6 tools)
-        ├── tier2/              # Advanced retrieval (6 tools)
-        └── tier3/              # Analysis tools (5 tools)
+        ├── tier1_basic.py      # Basic retrieval (12 tools)
+        ├── tier2_advanced.py   # Advanced retrieval (9 tools)
+        └── tier3_analysis.py   # Analysis tools (6 tools)
 
 tests/
 ├── test_pipeline.py              # Integration tests
@@ -141,6 +141,91 @@ API keys are **required** for the pipeline to function:
 
 **IMPORTANT:** Without API keys, the pipeline will fail at PHASE 2 (summaries). Embedding models can be either cloud-based (API key required) or local (no API key).
 
+## OCR Configuration
+
+### Tesseract OCR for Czech Language
+
+The pipeline uses **Tesseract OCR** for optimal Czech language support (90%+ accuracy). Tesseract is automatically configured for Czech documents with post-processing fixes for malformed PDFs.
+
+**Key Features:**
+- **Best-in-class accuracy** for printed Czech text (90%+ on standard documents)
+- **Automatic Czech character fixing** for PDFs with bad font encoding (e.g., "ˇ C" → "Č")
+- **Multi-language support** with automatic detection (Czech + English by default)
+- **Cross-platform** works on Windows, macOS, and Linux
+
+### Installation
+
+Tesseract is installed automatically via the `docling` package using `uv`:
+
+```bash
+# Install via uv (includes Tesseract bindings)
+uv sync
+```
+
+**Note:** No manual Tesseract installation needed - Python bindings are included in `docling-ocr` package.
+
+### Configuration
+
+Default configuration (Czech + English):
+```python
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+
+config = IndexingConfig(
+    ocr_language=["ces", "eng"]  # Tesseract language codes
+)
+pipeline = IndexingPipeline(config)
+```
+
+**Commonly Used Tesseract Language Codes:**
+- `ces` - Czech (Čeština)
+- `eng` - English
+- `deu` - German (Deutsch)
+- `slk` - Slovak (Slovenčina)
+- `pol` - Polish (Polski)
+- `auto` - Automatic language detection
+
+**Full list:** See [Tesseract Language Codes](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html) for all supported languages (100+)
+
+### Czech Character Fix for Malformed PDFs
+
+The pipeline automatically fixes Czech diacritics in PDFs with bad font encoding:
+
+```python
+# Before (malformed PDF):
+"ˇ Ceské vysoké uˇ cení technické v Praze"
+
+# After (automatic fix):
+"České vysoké učení technické v Praze"
+```
+
+**How it works:**
+1. Detects separated spacing modifiers (U+02C7 CARON, U+00B4 ACUTE)
+2. Combines with base letters to form proper Czech characters
+3. Applies standard Unicode NFC normalization
+
+**Supported fixes:**
+- Háček (ˇ): č, ř, š, ž, ď, ť, ň, ě (both uppercase and lowercase)
+- Čárka (´): á, é, í, ó, ú, ý (both uppercase and lowercase)
+- Kroužek (˚): ů (both uppercase and lowercase)
+
+Implementation: `src/docling_extractor_v2.py:normalize_unicode()` (lines 51-126)
+
+### Troubleshooting
+
+**Problem:** Poor OCR quality on scanned documents
+
+**Solutions:**
+1. Use higher DPI scans (300+ DPI recommended)
+2. Enable `do_ocr=True` in pipeline options
+3. Consider pre-processing with image enhancement tools
+
+**Problem:** Wrong language detected
+
+**Solution:** Explicitly set language codes instead of `"auto"`:
+```python
+config = IndexingConfig(ocr_language=["ces"])  # Czech only
+```
+
 ## Common Commands
 
 ### Running the Indexing Pipeline
@@ -168,20 +253,102 @@ result['vector_store'].save('output/vector_store')
 "
 ```
 
+#### Speed/Cost Modes: Fast vs. Eco
+
+The pipeline supports two indexing modes trading off speed for cost:
+
+**⚡ FAST MODE** (default):
+- Uses OpenAI Completions API (immediate processing)
+- **Speed:** 2-3 min (PHASE 2 summaries) + 1-2 min (PHASE 3 SAC contexts)
+- **Cost:** Full API pricing
+- **Best for:** Quick iteration, development, urgent needs
+
+**💰 ECO MODE**:
+- Uses OpenAI Batch API (queued processing, 50% discount)
+- **Speed:** 15-30 min (PHASE 2 summaries) + 15-30 min (PHASE 3 SAC contexts)
+- **Cost:** 50% cheaper than fast mode for PHASE 2 + PHASE 3
+- **Savings:** Typical document saves $0.10-0.30 in eco mode
+- **Best for:** Bulk indexing, overnight jobs, cost optimization
+
+```python
+# Fast mode (default) - completions API
+config = IndexingConfig(speed_mode="fast")  # 2-3 min, full price
+
+# Eco mode - Batch API (50% cheaper)
+config = IndexingConfig(speed_mode="eco")  # 15-30 min, 50% off
+
+# Example: Overnight bulk indexing in eco mode
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+from pathlib import Path
+
+config = IndexingConfig(
+    speed_mode="eco",  # 50% cost savings, 12h timeout
+    enable_knowledge_graph=True
+)
+pipeline = IndexingPipeline(config)
+
+# Index multiple documents
+for doc_path in Path("data/regulations/").glob("*.pdf"):
+    result = pipeline.index_document(doc_path)
+    result['vector_store'].save(f'output/{doc_path.stem}')
+```
+
+**Technical Details:**
+- **Fast mode:** ThreadPoolExecutor with 20 parallel workers
+- **Eco mode:** JSONL batch file → OpenAI queue → 5s polling → 12h timeout
+- **Applies to:** PHASE 2 (summaries) + PHASE 3 (SAC contexts)
+- **Fallback:** Eco mode auto-falls back to fast if batch times out
+- **Total savings:** ~$0.10-0.30 per document (depends on size)
+
+### Managing Central Vector Database
+
+**NEW:** Centrální databáze pro všechny dokumenty (doporučeno místo izolovaných stores)
+
+```bash
+# Přidat nový dokument do centrální databáze (vytvoří databázi, pokud neexistuje)
+uv run python manage_vector_db.py add data/document.pdf
+
+# Migrovat existující vector store do centrální databáze
+uv run python manage_vector_db.py migrate output/BZ_VR1/20251024_164925/phase4_vector_store
+
+# Zobrazit statistiky centrální databáze
+uv run python manage_vector_db.py stats
+
+# Vytvořit prázdnou databázi
+uv run python manage_vector_db.py init
+```
+
+**Výhody centrální databáze:**
+- ✅ Všechny dokumenty na jednom místě (`vector_db/`)
+- ✅ Incremental indexing - přidávej dokumenty postupně
+- ✅ Agent má přístup ke všem dokumentům současně
+- ✅ Automatická podpora hybrid search (BM25 + Dense + RRF)
+
+**Kompletní dokumentace:** Viz `VECTOR_DB_README.md`
+
 ### Running the RAG Agent CLI
 
 ```bash
 # Launch interactive agent (default settings)
-python -m src.agent.cli
+# Both commands work identically:
+uv run python -m src.agent.cli
+# or
+uv run python -m src.agent
 
 # With debug mode
-python -m src.agent.cli --debug
+uv run python -m src.agent.cli --debug
 
 # With custom vector store path
-python -m src.agent.cli --vector-store output/custom_vector_store
+uv run python -m src.agent.cli --vector-store output/custom_vector_store
+
+# With central database (RECOMMENDED)
+uv run python -m src.agent.cli --vector-store vector_db
 
 # Disable streaming for simpler output
-python -m src.agent.cli --no-streaming
+uv run python -m src.agent.cli --no-streaming
+
+# Example with hybrid search vector store
+uv run python -m src.agent.cli --vector-store output/BZ_VR1_sample_HYBRID/20251024_153246/phase4_vector_store
 ```
 
 ### Testing
@@ -217,24 +384,102 @@ mypy src/ --config-file pyproject.toml
 
 ## Configuration System
 
-The pipeline uses a centralized configuration system with sensible defaults based on research:
+The pipeline uses a **clean, hierarchical configuration system** with sensible defaults based on research.
 
-### IndexingConfig (Main Pipeline)
-Located in `src/indexing_pipeline.py`, controls all phases:
-- `enable_smart_hierarchy=True`: Font-size based hierarchy (PHASE 1)
-- `generate_summaries=True`: Generic summaries (PHASE 2)
-- `chunk_size=500`: RCTS optimal chunk size (PHASE 3)
-- `enable_sac=True`: Summary-Augmented Chunking (PHASE 3)
-- `embedding_model="text-embedding-3-large"`: 3072D embeddings (PHASE 4)
-- `enable_knowledge_graph=False`: Knowledge graph construction (PHASE 5A)
+### Architecture Overview
+
+**Config Hierarchy:**
+```
+IndexingConfig (main orchestrator)
+├─ extraction_config: ExtractionConfig     # PHASE 1 settings
+├─ summarization_config: SummarizationConfig  # PHASE 2 settings
+├─ chunking_config: ChunkingConfig         # PHASE 3 settings
+├─ embedding_config: EmbeddingConfig       # PHASE 4 settings
+└─ kg_config: KnowledgeGraphConfig         # PHASE 5A settings (optional)
+```
+
+### Loading from Environment (Recommended)
+
+All configs support `from_env()` classmethod for loading from `.env` file:
+
+```python
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+
+# Option 1: Load everything from .env (easiest)
+config = IndexingConfig.from_env()
+pipeline = IndexingPipeline(config)
+
+# Option 2: Load from .env with overrides
+config = IndexingConfig.from_env(
+    enable_knowledge_graph=True,
+    enable_hybrid_search=True
+)
+
+# Option 3: Full customization with nested configs
+from src.config import EmbeddingConfig, ChunkingConfig
+
+config = IndexingConfig(
+    embedding_config=EmbeddingConfig.from_env(),
+    chunking_config=ChunkingConfig(chunk_size=750),
+    enable_knowledge_graph=True
+)
+```
+
+### Key Configuration Classes
+
+**`ExtractionConfig`** (`src/config.py`) - PHASE 1
+- `enable_smart_hierarchy=True`: Font-size based hierarchy detection
+- `ocr_language=["ces", "eng"]`: Tesseract language codes
+- `from_env()`: Loads OCR_LANGUAGE, ENABLE_SMART_HIERARCHY
+
+**`SummarizationConfig`** (`src/config.py`) - PHASE 2
+- `max_chars=150`: Generic summary length (research optimal)
+- `temperature=0.3`: Low temperature for consistency
+- `use_batch_api=False`: Use OpenAI Batch API (set via SPEED_MODE)
+- `from_env()`: Loads LLM_PROVIDER, LLM_MODEL, SPEED_MODE
+
+**`ChunkingConfig`** (`src/config.py`) - PHASE 3
+- `chunk_size=500`: RCTS optimal chunk size
+- `enable_contextual=True`: Summary-Augmented Chunking (SAC)
+- `from_env()`: Loads CHUNK_SIZE, ENABLE_SAC
+
+**`EmbeddingConfig`** (`src/config.py`) - PHASE 4 (UNIFIED)
+- `provider`: "voyage", "openai", or "huggingface" (loaded from .env)
+- `model`: Model name (loaded from .env)
+- `batch_size=64`: Batch size for embedding generation
+- `cache_enabled=True`: Enable embedding cache (40-80% hit rate)
+- `from_env()`: Loads EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BATCH_SIZE, EMBEDDING_CACHE_*
+
+**`IndexingConfig`** (`src/indexing_pipeline.py`) - Main Pipeline
+- `speed_mode="fast"`: "fast" or "eco" (affects Batch API usage)
+- `enable_knowledge_graph=True`: Enable KG construction (SOTA 2025)
+- `enable_hybrid_search=True`: BM25 + Dense + RRF fusion
+- `from_env()`: Loads SPEED_MODE, ENABLE_KNOWLEDGE_GRAPH, ENABLE_HYBRID_SEARCH
+
+### Environment Variables
+
+See `.env.example` for complete list. Key variables:
+
+**Required:**
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (for PHASE 2 summaries)
+
+**Model Selection:**
+- `LLM_PROVIDER=claude` (claude or openai)
+- `LLM_MODEL=claude-sonnet-4-5-20250929`
+- `EMBEDDING_PROVIDER=huggingface` (voyage, openai, huggingface)
+- `EMBEDDING_MODEL=bge-m3`
+
+**Optional Performance:**
+- `SPEED_MODE=fast` (fast or eco - affects cost/speed tradeoff)
+- `EMBEDDING_BATCH_SIZE=64`
+- `EMBEDDING_CACHE_ENABLED=true`
+- `EMBEDDING_CACHE_SIZE=1000`
 
 ### Knowledge Graph Configuration
-Enable KG by setting `enable_knowledge_graph=True` in IndexingConfig:
-- `kg_llm_provider`: "openai" or "anthropic"
-- `kg_llm_model`: Model for extraction (default: "gpt-4o-mini")
-- `kg_backend`: "simple", "neo4j", or "networkx"
-- `kg_min_entity_confidence=0.6`: Minimum confidence for entities
-- `kg_min_relationship_confidence=0.5`: Minimum confidence for relationships
+Enable KG by setting `enable_knowledge_graph=True`:
+- Automatically loads `KnowledgeGraphConfig.from_env()`
+- Environment variables: `KG_LLM_PROVIDER`, `KG_LLM_MODEL`, `KG_BACKEND`
+- Defaults: `gpt-4o-mini` model, `simple` backend
 
 ## Knowledge Graph (PHASE 5A)
 
@@ -435,12 +680,12 @@ See `src/context_assembly.py` for full implementation details.
 
 ## RAG Agent CLI (PHASE 7)
 
-PHASE 7 provides an interactive command-line interface for querying indexed documents using Claude as the orchestration layer. The agent uses Claude SDK to intelligently select and execute tools from a comprehensive ecosystem of **26 specialized retrieval and analysis tools** (5 new in Phase 7B!).
+PHASE 7 provides an interactive command-line interface for querying indexed documents using Claude as the orchestration layer. The agent uses Claude SDK to intelligently select and execute tools from a comprehensive ecosystem of **27 specialized retrieval and analysis tools** (5 new in Phase 7B!).
 
 ### Key Features
 
 - **Claude SDK Integration**: Official Anthropic SDK for reliable LLM orchestration
-- **26 Specialized Tools**: Three-tier tool ecosystem for retrieval, analysis, and knowledge graph queries (11 basic + 9 advanced + 6 analysis)
+- **27 Specialized Tools**: Three-tier tool ecosystem for retrieval, analysis, and knowledge graph queries (12 basic + 9 advanced + 6 analysis)
 - **Embedding Cache**: LRU cache for embeddings with 40-80% hit rate, reducing latency by 100-200ms
 - **Score Preservation**: Hybrid search preserves BM25, Dense, and RRF scores for explainability
 - **Streaming Responses**: Real-time output with tool execution visibility
@@ -449,9 +694,9 @@ PHASE 7 provides an interactive command-line interface for querying indexed docu
 - **Platform Detection**: Automatic embedding model selection based on platform (Apple Silicon, Linux GPU, Windows)
 - **Conversation History**: Context-aware multi-turn conversations with automatic trimming
 
-### Tool Ecosystem (26 Tools)
+### Tool Ecosystem (27 Tools)
 
-**Tier 1: Basic Retrieval (11 tools - fast, <100ms)**
+**Tier 1: Basic Retrieval (12 tools - fast, <100ms)**
 - `simple_search`: Hybrid search with reranking (use for most queries)
 - `entity_search`: Find chunks mentioning specific entities
 - `document_search`: Search within specific document(s)
@@ -463,6 +708,7 @@ PHASE 7 provides an interactive command-line interface for querying indexed docu
 - `get_section_details`: Get section metadata and summary
 - `get_document_metadata`: Get comprehensive document metadata
 - `get_chunk_context`: Get chunk with surrounding chunks for context ✨ **NEW**
+- `list_available_tools`: List all available tools with descriptions
 
 **Tier 2: Advanced Retrieval (9 tools - quality, 500-1000ms)**
 - `multi_hop_search`: Graph traversal for multi-hop queries
@@ -512,7 +758,7 @@ Starting Agent CLI...
 ✅ API Key: OPENAI
 ✅ Embedder initialized
 ✅ Vector Store loaded
-✅ Tool Registry initialized (26 tools)
+✅ Tool Registry initialized (27 tools)
 ✅ Agent Core initialized
 
 Agent ready! Type your question or 'exit' to quit.
@@ -709,7 +955,7 @@ The system has successfully completed all planned phases of the SOTA 2025 RAG up
 
 ### ✅ PHASE 7: RAG Agent CLI - COMPLETE
 - Interactive CLI with Claude SDK integration
-- **26 specialized tools** (3 tiers: 11 basic + 9 advanced + 6 analysis)
+- **27 specialized tools** (3 tiers: 12 basic + 9 advanced + 6 analysis)
 - Streaming responses with tool execution visibility
 - Query enhancement (HyDE, decomposition)
 - Production-ready validation and error handling
@@ -723,7 +969,7 @@ The system has successfully completed all planned phases of the SOTA 2025 RAG up
 
 **Tool Breakdown:**
 
-**TIER 1 - Basic Retrieval (11 tools, <100ms):**
+**TIER 1 - Basic Retrieval (12 tools, <100ms):**
 - **Search:** simple_search, entity_search, document_search, section_search, keyword_search
 - **Navigation:**
   - `get_document_list` - List all indexed documents
@@ -732,6 +978,7 @@ The system has successfully completed all planned phases of the SOTA 2025 RAG up
   - `get_section_details` - Quick section overview with summary
   - `get_document_metadata` - Comprehensive document stats
 - **Context:** `get_chunk_context` ✨ **NEW** - Get chunk with surrounding chunks
+- **Meta:** `list_available_tools` - List all available tools with descriptions
 
 **TIER 2 - Advanced Retrieval (9 tools, 500-1000ms):**
 - multi_hop_search, compare_documents, find_related_chunks

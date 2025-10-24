@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 MAX_HISTORY_MESSAGES = 50  # Keep last 50 messages to prevent unbounded memory growth
 MAX_QUERY_LENGTH = 10000  # Maximum characters in a single query
 
+# ANSI color codes for terminal output
+COLOR_BLUE = "\033[1;34m"  # Bold blue for tool calls and debug
+COLOR_RESET = "\033[0m"  # Reset color
+
 
 class AgentCore:
     """
@@ -88,10 +92,161 @@ class AgentCore:
             tool_list = list(self.registry._tool_classes.keys())
             logger.debug(f"Available tools: {tool_list}")
 
+        # Flag to track if initialized
+        self._initialized_with_documents = False
+
+    def _clean_summary_text(self, text: str) -> str:
+        """
+        Clean summary text for conversation history.
+
+        Removes:
+        - HTML entities (&lt;, &gt;, etc.)
+        - Markdown formatting (##, **, etc.)
+        - Extra whitespace and newlines
+        """
+        import html
+        import re
+
+        # Unescape HTML entities
+        text = html.unescape(text)
+
+        # Remove markdown headers (## Header)
+        text = re.sub(r'#+\s+', '', text)
+
+        # Remove markdown bold/italic (**text**, *text*)
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+
+        # Replace multiple newlines with space
+        text = re.sub(r'\n+', ' ', text)
+
+        # Replace multiple spaces with single space
+        text = re.sub(r'\s+', ' ', text)
+
+        # Strip leading/trailing whitespace
+        text = text.strip()
+
+        return text
+
+    def initialize_with_documents(self):
+        """
+        Initialize conversation by calling get_document_list and list_available_tools.
+
+        Adds document list and tool list to conversation history so agent has context
+        about available documents and tools before first user query.
+        """
+        if self._initialized_with_documents:
+            return  # Already initialized
+
+        try:
+            # Get document list tool
+            doc_list_tool = self.registry.get_tool("get_document_list")
+            if not doc_list_tool:
+                logger.warning("get_document_list tool not available for initialization")
+                return
+
+            # Execute document list tool
+            doc_result = doc_list_tool.execute()
+
+            if not doc_result.success or not doc_result.data:
+                logger.warning("Failed to get document list for initialization")
+                return
+
+            documents = doc_result.data.get("documents", [])
+            count = doc_result.data.get("count", 0)
+
+            if count == 0:
+                logger.info("No documents available for initialization")
+                return
+
+            # Build document list message
+            doc_list_text = f"Available documents in the system ({count}):\n\n"
+            for doc in documents:
+                doc_id = doc.get("id", "Unknown")
+                summary = doc.get("summary", "No summary")
+
+                # Clean summary text
+                summary = self._clean_summary_text(summary)
+
+                # Truncate to first sentence or 150 chars
+                if len(summary) > 150:
+                    # Try to cut at sentence boundary
+                    sentence_end = summary.find('. ', 0, 150)
+                    if sentence_end > 50:  # Found reasonable sentence
+                        summary = summary[:sentence_end + 1]
+                    else:
+                        summary = summary[:150] + "..."
+
+                doc_list_text += f"- {doc_id}: {summary}\n"
+
+            # Get tool list tool
+            tool_list_tool = self.registry.get_tool("list_available_tools")
+            if not tool_list_tool:
+                logger.warning("list_available_tools tool not available for initialization")
+                # Continue without tools list
+                tool_list_text = ""
+            else:
+                # Execute tool list tool
+                tool_result = tool_list_tool.execute()
+
+                if not tool_result.success or not tool_result.data:
+                    logger.warning("Failed to get tool list for initialization")
+                    tool_list_text = ""
+                else:
+                    tools = tool_result.data.get("tools", [])
+                    tool_count = len(tools)
+
+                    # Build tool list message (summary only, not full details)
+                    tool_list_text = f"\n\nAvailable tools ({tool_count}):\n\n"
+
+                    # Group by tier
+                    tier1_tools = [t for t in tools if "Tier 1" in t.get("tier", "")]
+                    tier2_tools = [t for t in tools if "Tier 2" in t.get("tier", "")]
+                    tier3_tools = [t for t in tools if "Tier 3" in t.get("tier", "")]
+
+                    if tier1_tools:
+                        tool_list_text += "TIER 1 - Basic Retrieval (fast, <100ms):\n"
+                        for tool in tier1_tools:
+                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
+
+                    if tier2_tools:
+                        tool_list_text += "\nTIER 2 - Advanced Retrieval (500-1000ms):\n"
+                        for tool in tier2_tools:
+                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
+
+                    if tier3_tools:
+                        tool_list_text += "\nTIER 3 - Analysis & Insights (1-3s):\n"
+                        for tool in tier3_tools:
+                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
+
+            # Combine messages
+            init_message = doc_list_text + tool_list_text
+            init_message += "\n\n(This is system initialization - the user will now ask questions about these documents)"
+
+            # Add as first message in conversation history
+            self.conversation_history.append({
+                "role": "user",
+                "content": init_message
+            })
+
+            # Add simple acknowledgment from assistant
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": "I understand. I have access to these documents and will use the appropriate tools to search them and answer user questions."
+            })
+
+            self._initialized_with_documents = True
+            logger.debug(f"Initialized conversation with {count} documents and {len(self.registry)} tools")
+
+        except Exception as e:
+            logger.warning(f"Could not initialize with documents: {e}")
+            # Don't fail - just continue without initialization
+
     def reset_conversation(self):
         """Reset conversation history."""
         self.conversation_history = []
         self.tool_call_history = []
+        self._initialized_with_documents = False
         logger.info("Conversation reset")
 
     def get_conversation_stats(self) -> Dict[str, Any]:
@@ -107,7 +262,7 @@ class AgentCore:
         Trim conversation history to prevent unbounded memory growth.
 
         IMPORTANT IMPLICATIONS:
-        - User is NOT notified when history is trimmed (silent truncation)
+        - User IS notified when history is trimmed (transparency)
         - Claude loses access to earlier conversation context
         - May break multi-turn reasoning across >50 message exchanges
         - Tool results in trimmed messages are lost permanently
@@ -117,13 +272,26 @@ class AgentCore:
         - Each "message" may contain multiple tool results (lines 270, 344)
         - Actual context size varies significantly per message
         - Keeps the last MAX_HISTORY_MESSAGES messages
+        - Adds notification message to conversation explaining trimming
         """
         if len(self.conversation_history) > MAX_HISTORY_MESSAGES:
             old_len = len(self.conversation_history)
+            messages_removed = old_len - MAX_HISTORY_MESSAGES
             self.conversation_history = self.conversation_history[-MAX_HISTORY_MESSAGES:]
-            logger.info(
-                f"Trimmed conversation history: {old_len} → {len(self.conversation_history)} messages"
+
+            logger.warning(
+                f"Conversation history trimmed: {old_len} → {MAX_HISTORY_MESSAGES} messages "
+                f"({messages_removed} messages removed)"
             )
+
+            # CRITICAL: Notify user about trimming
+            # Add a system message explaining what happened
+            system_notice = {
+                "role": "assistant",
+                "content": f"[Note: Conversation history was trimmed. I can only access the last {MAX_HISTORY_MESSAGES} messages. Earlier context ({messages_removed} messages) is no longer available.]"
+            }
+            # Insert notice at beginning of trimmed history so Claude sees it
+            self.conversation_history.insert(0, system_notice)
 
     def process_message(
         self, user_message: str, stream: bool = None
@@ -248,10 +416,8 @@ class AgentCore:
                         operation="agent"
                     )
 
-                    # Extract tool uses from final message
-                    for block in final_message.content:
-                        if block.type == "tool_use":
-                            tool_uses.append(block)
+                    # Note: tool_uses already collected during streaming (lines 224-237)
+                    # No need to extract from final_message again - would cause duplicates!
 
                     # Add assistant message to history
                     if assistant_message["content"]:
@@ -271,9 +437,9 @@ class AgentCore:
                         tool_name = tool_use.name
                         tool_input = tool_use.input
 
-                        # Show tool call
+                        # Show tool call (in blue)
                         if self.config.cli_config.show_tool_calls:
-                            yield f"[Using {tool_name}...]\n"
+                            yield f"{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
 
                         # Execute tool
                         logger.info(f"Executing tool: {tool_name} with input {tool_input}")
@@ -286,9 +452,9 @@ class AgentCore:
                                 f"Tool '{tool_name}' failed: {result.error}",
                                 extra={"tool_input": tool_input, "metadata": result.metadata}
                             )
-                            # Alert user in streaming mode if show_tool_calls is enabled
+                            # Alert user in streaming mode if show_tool_calls is enabled (in blue)
                             if self.config.cli_config.show_tool_calls:
-                                yield f"[⚠️  Tool '{tool_name}' failed: {result.error}]\n"
+                                yield f"{COLOR_BLUE}[⚠️  Tool '{tool_name}' failed: {result.error}]{COLOR_RESET}\n"
 
                         # Track in history
                         self.tool_call_history.append(

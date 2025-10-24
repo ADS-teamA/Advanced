@@ -9,6 +9,7 @@ Interactive terminal interface for RAG Agent with:
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,10 @@ from .config import AgentConfig
 from .tools.registry import get_registry
 
 logger = logging.getLogger(__name__)
+
+# ANSI color codes for terminal output
+COLOR_GREEN = "\033[1;32m"  # Bold green for assistant messages
+COLOR_RESET = "\033[0m"  # Reset color
 
 
 class AgentCLI:
@@ -232,6 +237,23 @@ class AgentCLI:
         # Create agent
         self.agent = AgentCore(self.config)
 
+        # Initialize with document list (adds to conversation history)
+        self.agent.initialize_with_documents()
+
+        # Check for degraded mode
+        degraded_features = []
+        if self.config.enable_knowledge_graph and knowledge_graph is None:
+            degraded_features.append("Knowledge Graph (graph tools unavailable)")
+        if self.config.tool_config.enable_reranking and reranker is None:
+            degraded_features.append("Reranking (search quality reduced)")
+
+        if degraded_features:
+            print("⚠️  DEGRADED MODE ACTIVE:")
+            for feature in degraded_features:
+                print(f"   • {feature}")
+            print("\nAgent will run with limited functionality.")
+            print("To enable missing features, check configuration and dependencies.\n")
+
         print("✅ Agent ready!\n")
 
     def run_repl(self):
@@ -265,13 +287,19 @@ class AgentCLI:
 
                 # Process message with agent
                 if self.config.cli_config.enable_streaming:
-                    print("\nAssistant: ", end="", flush=True)
+                    print(f"\n{COLOR_GREEN}A: {COLOR_RESET}", end="", flush=True)
                     for chunk in self.agent.process_message(user_input, stream=True):
-                        print(chunk, end="", flush=True)
+                        # Check if chunk starts with ANSI color code (tool call/debug)
+                        if chunk.startswith("\033["):
+                            # Don't colorize - already has color
+                            print(chunk, end="", flush=True)
+                        else:
+                            # Colorize assistant message in green
+                            print(f"{COLOR_GREEN}{chunk}{COLOR_RESET}", end="", flush=True)
                     print()  # Newline after response
                 else:
                     response = self.agent.process_message(user_input, stream=False)
-                    print(f"\nAssistant: {response}")
+                    print(f"\n{COLOR_GREEN}A: {response}{COLOR_RESET}")
 
             except KeyboardInterrupt:
                 print("\n\n👋 Goodbye!")
@@ -395,3 +423,37 @@ def main(config: AgentConfig):
 
     # Run REPL
     cli.run_repl()
+
+
+if __name__ == "__main__":
+    """Allow running as: python -m src.agent.cli"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")
+    parser.add_argument("--vector-store", type=str, help="Path to vector store directory",
+                       default=os.getenv("VECTOR_STORE_PATH", "vector_db"))
+    parser.add_argument("--model", type=str, help="Claude model to use", default=os.getenv("AGENT_MODEL", "claude-haiku-4-5"))
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--no-streaming", action="store_true", help="Disable streaming responses")
+
+    args = parser.parse_args()
+
+    from .config import CLIConfig
+    config = AgentConfig(
+        vector_store_path=Path(args.vector_store),
+        model=args.model,
+        debug_mode=args.debug,
+        cli_config=CLIConfig(enable_streaming=not args.no_streaming)
+    )
+
+    try:
+        main(config)
+    except KeyboardInterrupt:
+        print("\n\n👋 Interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)

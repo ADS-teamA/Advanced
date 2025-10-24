@@ -21,6 +21,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from indexing_pipeline import IndexingPipeline, IndexingConfig
+from config import ExtractionConfig, SummarizationConfig, ChunkingConfig, EmbeddingConfig
 
 
 def test_single_document():
@@ -50,24 +51,32 @@ def test_single_document():
     print()
 
     config = IndexingConfig(
-        # PHASE 1: Hierarchy
-        enable_smart_hierarchy=True,
-        ocr_language=["cs-CZ", "en-US"],
+        # PHASE 1: Extraction with nested config
+        extraction_config=ExtractionConfig(
+            enable_smart_hierarchy=True,
+            ocr_language=["ces", "eng"]  # Tesseract language codes
+        ),
 
-        # PHASE 2: Summaries
-        generate_summaries=True,
-        summary_model="gpt-4o-mini",
-        summary_max_chars=150,
+        # PHASE 2: Summarization with nested config
+        summarization_config=SummarizationConfig(
+            model="gpt-4o-mini",
+            max_chars=150
+        ),
 
-        # PHASE 3: Chunking
-        chunk_size=500,
-        chunk_overlap=0,
-        enable_sac=True,
+        # PHASE 3: Chunking with nested config
+        chunking_config=ChunkingConfig(
+            chunk_size=500,
+            chunk_overlap=0,
+            enable_contextual=True  # SAC
+        ),
 
-        # PHASE 4: Embedding
-        embedding_model="text-embedding-3-large",
-        embedding_batch_size=100,
-        normalize_embeddings=True
+        # PHASE 4: Embedding with nested config
+        embedding_config=EmbeddingConfig(
+            provider="openai",
+            model="text-embedding-3-large",
+            batch_size=100,
+            normalize=True
+        )
     )
 
     try:
@@ -215,11 +224,22 @@ def test_batch_documents():
 
     # Initialize pipeline
     config = IndexingConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=True,
-        chunk_size=500,
-        enable_sac=True,
-        embedding_model="text-embedding-3-large"
+        extraction_config=ExtractionConfig(
+            enable_smart_hierarchy=True,
+            ocr_language=["ces", "eng"]
+        ),
+        summarization_config=SummarizationConfig(
+            model="gpt-4o-mini",
+            max_chars=150
+        ),
+        chunking_config=ChunkingConfig(
+            chunk_size=500,
+            enable_contextual=True  # SAC
+        ),
+        embedding_config=EmbeddingConfig(
+            provider="openai",
+            model="text-embedding-3-large"
+        )
     )
 
     try:
@@ -273,11 +293,21 @@ def test_alternative_embedding_model():
 
     # Configure with BGE-M3 (open-source, multilingual)
     config = IndexingConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=False,  # Skip summaries to avoid OpenAI dependency
-        chunk_size=500,
-        enable_sac=False,  # SAC requires summaries
-        embedding_model="bge-m3"  # Open-source alternative
+        extraction_config=ExtractionConfig(
+            enable_smart_hierarchy=True,
+            ocr_language=["ces", "eng"]
+        ),
+        summarization_config=SummarizationConfig(
+            enabled=False  # Skip summaries to avoid API dependency
+        ),
+        chunking_config=ChunkingConfig(
+            chunk_size=500,
+            enable_contextual=False  # SAC requires summaries
+        ),
+        embedding_config=EmbeddingConfig(
+            provider="huggingface",
+            model="bge-m3"  # Open-source alternative
+        )
     )
 
     try:
