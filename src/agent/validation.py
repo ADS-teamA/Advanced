@@ -9,6 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Import security utilities
+try:
+    from ..utils.security import sanitize_error
+except ImportError:
+    from src.utils.security import sanitize_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -376,8 +382,8 @@ class AgentValidator:
                 ValidationResult(
                     name="Vector Store Loading [CRITICAL]",
                     passed=False,
-                    message=f"Failed to load vector store: {str(e)}",
-                    details={"path": str(store_path), "error": str(e)},
+                    message=f"Failed to load vector store: {sanitize_error(e)}",
+                    details={"path": str(store_path), "error": sanitize_error(e)},
                 )
             )
 
@@ -458,8 +464,8 @@ class AgentValidator:
                 ValidationResult(
                     name="Knowledge Graph Loading [CRITICAL]",
                     passed=False,
-                    message=f"Failed to load knowledge graph: {str(e)}",
-                    details={"path": str(kg_path), "error": str(e)},
+                    message=f"Failed to load knowledge graph: {sanitize_error(e)}",
+                    details={"path": str(kg_path), "error": sanitize_error(e)},
                 )
             )
 
@@ -493,8 +499,8 @@ class AgentValidator:
                 ValidationResult(
                     name="Embedding Generator",
                     passed=False,
-                    message=f"Failed to initialize embedding generator: {str(e)}",
-                    details={"error": str(e)},
+                    message=f"Failed to initialize embedding generator: {sanitize_error(e)}",
+                    details={"error": sanitize_error(e)},
                 )
             )
 
@@ -526,8 +532,8 @@ class AgentValidator:
                 ValidationResult(
                     name="Claude Client [CRITICAL]",
                     passed=False,
-                    message=f"Failed to initialize Claude client: {str(e)}",
-                    details={"error": str(e)},
+                    message=f"Failed to initialize Claude client: {sanitize_error(e)}",
+                    details={"error": sanitize_error(e)},
                 )
             )
 
