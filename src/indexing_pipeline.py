@@ -71,6 +71,7 @@ class IndexingConfig:
 
     # PHASE 1: Extraction
     enable_smart_hierarchy: bool = True
+    # Tesseract language codes (ces=Czech, eng=English)
     ocr_language: list = None
 
     # PHASE 2: Summaries
@@ -98,8 +99,8 @@ class IndexingConfig:
     kg_batch_size: int = 10
     kg_max_workers: int = 5
 
-    # PHASE 5B: Hybrid Search (optional)
-    enable_hybrid_search: bool = False  # BM25 + dense with RRF fusion
+    # PHASE 5B: Hybrid Search (enabled by default for SOTA 2025)
+    enable_hybrid_search: bool = True  # BM25 + dense with RRF fusion (+23% precision)
     hybrid_fusion_k: int = 60  # RRF k parameter (research: k=60 optimal)
 
     # PHASE 5C: Cross-Encoder Reranking (optional)
@@ -122,7 +123,8 @@ class IndexingConfig:
 
     def __post_init__(self):
         if self.ocr_language is None:
-            self.ocr_language = ["cs-CZ", "en-US"]
+            # Default: Czech + English (Tesseract language codes)
+            self.ocr_language = ["ces", "eng"]
 
 
 class IndexingPipeline:
@@ -163,19 +165,19 @@ class IndexingPipeline:
         # Initialize PHASE 1+2: Extraction
         self.extraction_config = ExtractionConfig(
             enable_smart_hierarchy=self.config.enable_smart_hierarchy,
-            generate_summaries=self.config.generate_summaries,
-            summary_model=self.config.summary_model,
-            summary_max_chars=self.config.summary_max_chars,
+            generate_summaries=False,  # Will be done separately in pipeline
             ocr_language=self.config.ocr_language
         )
         self.extractor = DoclingExtractorV2(self.extraction_config)
 
         # Initialize PHASE 3: Chunking
-        self.chunker = MultiLayerChunker(
+        from src.config import ChunkingConfig as ChunkConfig
+        chunking_config = ChunkConfig(
             chunk_size=self.config.chunk_size,
             chunk_overlap=self.config.chunk_overlap,
-            enable_sac=self.config.enable_sac
+            enable_contextual=self.config.enable_sac
         )
+        self.chunker = MultiLayerChunker(config=chunking_config)
 
         # Initialize PHASE 4: Embedding
         self.embedding_config = EmbeddingConfig(
@@ -424,14 +426,6 @@ class IndexingPipeline:
                     f"{len(knowledge_graph.relationships)} relationships"
                 )
 
-                # Save KG if output_dir specified
-                if output_dir:
-                    output_dir = Path(output_dir)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    kg_path = output_dir / f"{result.document_id}_kg.json"
-                    knowledge_graph.save_json(str(kg_path))
-                    logger.info(f"✓ Saved Knowledge Graph: {kg_path}")
-
             except Exception as e:
                 logger.error(f"✗ Knowledge Graph construction failed: {e}")
                 logger.warning("Continuing without Knowledge Graph...")
@@ -596,29 +590,69 @@ class IndexingPipeline:
         chunks: Dict,
         chunking_stats: Dict
     ):
-        """Save intermediate results (chunks, stats)."""
+        """Save intermediate results from all phases (PHASE 1, 2, 3)."""
         import json
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save chunks
-        chunks_export = {
-            "metadata": {
-                "document_id": result.document_id,
-                "source_path": result.source_path,
-                "chunking_stats": chunking_stats
-            },
+        # PHASE 1: Save extraction results (structure & hierarchy)
+        phase1_path = output_dir / "phase1_extraction.json"
+        phase1_export = {
+            "document_id": result.document_id,
+            "source_path": str(result.source_path),
+            "num_sections": result.num_sections,
+            "hierarchy_depth": result.hierarchy_depth,
+            "num_roots": result.num_roots,
+            "num_tables": result.num_tables,
+            "sections": [
+                {
+                    "section_id": s.section_id,
+                    "title": s.title,
+                    "level": s.level,
+                    "depth": s.depth,
+                    "path": s.path,
+                    "page_number": s.page_number,
+                    "content_length": len(s.content)
+                }
+                for s in result.sections
+            ]
+        }
+        with open(phase1_path, 'w', encoding='utf-8') as f:
+            json.dump(phase1_export, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Saved PHASE 1: {phase1_path}")
+
+        # PHASE 2: Save summaries
+        phase2_path = output_dir / "phase2_summaries.json"
+        phase2_export = {
+            "document_id": result.document_id,
+            "document_summary": result.document_summary,
+            "section_summaries": [
+                {
+                    "section_id": s.section_id,
+                    "title": s.title,
+                    "summary": s.summary
+                }
+                for s in result.sections
+            ]
+        }
+        with open(phase2_path, 'w', encoding='utf-8') as f:
+            json.dump(phase2_export, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Saved PHASE 2: {phase2_path}")
+
+        # PHASE 3: Save chunks
+        phase3_path = output_dir / "phase3_chunks.json"
+        phase3_export = {
+            "document_id": result.document_id,
+            "source_path": str(result.source_path),
+            "chunking_stats": chunking_stats,
             "layer1": [c.to_dict() for c in chunks["layer1"]],
             "layer2": [c.to_dict() for c in chunks["layer2"]],
             "layer3": [c.to_dict() for c in chunks["layer3"]]
         }
-
-        chunks_path = output_dir / f"{result.document_id}_chunks.json"
-        with open(chunks_path, 'w', encoding='utf-8') as f:
-            json.dump(chunks_export, f, indent=2, ensure_ascii=False)
-
-        logger.info(f"✓ Saved intermediate: {chunks_path}")
+        with open(phase3_path, 'w', encoding='utf-8') as f:
+            json.dump(phase3_export, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Saved PHASE 3: {phase3_path}")
 
 
 # Example usage

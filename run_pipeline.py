@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
-Complete RAG Pipeline Runner - PHASE 1-4
+Complete RAG Pipeline Runner - FULL SOTA 2025 SYSTEM
 
-Runs the complete indexing pipeline with outputs saved after each phase.
+Runs complete indexing pipeline with ALL advanced features:
+- PHASE 1: Smart hierarchy extraction (Docling)
+- PHASE 2: Generic summaries
+- PHASE 3: Multi-layer chunking + SAC (contextual retrieval)
+- PHASE 4: Embeddings + FAISS indexing
+- PHASE 5A: Knowledge Graph extraction ✅
+- PHASE 5B: Hybrid Search (BM25 + Dense + RRF) ✅
 
 Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 Input: Single document OR directory (batch processing)
@@ -10,46 +16,39 @@ Input: Single document OR directory (batch processing)
 Usage:
     # Single document
     python run_pipeline.py <document_path>
-    python run_pipeline.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"
-    python run_pipeline.py "data/report.docx"
+    python run_pipeline.py "data/document.pdf"
 
     # Batch processing (directory)
     python run_pipeline.py <directory_path>
-    python run_pipeline.py "data/regulace/GRI"
+    python run_pipeline.py "data/documents/"
 
-Outputs are saved to: output/<document_name>/
+Outputs saved to: output/<document_name>/<timestamp>/
 - phase1_extraction.json - Document structure & hierarchy
 - phase2_summaries.json - Generic summaries
 - phase3_chunks.json - Multi-layer chunks with SAC
-- phase4_vector_store/ - FAISS indexes
+- phase4_vector_store/ - FAISS + BM25 indexes + metadata
+- <document_id>_kg.json - Knowledge graph (if enabled)
 
-Model Configuration (from .env):
-- LLM: {LLM_PROVIDER}/{LLM_MODEL} (for summaries)
-- Embedding: {EMBEDDING_PROVIDER}/{EMBEDDING_MODEL} (for vectors)
+Configuration: All settings controlled via .env file
+- See .env.example for available options
+- Hybrid Search: ENABLE_HYBRID_SEARCH=true
+- Knowledge Graph: ENABLE_KNOWLEDGE_GRAPH=true
 """
 
 import sys
-import json
 import logging
 from pathlib import Path
 from datetime import datetime
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from config import get_default_config, ExtractionConfig
-from docling_extractor_v2 import DoclingExtractorV2
-from multi_layer_chunker import MultiLayerChunker
-from embedding_generator import EmbeddingGenerator, EmbeddingConfig
-from faiss_vector_store import FAISSVectorStore
-from summary_generator import SummaryGenerator
-
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+from src.cost_tracker import get_global_tracker, reset_global_tracker
 
 
 def print_header(text: str):
@@ -96,12 +95,17 @@ def get_supported_documents(directory: Path) -> list:
 
 def run_complete_pipeline(input_path: Path, output_base: Path = None):
     """
-    Run complete PHASE 1-4 pipeline with outputs after each phase.
+    Run complete SOTA 2025 RAG pipeline.
 
-    Supported formats: PDF, DOCX, PPTX, XLSX, HTML
+    Features:
+    - Smart hierarchy extraction
+    - Generic summaries
+    - Contextual retrieval (SAC)
+    - Hybrid search (BM25 + Dense + RRF)
+    - Knowledge graph extraction
 
     Args:
-        input_path: Path to document file or directory (PDF, DOCX, PPTX, XLSX, HTML)
+        input_path: Path to document file or directory
         output_base: Base output directory (default: output/)
     """
     input_path = Path(input_path)
@@ -144,7 +148,7 @@ def run_complete_pipeline(input_path: Path, output_base: Path = None):
 
 def run_single_document(document_path: Path, output_base: Path = None):
     """
-    Process a single document through the complete pipeline.
+    Process single document through complete SOTA 2025 pipeline.
 
     Args:
         document_path: Path to document file
@@ -163,269 +167,173 @@ def run_single_document(document_path: Path, output_base: Path = None):
     if output_base is None:
         output_base = Path(__file__).parent / "output"
 
-    doc_name = document_path.stem.replace(" ", "_")
+    doc_name = document_path.stem.replace(" ", "_").replace("(", "").replace(")", "")
     output_dir = output_base / doc_name / datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print_header(f"RAG PIPELINE - {document_path.name}")
+    print_header(f"SOTA 2025 RAG PIPELINE - {document_path.name}")
 
-    # Load model config
-    config = get_default_config()
-    print_info(f"LLM: {config.llm_provider}/{config.llm_model}")
-    print_info(f"Embedding: {config.embedding_provider}/{config.embedding_model}")
-    print_info(f"Output directory: {output_dir}")
+    # Reset cost tracker for this document
+    reset_global_tracker()
+
+    # Create pipeline with FULL SOTA configuration from .env
+    print_info("Initializing pipeline with SOTA 2025 configuration...")
+    config = IndexingConfig()  # Loads all settings from .env
+
+    # Print active configuration
+    print_info(f"LLM Model: {config.summary_model}")
+    print_info(f"Embedding Model: {config.embedding_model}")
+    print_info(f"Chunk Size: {config.chunk_size} chars")
+    print_info(f"SAC (Contextual Retrieval): {'ON' if config.enable_sac else 'OFF'}")
+    print_info(f"Hybrid Search (BM25+Dense): {'ON ✅' if config.enable_hybrid_search else 'OFF'}")
+    print_info(f"Knowledge Graph: {'ON ✅' if config.enable_knowledge_graph else 'OFF'}")
+    print_info(f"Output: {output_dir}")
     print()
 
-    # =================================================================
-    # PHASE 1: Smart Hierarchy Extraction
-    # =================================================================
-    print_header("PHASE 1: Smart Hierarchy Extraction")
+    pipeline = IndexingPipeline(config)
 
-    extraction_config = ExtractionConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=False,  # Will do in PHASE 2
-        extract_tables=True
-    )
-
-    extractor = DoclingExtractorV2(extraction_config)
-    result = extractor.extract(document_path)
-
-    print_success("Document extracted")
-    print_info(f"Sections: {result.num_sections}")
-    print_info(f"Hierarchy depth: {result.hierarchy_depth}")
-    print_info(f"Root sections: {result.num_roots}")
-    print_info(f"Tables: {result.num_tables}")
-
-    # Save PHASE 1 output
-    phase1_output = output_dir / "phase1_extraction.json"
-    with open(phase1_output, 'w', encoding='utf-8') as f:
-        json.dump({
-            "document_id": result.document_id,
-            "source_path": str(result.source_path),
-            "num_sections": result.num_sections,
-            "hierarchy_depth": result.hierarchy_depth,
-            "num_roots": result.num_roots,
-            "num_tables": result.num_tables,
-            "sections": [
-                {
-                    "section_id": s.section_id,
-                    "title": s.title,
-                    "level": s.level,
-                    "depth": s.depth,
-                    "path": s.path,
-                    "page_number": s.page_number,
-                    "content_length": len(s.content)
-                }
-                for s in result.sections
-            ]
-        }, f, indent=2, ensure_ascii=False)
-
-    print_success(f"PHASE 1 output saved: {phase1_output}")
-
-    # =================================================================
-    # PHASE 2: Generic Summary Generation
-    # =================================================================
-    print_header("PHASE 2: Generic Summary Generation")
-
+    # Run pipeline with intermediate saves
     try:
-        llm_config = config.get_llm_config()
-        generator = SummaryGenerator(
-            model=llm_config["model"],
-            max_chars=150,
-            api_key=llm_config["api_key"]
+        print_header("RUNNING PIPELINE (ALL PHASES)")
+
+        result = pipeline.index_document(
+            document_path=document_path,
+            save_intermediate=True,  # Save phase1-3 JSON outputs
+            output_dir=output_dir
         )
 
-        # Generate section summaries FIRST (in parallel for speed)
-        print_info(f"Generating summaries for {result.num_sections} sections...")
-        section_texts = [(s.content, s.title) for s in result.sections]
-        summaries = generator.generate_batch_summaries(section_texts)
+        vector_store = result["vector_store"]
+        knowledge_graph = result["knowledge_graph"]
+        stats = result["stats"]
 
-        # Assign summaries back to sections
-        for section, summary in zip(result.sections, summaries):
-            section.summary = summary
+        # Save PHASE 4: Vector store (FAISS + BM25 if hybrid)
+        print_info("Saving vector store...")
+        vs_path = output_dir / "phase4_vector_store"
+        vector_store.save(vs_path)
+        print_success(f"Vector store saved: {vs_path}")
 
-        # Generate document summary from section summaries (hierarchical)
-        print_info("Generating document summary (hierarchical)...")
-        valid_section_summaries = [s.summary for s in result.sections if s.summary]
-        result.document_summary = generator.generate_document_summary(
-            section_summaries=valid_section_summaries,
-            document_text=result.full_text  # Fallback if no section summaries
-        )
+        # Save PHASE 5A: Knowledge Graph (if enabled)
+        if knowledge_graph:
+            kg_path = output_dir / f"{doc_name}_kg.json"
+            knowledge_graph.save_json(str(kg_path))
+            print_success(f"Knowledge graph saved: {kg_path}")
 
-        sections_with_summaries = sum(1 for s in result.sections if s.summary)
+        # Print comprehensive statistics
+        print_header("INDEXING COMPLETE")
+        print_success(f"Document processed: {document_path.name}")
+        print()
 
-        print_success("Summaries generated")
-        print_info(f"Document summary: {result.document_summary[:80]}...")
-        print_info(f"Sections with summaries: {sections_with_summaries}/{result.num_sections}")
+        print_info("📊 PIPELINE STATISTICS")
+        print_info("-" * 60)
 
-        # Save PHASE 2 output
-        phase2_output = output_dir / "phase2_summaries.json"
-        with open(phase2_output, 'w', encoding='utf-8') as f:
-            json.dump({
-                "document_id": result.document_id,
-                "document_summary": result.document_summary,
-                "section_summaries": [
-                    {
-                        "section_id": s.section_id,
-                        "title": s.title,
-                        "summary": s.summary
-                    }
-                    for s in result.sections
-                ]
-            }, f, indent=2, ensure_ascii=False)
+        # Chunking stats
+        chunking = stats["chunking"]
+        print_info(f"Layer 1 (documents):  {chunking['layer1_count']:4d} chunks")
+        print_info(f"Layer 2 (sections):   {chunking['layer2_count']:4d} chunks")
+        print_info(f"Layer 3 (paragraphs): {chunking['layer3_count']:4d} chunks (PRIMARY)")
+        print_info(f"Total chunks:         {chunking['total_chunks']:4d}")
 
-        print_success(f"PHASE 2 output saved: {phase2_output}")
+        if 'layer3_avg_size' in chunking:
+            print()
+            print_info(f"Layer 3 avg size:     {chunking['layer3_avg_size']:.0f} chars")
+            if 'context_avg_overhead' in chunking:
+                print_info(f"SAC context overhead: {chunking['context_avg_overhead']:.0f} chars/chunk")
 
-        summaries_generated = True
+        # Vector store stats
+        vs_stats = stats["vector_store"]
+        print()
+        print_info(f"Vector dimensions:    {vs_stats.get('dense_dimensions', vs_stats.get('dimensions', 'N/A'))}D")
+        print_info(f"Total vectors:        {vs_stats['total_vectors']}")
+        print_info(f"Documents indexed:    {vs_stats['documents']}")
+
+        # Hybrid search stats
+        if stats.get("hybrid_enabled"):
+            print()
+            print_info("✅ Hybrid Search: ACTIVE")
+            print_info(f"   BM25 Layer 1:      {vs_stats.get('bm25_layer1_docs', 0)} docs")
+            print_info(f"   BM25 Layer 2:      {vs_stats.get('bm25_layer2_docs', 0)} docs")
+            print_info(f"   BM25 Layer 3:      {vs_stats.get('bm25_layer3_docs', 0)} docs")
+            print_info(f"   RRF Fusion k:      {config.hybrid_fusion_k}")
+        else:
+            print()
+            print_info("ℹ️  Hybrid Search: DISABLED (dense-only retrieval)")
+
+        # Knowledge graph stats
+        if stats.get("kg_enabled") and knowledge_graph:
+            print()
+            print_info("✅ Knowledge Graph: ACTIVE")
+            print_info(f"   Entities:          {stats['kg_entities']}")
+            print_info(f"   Relationships:     {stats['kg_relationships']}")
+        elif stats.get("kg_enabled"):
+            print()
+            print_info("⚠️  Knowledge Graph: ENABLED but no graph generated")
+        else:
+            print()
+            print_info("ℹ️  Knowledge Graph: DISABLED")
+
+        print()
 
     except Exception as e:
-        print(f"⚠️  PHASE 2 skipped: {e}")
-        print_info("Set appropriate API key in .env to enable summary generation")
-        summaries_generated = False
-
-    # =================================================================
-    # PHASE 3: Multi-Layer Chunking + SAC
-    # =================================================================
-    print_header("PHASE 3: Multi-Layer Chunking + SAC")
-
-    chunker = MultiLayerChunker(
-        chunk_size=500,
-        chunk_overlap=0,
-        enable_sac=summaries_generated
-    )
-
-    chunks = chunker.chunk_document(result)
-    stats = chunker.get_chunking_stats(chunks)
-
-    print_success("Multi-layer chunking completed")
-    print_info(f"Layer 1 (Document): {stats['layer1_count']} chunks")
-    print_info(f"Layer 2 (Section):  {stats['layer2_count']} chunks")
-    print_info(f"Layer 3 (Chunk):    {stats['layer3_count']} chunks (PRIMARY)")
-    print_info(f"Total chunks:       {stats['total_chunks']}")
-
-    if 'layer3_avg_size' in stats:
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
+        print(f"\n✗ ERROR: {e}")
         print()
-        print_info(f"Layer 3 avg size: {stats['layer3_avg_size']:.0f} chars")
-        print_info(f"SAC overhead: {stats['sac_avg_overhead']:.0f} chars/chunk")
-
-    # Save PHASE 3 output
-    phase3_output = output_dir / "phase3_chunks.json"
-    with open(phase3_output, 'w', encoding='utf-8') as f:
-        json.dump({
-            "document_id": result.document_id,
-            "chunking_stats": stats,
-            "layer1": [c.to_dict() for c in chunks["layer1"]],
-            "layer2": [c.to_dict() for c in chunks["layer2"]],
-            "layer3": [c.to_dict() for c in chunks["layer3"]]
-        }, f, indent=2, ensure_ascii=False)
-
-    print_success(f"PHASE 3 output saved: {phase3_output}")
-
-    # =================================================================
-    # PHASE 4: Embedding + FAISS Indexing
-    # =================================================================
-    print_header("PHASE 4: Embedding + FAISS Indexing")
-
-    try:
-        embedding_cfg = config.get_embedding_config()
-
-        embedder = EmbeddingGenerator(
-            EmbeddingConfig(
-                model=embedding_cfg["model"],
-                batch_size=100,
-                normalize=True
-            )
-        )
-
-        print_info(f"Generating embeddings with {embedding_cfg['model']}...")
-
-        # Generate embeddings for all layers
-        embeddings = {
-            "layer1": embedder.embed_chunks(chunks["layer1"], layer=1),
-            "layer2": embedder.embed_chunks(chunks["layer2"], layer=2),
-            "layer3": embedder.embed_chunks(chunks["layer3"], layer=3)
-        }
-
-        print_success("Embeddings generated")
-        print_info(f"Dimensions: {embedder.dimensions}D")
-        print_info(f"Layer 1: {embeddings['layer1'].shape}")
-        print_info(f"Layer 2: {embeddings['layer2'].shape}")
-        print_info(f"Layer 3: {embeddings['layer3'].shape}")
-
-        # Create vector store
-        print_info("Creating FAISS vector store...")
-        vector_store = FAISSVectorStore(dimensions=embedder.dimensions)
-        vector_store.add_chunks(chunks, embeddings)
-
-        store_stats = vector_store.get_stats()
-
-        print_success("FAISS index created")
-        print_info(f"Total vectors: {store_stats['total_vectors']}")
-        print_info(f"Documents: {store_stats['documents']}")
-
-        # Save PHASE 4 output
-        phase4_output = output_dir / "phase4_vector_store"
-        vector_store.save(phase4_output)
-
-        print_success(f"PHASE 4 output saved: {phase4_output}")
-
-    except Exception as e:
-        print(f"⚠️  PHASE 4 failed: {e}")
-        print_info("Check API keys in .env file")
-        print_info("For Kanon 2: VOYAGE_API_KEY")
-        print_info("For OpenAI: OPENAI_API_KEY")
-
-    # =================================================================
-    # SUMMARY
-    # =================================================================
-    print_header("PIPELINE COMPLETE")
-
-    print_success(f"All outputs saved to: {output_dir}")
-    print()
-    print_info("Output files:")
-    print_info(f"  - phase1_extraction.json   (Document structure)")
-    print_info(f"  - phase2_summaries.json    (Generic summaries)")
-    print_info(f"  - phase3_chunks.json       (Multi-layer chunks)")
-    print_info(f"  - phase4_vector_store/     (FAISS indexes)")
-    print()
-    print_info("Next steps:")
-    print_info("  - PHASE 5: Query & Retrieval API")
-    print_info("  - PHASE 6: Context Assembly")
-    print_info("  - PHASE 7: Answer Generation")
-    print()
-
-
-def main():
-    """Main entry point."""
-    if len(sys.argv) < 2:
-        print("Usage: python run_pipeline.py <path>")
-        print()
-        print("Supported formats: PDF, DOCX, PPTX, XLSX, HTML")
-        print("Input: Single document file OR directory containing documents")
-        print()
-        print("Examples:")
-        print("  Single document:")
-        print('    python run_pipeline.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"')
-        print('    python run_pipeline.py "data/report.docx"')
-        print()
-        print("  Batch processing (directory):")
-        print('    python run_pipeline.py "data/regulace/GRI"')
-        print()
-        print("Model Configuration (edit .env file):")
-
-        # Show current config
-        try:
-            config = get_default_config()
-            print(f"  LLM: {config.llm_provider}/{config.llm_model}")
-            print(f"  Embedding: {config.embedding_provider}/{config.embedding_model}")
-        except:
-            print("  (Configure models in .env file)")
-
+        print("Common issues:")
+        print("  - Missing API keys (check .env file)")
+        print("  - Invalid document format")
+        print("  - Insufficient disk space")
         sys.exit(1)
 
-    input_path = sys.argv[1]
-    run_complete_pipeline(input_path)
+    # Print cost summary
+    tracker = get_global_tracker()
+
+    if tracker.total_cost > 0:
+        print_header("💰 API COST SUMMARY")
+        print_info(f"Total cost:        ${tracker.total_cost:.4f} USD")
+        print_info(f"Total calls:       {len(tracker.entries)}")
+        print_info(f"Input tokens:      {tracker.total_input_tokens:,}")
+        print_info(f"Output tokens:     {tracker.total_output_tokens:,}")
+        print()
+
+        # Cost by provider
+        if tracker.cost_by_provider:
+            print_info("Cost by provider:")
+            for provider, cost in tracker.cost_by_provider.items():
+                print_info(f"  {provider:12s}  ${cost:.4f}")
+            print()
+
+        # Cost by operation
+        if tracker.cost_by_operation:
+            print_info("Cost by operation:")
+            for operation, cost in tracker.cost_by_operation.items():
+                print_info(f"  {operation:12s}  ${cost:.4f}")
+        print()
+
+    # Final success message
+    print("=" * 80)
+    print(f"✅ ALL DONE! Outputs saved in: {output_dir}")
+    print("=" * 80)
+    print()
+    print("📁 Output files:")
+    print(f"  • phase1_extraction.json    - Document structure")
+    print(f"  • phase2_summaries.json      - Section summaries")
+    print(f"  • phase3_chunks.json         - Multi-layer chunks")
+    print(f"  • phase4_vector_store/       - FAISS + BM25 indexes")
+    if knowledge_graph:
+        print(f"  • {doc_name}_kg.json         - Knowledge graph")
+    print()
+    print("🚀 To use with agent:")
+    print(f"  uv run python -m src.agent.cli --vector-store {vs_path}")
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 2:
+        print("Usage: python run_pipeline.py <document_path_or_directory>")
+        print()
+        print("Examples:")
+        print("  python run_pipeline.py data/document.pdf")
+        print("  python run_pipeline.py data/documents/")
+        sys.exit(1)
+
+    input_path = Path(sys.argv[1])
+    run_complete_pipeline(input_path)

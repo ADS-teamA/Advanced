@@ -395,3 +395,36 @@ def main(config: AgentConfig):
 
     # Run REPL
     cli.run_repl()
+
+
+if __name__ == "__main__":
+    """Allow running as: python -m src.agent.cli"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")
+    parser.add_argument("--vector-store", type=str, help="Path to vector store directory", default="output/vector_store")
+    parser.add_argument("--model", type=str, help="Claude model to use", default="claude-sonnet-4-5")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--no-streaming", action="store_true", help="Disable streaming responses")
+
+    args = parser.parse_args()
+
+    from .config import CLIConfig
+    config = AgentConfig(
+        vector_store_path=Path(args.vector_store),
+        model=args.model,
+        debug_mode=args.debug,
+        cli_config=CLIConfig(enable_streaming=not args.no_streaming)
+    )
+
+    try:
+        main(config)
+    except KeyboardInterrupt:
+        print("\n\n👋 Interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)

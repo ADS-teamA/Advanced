@@ -582,7 +582,10 @@ class HybridVectorStore:
         Returns:
             HybridVectorStore instance
         """
-        from faiss_vector_store import FAISSVectorStore
+        try:
+            from src.faiss_vector_store import FAISSVectorStore
+        except ImportError:
+            from .faiss_vector_store import FAISSVectorStore
 
         input_dir = Path(input_dir)
         logger.info(f"Loading hybrid store from {input_dir}")
@@ -627,8 +630,8 @@ class HybridVectorStore:
 # Example usage
 if __name__ == "__main__":
     from pathlib import Path
-    from faiss_vector_store import FAISSVectorStore
-    from embedding_generator import EmbeddingGenerator, EmbeddingConfig
+    from src.faiss_vector_store import FAISSVectorStore
+    from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
     print("=== PHASE 5B: Hybrid Search Example ===\n")
 

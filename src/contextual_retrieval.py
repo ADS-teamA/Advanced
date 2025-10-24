@@ -383,12 +383,22 @@ Please give a short succinct context (50-100 words) to situate this chunk within
 
         for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens
-                )
+                # GPT-5 and O-series models use max_completion_tokens instead of max_tokens
+                # GPT-5 models only support temperature=1.0 (default)
+                if self.model.startswith(('gpt-5', 'o1', 'o3', 'o4')):
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=1.0,  # GPT-5 only supports default temperature
+                        max_completion_tokens=self.config.max_tokens
+                    )
+                else:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self.config.temperature,
+                        max_tokens=self.config.max_tokens
+                    )
 
                 # Track cost
                 self.tracker.track_llm(

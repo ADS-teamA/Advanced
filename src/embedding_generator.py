@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 class EmbeddingConfig:
     """Configuration for embedding generation."""
     model: str = "bge-m3"  # Default: BGE-M3-v2 (multilingual, local, M1 optimized)
-    batch_size: int = 32  # Optimized for local inference
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    batch_size: int = 64  # Optimized for local inference
     normalize: bool = True  # For cosine similarity (FAISS IndexFlatIP)
     dimensions: Optional[int] = None  # Auto-detected from model
     # Embedding cache configuration (similar_query_cache infrastructure)

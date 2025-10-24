@@ -7,9 +7,11 @@ This module provides high-precision extraction with:
 - Generic summary generation (PHASE 2 of pipeline)
 - 97.9% table extraction accuracy
 - 100% text fidelity
+- Unicode normalization for Czech diacritics
 """
 
 import logging
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from dataclasses import dataclass
@@ -20,7 +22,7 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     TableFormerMode,
-    OcrMacOptions,
+    TesseractCliOcrOptions,
     LayoutOptions
 )
 from docling.datamodel.layout_model_specs import (
@@ -44,6 +46,84 @@ except ImportError:
     from summary_generator import SummaryGenerator
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_unicode(text: str) -> str:
+    """
+    Normalize Unicode text and fix Czech diacritics from malformed PDFs.
+
+    Handles two types of issues:
+    1. NFD (decomposed) diacritics → NFC (composed)
+    2. Separated spacing modifiers (e.g., "ˇ " + "c" → "č")
+
+    This fixes PDFs with bad font encoding where diacritics are encoded as
+    separate spacing characters (U+02C7 CARON, U+00B4 ACUTE) followed by
+    space and then the base letter.
+
+    Args:
+        text: Input text with potentially malformed Czech characters
+
+    Returns:
+        Text with properly composed Czech characters
+
+    Example:
+        >>> normalize_unicode("ˇ Ceské uˇ cení")  # Malformed PDF
+        "České učení"  # Fixed
+    """
+    if not text:
+        return text
+
+    # Step 1: Fix separated spacing modifiers (common in malformed PDFs)
+    # Map: (spacing_modifier, base_letter) → composed_character
+    replacements = {
+        # CARON (háček) - U+02C7
+        ('ˇ', 'C'): 'Č',  # U+010C
+        ('ˇ', 'c'): 'č',  # U+010D
+        ('ˇ', 'D'): 'Ď',  # U+010E
+        ('ˇ', 'd'): 'ď',  # U+010F
+        ('ˇ', 'E'): 'Ě',  # U+011A
+        ('ˇ', 'e'): 'ě',  # U+011B
+        ('ˇ', 'N'): 'Ň',  # U+0147
+        ('ˇ', 'n'): 'ň',  # U+0148
+        ('ˇ', 'R'): 'Ř',  # U+0158
+        ('ˇ', 'r'): 'ř',  # U+0159
+        ('ˇ', 'S'): 'Š',  # U+0160
+        ('ˇ', 's'): 'š',  # U+0161
+        ('ˇ', 'T'): 'Ť',  # U+0164
+        ('ˇ', 't'): 'ť',  # U+0165
+        ('ˇ', 'Z'): 'Ž',  # U+017D
+        ('ˇ', 'z'): 'ž',  # U+017E
+
+        # ACUTE ACCENT (čárka) - U+00B4 or U+0301
+        ("´", 'A'): 'Á',  # U+00C1
+        ("´", 'a'): 'á',  # U+00E1
+        ("´", 'E'): 'É',  # U+00C9
+        ("´", 'e'): 'é',  # U+00E9
+        ("´", 'I'): 'Í',  # U+00CD
+        ("´", 'i'): 'í',  # U+00ED
+        ("´", 'O'): 'Ó',  # U+00D3
+        ("´", 'o'): 'ó',  # U+00F3
+        ("´", 'U'): 'Ú',  # U+00DA
+        ("´", 'u'): 'ú',  # U+00FA
+        ("´", 'Y'): 'Ý',  # U+00DD
+        ("´", 'y'): 'ý',  # U+00FD
+
+        # RING ABOVE (kroužek) - U+02DA
+        ('˚', 'U'): 'Ů',  # U+016E
+        ('˚', 'u'): 'ů',  # U+016F
+    }
+
+    # Apply replacements: Look for "modifier + space + letter"
+    for (modifier, base), composed in replacements.items():
+        # Pattern: modifier + space + base letter
+        text = text.replace(f'{modifier} {base}', composed)
+        # Also try without space (less common but possible)
+        text = text.replace(f'{modifier}{base}', composed)
+
+    # Step 2: Standard Unicode NFC normalization (handles combining characters)
+    text = unicodedata.normalize('NFC', text)
+
+    return text
 
 
 @dataclass
@@ -224,12 +304,17 @@ class DoclingExtractorV2:
         logger.info(f"DoclingExtractorV2 initialized with smart_hierarchy={self.config.enable_smart_hierarchy}")
 
     def _setup_converter(self) -> DocumentConverter:
-        """Setup document converter with optimal settings."""
+        """
+        Setup document converter with optimal settings.
 
-        # Configure OCR
-        ocr_options = OcrMacOptions(
-            recognition=self.config.ocr_recognition,
-            lang=self.config.ocr_language
+        Uses Tesseract OCR for best Czech language support (90%+ accuracy).
+        Tesseract language codes: ces=Czech, eng=English
+        """
+
+        # Configure OCR - Use Tesseract for best Czech support
+        # lang parameter: ["ces", "eng"] for Czech+English, or ["auto"] for automatic
+        ocr_options = TesseractCliOcrOptions(
+            lang=self.config.ocr_language  # e.g., ["ces", "eng"]
         )
 
         # Configure layout model based on config
@@ -307,9 +392,9 @@ class DoclingExtractorV2:
         result = self.converter.convert(str(source_path))
         docling_doc: DoclingDocument = result.document
 
-        # Extract content
-        full_text = docling_doc.export_to_text()
-        markdown = docling_doc.export_to_markdown() if self.config.generate_markdown else ""
+        # Extract content with Unicode normalization (fixes Czech diacritics)
+        full_text = normalize_unicode(docling_doc.export_to_text())
+        markdown = normalize_unicode(docling_doc.export_to_markdown()) if self.config.generate_markdown else ""
         json_content = docling_doc.export_to_dict() if self.config.generate_json else {}
 
         # PHASE 1: Extract hierarchical structure
@@ -376,7 +461,7 @@ class DoclingExtractorV2:
         for item, level in docling_doc.iterate_items():
             if isinstance(item, SectionHeaderItem):
                 header_info = {
-                    'text': item.text,
+                    'text': normalize_unicode(item.text),  # Normalize Czech diacritics
                     'level': item.level,
                     'bbox': item.prov[0].bbox.as_tuple() if item.prov and item.prov[0].bbox else None,
                     'item': item  # Store reference
@@ -411,9 +496,10 @@ class DoclingExtractorV2:
         for chunk in chunks:
             section_id += 1
 
-            headings = chunk.meta.headings if chunk.meta.headings else []
+            # Normalize Unicode in headings (fixes Czech diacritics)
+            headings = [normalize_unicode(h) for h in chunk.meta.headings] if chunk.meta.headings else []
             depth = len(headings) if headings else 0
-            title = headings[-1] if headings else "Untitled"
+            title = normalize_unicode(headings[-1]) if headings else "Untitled"
 
             # Level is depth (HierarchicalChunker preserves our smart levels)
             level = depth
@@ -424,7 +510,8 @@ class DoclingExtractorV2:
                 parent_heading_path = tuple(headings[:-1])
                 parent_id = heading_to_section.get(parent_heading_path)
 
-            content = chunk.text
+            # Normalize Unicode in content (fixes Czech diacritics)
+            content = normalize_unicode(chunk.text)
 
             section = DocumentSection(
                 section_id=f"sec_{section_id}",
@@ -580,11 +667,20 @@ class DoclingExtractorV2:
                     df = item.export_to_dataframe()
 
                     if df is not None:
-                        data = df.values.tolist()
+                        # Normalize Unicode in table cells (fixes Czech diacritics)
+                        raw_data = df.values.tolist()
+                        data = [
+                            [normalize_unicode(str(cell)) if cell is not None else "" for cell in row]
+                            for row in raw_data
+                        ]
+
+                        caption = getattr(item, 'caption', None)
+                        if caption:
+                            caption = normalize_unicode(caption)
 
                         table = TableData(
                             table_id=f"table_{table_counter}",
-                            caption=getattr(item, 'caption', None),
+                            caption=caption,
                             num_rows=len(data),
                             num_cols=len(data[0]) if data else 0,
                             data=data,

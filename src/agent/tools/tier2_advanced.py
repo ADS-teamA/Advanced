@@ -7,7 +7,7 @@ Use when Tier 1 tools are insufficient.
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import Field
 

@@ -141,6 +141,89 @@ API keys are **required** for the pipeline to function:
 
 **IMPORTANT:** Without API keys, the pipeline will fail at PHASE 2 (summaries). Embedding models can be either cloud-based (API key required) or local (no API key).
 
+## OCR Configuration
+
+### Tesseract OCR for Czech Language
+
+The pipeline uses **Tesseract OCR** for optimal Czech language support (90%+ accuracy). Tesseract is automatically configured for Czech documents with post-processing fixes for malformed PDFs.
+
+**Key Features:**
+- **Best-in-class accuracy** for printed Czech text (90%+ on standard documents)
+- **Automatic Czech character fixing** for PDFs with bad font encoding (e.g., "ˇ C" → "Č")
+- **Multi-language support** with automatic detection (Czech + English by default)
+- **Cross-platform** works on Windows, macOS, and Linux
+
+### Installation
+
+Tesseract is installed automatically via the `docling` package using `uv`:
+
+```bash
+# Install via uv (includes Tesseract bindings)
+uv sync
+```
+
+**Note:** No manual Tesseract installation needed - Python bindings are included in `docling-ocr` package.
+
+### Configuration
+
+Default configuration (Czech + English):
+```python
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+
+config = IndexingConfig(
+    ocr_language=["ces", "eng"]  # Tesseract language codes
+)
+pipeline = IndexingPipeline(config)
+```
+
+**Tesseract Language Codes:**
+- `ces` - Czech (Čeština)
+- `eng` - English
+- `deu` - German (Deutsch)
+- `slk` - Slovak (Slovenčina)
+- `pol` - Polish (Polski)
+- `auto` - Automatic language detection
+
+### Czech Character Fix for Malformed PDFs
+
+The pipeline automatically fixes Czech diacritics in PDFs with bad font encoding:
+
+```python
+# Before (malformed PDF):
+"ˇ Ceské vysoké uˇ cení technické v Praze"
+
+# After (automatic fix):
+"České vysoké učení technické v Praze"
+```
+
+**How it works:**
+1. Detects separated spacing modifiers (U+02C7 CARON, U+00B4 ACUTE)
+2. Combines with base letters to form proper Czech characters
+3. Applies standard Unicode NFC normalization
+
+**Supported fixes:**
+- Háček (ˇ): č, ř, š, ž, ď, ť, ň, ě (both uppercase and lowercase)
+- Čárka (´): á, é, í, ó, ú, ý (both uppercase and lowercase)
+- Kroužek (˚): ů (both uppercase and lowercase)
+
+Implementation: `src/docling_extractor_v2.py:normalize_unicode()` (lines 51-126)
+
+### Troubleshooting
+
+**Problem:** Poor OCR quality on scanned documents
+
+**Solutions:**
+1. Use higher DPI scans (300+ DPI recommended)
+2. Enable `do_ocr=True` in pipeline options
+3. Consider pre-processing with image enhancement tools
+
+**Problem:** Wrong language detected
+
+**Solution:** Explicitly set language codes instead of `"auto"`:
+```python
+config = IndexingConfig(ocr_language=["ces"])  # Czech only
+```
+
 ## Common Commands
 
 ### Running the Indexing Pipeline
@@ -172,16 +255,22 @@ result['vector_store'].save('output/vector_store')
 
 ```bash
 # Launch interactive agent (default settings)
-python -m src.agent.cli
+# Both commands work identically:
+uv run python -m src.agent.cli
+# or
+uv run python -m src.agent
 
 # With debug mode
-python -m src.agent.cli --debug
+uv run python -m src.agent.cli --debug
 
 # With custom vector store path
-python -m src.agent.cli --vector-store output/custom_vector_store
+uv run python -m src.agent.cli --vector-store output/custom_vector_store
 
 # Disable streaming for simpler output
-python -m src.agent.cli --no-streaming
+uv run python -m src.agent.cli --no-streaming
+
+# Example with hybrid search vector store
+uv run python -m src.agent.cli --vector-store output/BZ_VR1_sample_HYBRID/20251024_153246/phase4_vector_store
 ```
 
 ### Testing

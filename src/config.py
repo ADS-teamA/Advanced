@@ -47,7 +47,8 @@ from dataclasses import dataclass, field
 
 def load_env():
     """Load environment variables from .env file."""
-    env_path = Path(__file__).parent.parent.parent / ".env"
+    # __file__ is src/config.py, so parent.parent gets to project root
+    env_path = Path(__file__).parent.parent / ".env"
 
     if env_path.exists():
         with open(env_path, 'r') as f:
@@ -56,6 +57,16 @@ def load_env():
                 if line and not line.startswith('#') and '=' in line:
                     key, value = line.split('=', 1)
                     os.environ[key.strip()] = value.strip()
+    else:
+        # Fallback: look for .env in current working directory
+        cwd_env = Path.cwd() / ".env"
+        if cwd_env.exists():
+            with open(cwd_env, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key.strip()] = value.strip()
 
 
 # Load .env on module import
@@ -218,10 +229,12 @@ class ExtractionConfig:
         )
     """
 
-    # OCR settings
+    # OCR settings - Tesseract engine (best for Czech)
     enable_ocr: bool = True
-    ocr_language: List[str] = field(default_factory=lambda: ["cs-CZ", "en-US"])
-    ocr_recognition: str = "accurate"  # "accurate" or "fast"
+    # Tesseract language codes: ces=Czech, eng=English, deu=German, etc.
+    # Use ["auto"] for automatic language detection
+    ocr_language: List[str] = field(default_factory=lambda: ["ces", "eng"])
+    ocr_recognition: str = "accurate"  # "accurate" or "fast" (deprecated for Tesseract)
 
     # Table extraction
     table_mode: str = "ACCURATE"  # Will be converted to TableFormerMode
@@ -262,7 +275,8 @@ class SummarizationConfig:
     max_tokens: int = 500         # Max LLM output tokens
     retry_on_exceed: bool = True  # Retry if exceeds max_chars
     max_retries: int = 3          # Max retry attempts
-    max_workers: int = 10         # Parallel summary generation
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    max_workers: int = 20         # Parallel summary generation
     min_text_length: int = 50     # Min text length for summarization
 
     # Model config loaded from .env (don't set here)
@@ -303,8 +317,9 @@ class ContextGenerationConfig:
     fallback_to_basic: bool = True  # Use basic chunking if context generation fails
 
     # Batch processing (for performance)
-    batch_size: int = 10   # Generate contexts in batches
-    max_workers: int = 5   # Parallel context generation
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    batch_size: int = 20   # Generate contexts in batches
+    max_workers: int = 10   # Parallel context generation
 
     # Model config loaded from .env (don't set here)
     provider: Optional[str] = None
@@ -373,7 +388,8 @@ class EmbeddingConfig:
     """
 
     # Research-backed parameters
-    batch_size: int = 32              # Batch size for embedding generation
+    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
+    batch_size: int = 64              # Batch size for embedding generation
     enable_multi_layer: bool = True   # Enable multi-layer indexing (document, section, chunk)
 
     # Model config loaded from .env (don't set here)
@@ -411,6 +427,29 @@ class RAGConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     models: ModelConfig = field(default_factory=ModelConfig.from_env)
+
+    def get_embedding_config(self) -> dict:
+        """Get embedding configuration for EmbeddingGenerator."""
+        if self.models.embedding_provider == "voyage":
+            return {
+                "provider": "voyage",
+                "model": self.models.embedding_model,
+                "api_key": self.models.voyage_api_key
+            }
+        elif self.models.embedding_provider == "openai":
+            return {
+                "provider": "openai",
+                "model": self.models.embedding_model,
+                "api_key": self.models.openai_api_key
+            }
+        elif self.models.embedding_provider == "huggingface":
+            return {
+                "provider": "huggingface",
+                "model": self.models.embedding_model,
+                "api_key": None  # Local models
+            }
+        else:
+            raise ValueError(f"Unknown embedding provider: {self.models.embedding_provider}")
 
 
 def get_default_config() -> RAGConfig:

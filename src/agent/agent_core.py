@@ -248,10 +248,8 @@ class AgentCore:
                         operation="agent"
                     )
 
-                    # Extract tool uses from final message
-                    for block in final_message.content:
-                        if block.type == "tool_use":
-                            tool_uses.append(block)
+                    # Note: tool_uses already collected during streaming (lines 224-237)
+                    # No need to extract from final_message again - would cause duplicates!
 
                     # Add assistant message to history
                     if assistant_message["content"]:
