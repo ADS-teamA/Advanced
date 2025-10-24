@@ -54,28 +54,30 @@ class SummaryGenerator:
         # Use provided config or create default
         self.config = config or SummarizationConfig()
 
-        # Resolve model alias (e.g., "haiku" -> "claude-haiku-4-5-20251001")
-        self.model = resolve_model_alias(self.config.model)
+        # Get LLM config (llm_config is guaranteed to exist after __post_init__)
+        llm_config = self.config.llm_config
 
-        # Extract config values for convenience
+        # Extract LLM settings
+        self.provider = llm_config.provider
+        self.model = llm_config.model  # Already resolved by LLMTaskConfig.__post_init__
+        self.temperature = llm_config.temperature
+        self.max_tokens = llm_config.max_tokens
+
+        # Extract task-specific settings
         self.max_chars = self.config.max_chars
         self.tolerance = self.config.tolerance
         self.max_workers = self.config.max_workers
         self.min_text_length = self.config.min_text_length
-        self.temperature = self.config.temperature
-        self.max_tokens = self.config.max_tokens
 
-        # Detect provider from model name
-        if "claude" in self.model.lower():
-            self.provider = "claude"
-            self._init_claude(api_key)
-        elif "gpt" in self.model.lower():
-            self.provider = "openai"
-            self._init_openai(api_key)
+        # Initialize LLM client
+        if self.provider in ["claude", "anthropic"]:
+            self._init_claude(api_key or llm_config.api_key)
+        elif self.provider == "openai":
+            self._init_openai(api_key or llm_config.api_key)
         else:
             raise ValueError(
-                f"Unsupported model: {self.model}. "
-                f"Supported: claude-sonnet-4.5, claude-haiku-4.5, gpt-4o-mini, gpt-4o"
+                f"Unsupported provider: {self.provider}. "
+                f"Supported: claude, anthropic, openai"
             )
 
         logger.info(

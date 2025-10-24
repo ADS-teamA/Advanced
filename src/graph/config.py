@@ -12,6 +12,13 @@ import os
 
 from .models import EntityType, RelationshipType
 
+# Import LLMTaskConfig from main config
+try:
+    from src.config import LLMTaskConfig
+except ImportError:
+    # Fallback if src.config not available
+    LLMTaskConfig = None
+
 
 class GraphBackend(Enum):
     """Graph storage backend options."""
@@ -25,10 +32,8 @@ class GraphBackend(Enum):
 class EntityExtractionConfig:
     """Configuration for entity extraction."""
 
-    # LLM settings for extraction
-    llm_provider: str = "openai"           # "openai", "anthropic"
-    llm_model: str = "gpt-4o-mini"         # Fast, cost-effective for extraction
-    temperature: float = 0.0               # Deterministic extraction
+    # LLM configuration
+    llm_config: Optional['LLMTaskConfig'] = None
 
     # Enabled entity types
     enabled_entity_types: Set[EntityType] = field(default_factory=lambda: {
@@ -54,15 +59,29 @@ class EntityExtractionConfig:
     include_examples: bool = True          # Include few-shot examples in prompt
     max_entities_per_chunk: int = 50       # Max entities per chunk
 
+    # Legacy compatibility (deprecated)
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    temperature: Optional[float] = None
+
+    def __post_init__(self):
+        """Initialize LLM config from legacy fields if provided."""
+        if self.llm_config is None and LLMTaskConfig is not None:
+            # Use legacy fields or defaults
+            self.llm_config = LLMTaskConfig(
+                provider=self.llm_provider or "openai",
+                model=self.llm_model or "gpt-4o-mini",
+                temperature=self.temperature if self.temperature is not None else 0.0,
+                max_tokens=500
+            )
+
 
 @dataclass
 class RelationshipExtractionConfig:
     """Configuration for relationship extraction."""
 
-    # LLM settings for extraction
-    llm_provider: str = "openai"
-    llm_model: str = "gpt-4o-mini"
-    temperature: float = 0.0
+    # LLM configuration
+    llm_config: Optional['LLMTaskConfig'] = None
 
     # Enabled relationship types
     enabled_relationship_types: Set[RelationshipType] = field(default_factory=lambda: {
@@ -92,6 +111,22 @@ class RelationshipExtractionConfig:
 
     # Advanced settings
     max_relationships_per_entity: int = 100  # Limit relationships per entity
+
+    # Legacy compatibility (deprecated)
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    temperature: Optional[float] = None
+
+    def __post_init__(self):
+        """Initialize LLM config from legacy fields if provided."""
+        if self.llm_config is None and LLMTaskConfig is not None:
+            # Use legacy fields or defaults
+            self.llm_config = LLMTaskConfig(
+                provider=self.llm_provider or "openai",
+                model=self.llm_model or "gpt-4o-mini",
+                temperature=self.temperature if self.temperature is not None else 0.0,
+                max_tokens=500
+            )
 
 
 @dataclass
@@ -202,19 +237,41 @@ class KnowledgeGraphConfig:
         Environment variables:
             KG_LLM_PROVIDER: LLM provider for extraction (openai, anthropic)
             KG_LLM_MODEL: Model name for extraction
+            KG_ENTITY_LLM_PROVIDER: LLM provider for entity extraction (overrides KG_LLM_PROVIDER)
+            KG_ENTITY_LLM_MODEL: Model for entity extraction (overrides KG_LLM_MODEL)
+            KG_RELATIONSHIP_LLM_PROVIDER: LLM provider for relationship extraction
+            KG_RELATIONSHIP_LLM_MODEL: Model for relationship extraction
             KG_BACKEND: Graph backend (neo4j, simple, networkx)
             KG_EXPORT_PATH: Path to export JSON graph
             ANTHROPIC_API_KEY: API key for Claude
             OPENAI_API_KEY: API key for OpenAI
         """
+        # Entity extraction config (with task-specific overrides)
+        entity_llm_config = None
+        if LLMTaskConfig is not None:
+            entity_llm_config = LLMTaskConfig(
+                provider=os.getenv("KG_ENTITY_LLM_PROVIDER", os.getenv("KG_LLM_PROVIDER", "openai")),
+                model=os.getenv("KG_ENTITY_LLM_MODEL", os.getenv("KG_LLM_MODEL", "gpt-4o-mini")),
+                temperature=0.0,
+                max_tokens=500
+            )
+
         entity_extraction = EntityExtractionConfig(
-            llm_provider=os.getenv("KG_LLM_PROVIDER", "openai"),
-            llm_model=os.getenv("KG_LLM_MODEL", "gpt-4o-mini"),
+            llm_config=entity_llm_config,
         )
 
+        # Relationship extraction config (with task-specific overrides)
+        relationship_llm_config = None
+        if LLMTaskConfig is not None:
+            relationship_llm_config = LLMTaskConfig(
+                provider=os.getenv("KG_RELATIONSHIP_LLM_PROVIDER", os.getenv("KG_LLM_PROVIDER", "openai")),
+                model=os.getenv("KG_RELATIONSHIP_LLM_MODEL", os.getenv("KG_LLM_MODEL", "gpt-4o-mini")),
+                temperature=0.0,
+                max_tokens=500
+            )
+
         relationship_extraction = RelationshipExtractionConfig(
-            llm_provider=os.getenv("KG_LLM_PROVIDER", "openai"),
-            llm_model=os.getenv("KG_LLM_MODEL", "gpt-4o-mini"),
+            llm_config=relationship_llm_config,
         )
 
         backend_str = os.getenv("KG_BACKEND", "simple").lower()
@@ -242,11 +299,13 @@ class KnowledgeGraphConfig:
     def validate(self) -> None:
         """Validate configuration settings."""
         # Check API keys
-        if self.entity_extraction.llm_provider == "anthropic" and not self.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY required for anthropic provider")
+        if self.entity_extraction.llm_config:
+            provider = self.entity_extraction.llm_config.provider
+            if provider in ["anthropic", "claude"] and not self.anthropic_api_key:
+                raise ValueError("ANTHROPIC_API_KEY required for anthropic provider")
 
-        if self.entity_extraction.llm_provider == "openai" and not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY required for openai provider")
+            if provider == "openai" and not self.openai_api_key:
+                raise ValueError("OPENAI_API_KEY required for openai provider")
 
         # Check Neo4j config
         if self.graph_storage.backend == GraphBackend.NEO4J and not self.graph_storage.neo4j_config:
@@ -279,18 +338,35 @@ def get_default_config() -> KnowledgeGraphConfig:
 
 def get_production_config() -> KnowledgeGraphConfig:
     """Production config: Neo4j backend with full extraction."""
+    entity_llm = None
+    relationship_llm = None
+
+    if LLMTaskConfig is not None:
+        entity_llm = LLMTaskConfig(
+            provider="openai",
+            model="gpt-4o",
+            temperature=0.0,
+            max_tokens=500
+        )
+        relationship_llm = LLMTaskConfig(
+            provider="openai",
+            model="gpt-4o",
+            temperature=0.0,
+            max_tokens=500
+        )
+
     return KnowledgeGraphConfig(
         graph_storage=GraphStorageConfig(
             backend=GraphBackend.NEO4J,
             neo4j_config=Neo4jConfig.from_env(),
         ),
         entity_extraction=EntityExtractionConfig(
-            llm_model="gpt-4o",  # More accurate for production
+            llm_config=entity_llm,
             batch_size=20,
             max_workers=10,
         ),
         relationship_extraction=RelationshipExtractionConfig(
-            llm_model="gpt-4o",
+            llm_config=relationship_llm,
             batch_size=10,
             max_workers=10,
         ),
@@ -299,13 +375,30 @@ def get_production_config() -> KnowledgeGraphConfig:
 
 def get_development_config() -> KnowledgeGraphConfig:
     """Development config: Fast, minimal extraction for testing."""
+    entity_llm = None
+    relationship_llm = None
+
+    if LLMTaskConfig is not None:
+        entity_llm = LLMTaskConfig(
+            provider="openai",
+            model="gpt-4o-mini",
+            temperature=0.0,
+            max_tokens=500
+        )
+        relationship_llm = LLMTaskConfig(
+            provider="openai",
+            model="gpt-4o-mini",
+            temperature=0.0,
+            max_tokens=500
+        )
+
     return KnowledgeGraphConfig(
         graph_storage=GraphStorageConfig(
             backend=GraphBackend.SIMPLE,
             simple_store_path="./data/graphs/dev_graph.json",
         ),
         entity_extraction=EntityExtractionConfig(
-            llm_model="gpt-4o-mini",
+            llm_config=entity_llm,
             batch_size=5,
             max_workers=3,
             enabled_entity_types={
@@ -315,7 +408,7 @@ def get_development_config() -> KnowledgeGraphConfig:
             },
         ),
         relationship_extraction=RelationshipExtractionConfig(
-            llm_model="gpt-4o-mini",
+            llm_config=relationship_llm,
             batch_size=3,
             max_workers=3,
             enabled_relationship_types={

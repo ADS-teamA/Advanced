@@ -203,20 +203,261 @@ class ExtractionConfig:
 
 
 @dataclass
+class LLMTaskConfig:
+    """
+    Configuration for a specific LLM task.
+
+    Allows fine-grained control over which model/provider to use for each task
+    in the RAG pipeline (summaries, entity extraction, relationship extraction, etc.).
+    """
+
+    provider: str  # 'claude', 'openai', 'anthropic'
+    model: str  # Model name or alias
+    temperature: float = 0.3
+    max_tokens: int = 500
+    api_key: Optional[str] = None
+
+    def __post_init__(self):
+        """Resolve model alias and load API key from environment if not provided."""
+        # Resolve model alias
+        self.model = resolve_model_alias(self.model)
+
+        # Load API key from environment if not provided
+        if self.api_key is None:
+            if self.provider in ["claude", "anthropic"]:
+                self.api_key = os.getenv("ANTHROPIC_API_KEY")
+            elif self.provider == "openai":
+                self.api_key = os.getenv("OPENAI_API_KEY")
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for module consumption."""
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "api_key": self.api_key
+        }
+
+
+@dataclass
+class LLMTasksConfig:
+    """
+    Centralized configuration for all LLM tasks in the RAG pipeline.
+
+    Allows specifying different models/providers for each task:
+    - summary: Document and section summarization (PHASE 2)
+    - context: Contextual chunk augmentation (PHASE 3)
+    - entity_extraction: Knowledge graph entity extraction (PHASE 5A)
+    - relationship_extraction: Knowledge graph relationship extraction (PHASE 5A)
+    - agent: RAG agent responses (PHASE 7)
+    - query_decomposition: Complex query decomposition (PHASE 7)
+    - hyde: Hypothetical document embeddings (PHASE 7)
+
+    Example:
+        # Use different models for different tasks
+        llm_tasks = LLMTasksConfig(
+            summary=LLMTaskConfig(provider="claude", model="haiku"),
+            context=LLMTaskConfig(provider="claude", model="haiku"),
+            entity_extraction=LLMTaskConfig(provider="openai", model="gpt-4o"),
+            relationship_extraction=LLMTaskConfig(provider="openai", model="gpt-4o-mini"),
+            agent=LLMTaskConfig(provider="claude", model="sonnet"),
+        )
+    """
+
+    summary: Optional[LLMTaskConfig] = None
+    context: Optional[LLMTaskConfig] = None
+    entity_extraction: Optional[LLMTaskConfig] = None
+    relationship_extraction: Optional[LLMTaskConfig] = None
+    agent: Optional[LLMTaskConfig] = None
+    query_decomposition: Optional[LLMTaskConfig] = None
+    hyde: Optional[LLMTaskConfig] = None
+
+    def __post_init__(self):
+        """Initialize missing configs with sensible defaults."""
+        # Summary generation: Fast and cheap (Haiku or GPT-4o-mini)
+        if self.summary is None:
+            self.summary = LLMTaskConfig(
+                provider="claude",
+                model="haiku",
+                temperature=0.3,
+                max_tokens=500
+            )
+
+        # Context generation: Fast and cheap (same as summary)
+        if self.context is None:
+            self.context = LLMTaskConfig(
+                provider="claude",
+                model="haiku",
+                temperature=0.3,
+                max_tokens=150
+            )
+
+        # Entity extraction: Deterministic, can use faster models
+        if self.entity_extraction is None:
+            self.entity_extraction = LLMTaskConfig(
+                provider="openai",
+                model="gpt-4o-mini",
+                temperature=0.0,
+                max_tokens=500
+            )
+
+        # Relationship extraction: Deterministic, can use faster models
+        if self.relationship_extraction is None:
+            self.relationship_extraction = LLMTaskConfig(
+                provider="openai",
+                model="gpt-4o-mini",
+                temperature=0.0,
+                max_tokens=500
+            )
+
+        # Agent: More capable model for complex reasoning (Sonnet)
+        if self.agent is None:
+            self.agent = LLMTaskConfig(
+                provider="claude",
+                model="sonnet",
+                temperature=0.3,
+                max_tokens=4096
+            )
+
+        # Query decomposition: Can use same as agent or faster
+        if self.query_decomposition is None:
+            self.query_decomposition = LLMTaskConfig(
+                provider="claude",
+                model="haiku",
+                temperature=0.3,
+                max_tokens=500
+            )
+
+        # HyDE: Hypothetical document generation, can use faster models
+        if self.hyde is None:
+            self.hyde = LLMTaskConfig(
+                provider="claude",
+                model="haiku",
+                temperature=0.5,
+                max_tokens=500
+            )
+
+    @classmethod
+    def from_env(cls) -> "LLMTasksConfig":
+        """
+        Load task-specific LLM configs from environment variables.
+
+        Environment variables (all optional, defaults to sensible choices):
+            SUMMARY_LLM_PROVIDER, SUMMARY_LLM_MODEL
+            CONTEXT_LLM_PROVIDER, CONTEXT_LLM_MODEL
+            ENTITY_LLM_PROVIDER, ENTITY_LLM_MODEL
+            RELATIONSHIP_LLM_PROVIDER, RELATIONSHIP_LLM_MODEL
+            AGENT_LLM_PROVIDER, AGENT_LLM_MODEL
+            QUERY_DECOMP_LLM_PROVIDER, QUERY_DECOMP_LLM_MODEL
+            HYDE_LLM_PROVIDER, HYDE_LLM_MODEL
+        """
+        summary = None
+        if os.getenv("SUMMARY_LLM_PROVIDER") or os.getenv("SUMMARY_LLM_MODEL"):
+            summary = LLMTaskConfig(
+                provider=os.getenv("SUMMARY_LLM_PROVIDER", "claude"),
+                model=os.getenv("SUMMARY_LLM_MODEL", "haiku"),
+                temperature=float(os.getenv("SUMMARY_LLM_TEMP", "0.3")),
+                max_tokens=int(os.getenv("SUMMARY_LLM_MAX_TOKENS", "500"))
+            )
+
+        context = None
+        if os.getenv("CONTEXT_LLM_PROVIDER") or os.getenv("CONTEXT_LLM_MODEL"):
+            context = LLMTaskConfig(
+                provider=os.getenv("CONTEXT_LLM_PROVIDER", "claude"),
+                model=os.getenv("CONTEXT_LLM_MODEL", "haiku"),
+                temperature=float(os.getenv("CONTEXT_LLM_TEMP", "0.3")),
+                max_tokens=int(os.getenv("CONTEXT_LLM_MAX_TOKENS", "150"))
+            )
+
+        entity = None
+        if os.getenv("ENTITY_LLM_PROVIDER") or os.getenv("ENTITY_LLM_MODEL"):
+            entity = LLMTaskConfig(
+                provider=os.getenv("ENTITY_LLM_PROVIDER", "openai"),
+                model=os.getenv("ENTITY_LLM_MODEL", "gpt-4o-mini"),
+                temperature=float(os.getenv("ENTITY_LLM_TEMP", "0.0")),
+                max_tokens=int(os.getenv("ENTITY_LLM_MAX_TOKENS", "500"))
+            )
+
+        relationship = None
+        if os.getenv("RELATIONSHIP_LLM_PROVIDER") or os.getenv("RELATIONSHIP_LLM_MODEL"):
+            relationship = LLMTaskConfig(
+                provider=os.getenv("RELATIONSHIP_LLM_PROVIDER", "openai"),
+                model=os.getenv("RELATIONSHIP_LLM_MODEL", "gpt-4o-mini"),
+                temperature=float(os.getenv("RELATIONSHIP_LLM_TEMP", "0.0")),
+                max_tokens=int(os.getenv("RELATIONSHIP_LLM_MAX_TOKENS", "500"))
+            )
+
+        agent = None
+        if os.getenv("AGENT_LLM_PROVIDER") or os.getenv("AGENT_LLM_MODEL"):
+            agent = LLMTaskConfig(
+                provider=os.getenv("AGENT_LLM_PROVIDER", "claude"),
+                model=os.getenv("AGENT_LLM_MODEL", "sonnet"),
+                temperature=float(os.getenv("AGENT_LLM_TEMP", "0.3")),
+                max_tokens=int(os.getenv("AGENT_LLM_MAX_TOKENS", "4096"))
+            )
+
+        query_decomp = None
+        if os.getenv("QUERY_DECOMP_LLM_PROVIDER") or os.getenv("QUERY_DECOMP_LLM_MODEL"):
+            query_decomp = LLMTaskConfig(
+                provider=os.getenv("QUERY_DECOMP_LLM_PROVIDER", "claude"),
+                model=os.getenv("QUERY_DECOMP_LLM_MODEL", "haiku"),
+                temperature=float(os.getenv("QUERY_DECOMP_LLM_TEMP", "0.3")),
+                max_tokens=int(os.getenv("QUERY_DECOMP_LLM_MAX_TOKENS", "500"))
+            )
+
+        hyde = None
+        if os.getenv("HYDE_LLM_PROVIDER") or os.getenv("HYDE_LLM_MODEL"):
+            hyde = LLMTaskConfig(
+                provider=os.getenv("HYDE_LLM_PROVIDER", "claude"),
+                model=os.getenv("HYDE_LLM_MODEL", "haiku"),
+                temperature=float(os.getenv("HYDE_LLM_TEMP", "0.5")),
+                max_tokens=int(os.getenv("HYDE_LLM_MAX_TOKENS", "500"))
+            )
+
+        return cls(
+            summary=summary,
+            context=context,
+            entity_extraction=entity,
+            relationship_extraction=relationship,
+            agent=agent,
+            query_decomposition=query_decomp,
+            hyde=hyde
+        )
+
+
+@dataclass
 class SummarizationConfig:
     """Configuration for summarization (PHASE 2)."""
 
-    provider: str = "claude"  # 'claude' or 'openai'
-    model: str = "haiku"  # Alias or full model name
+    # LLM configuration
+    llm_config: Optional[LLMTaskConfig] = None
+
+    # Task-specific parameters
     max_chars: int = 150
     tolerance: int = 20
     style: str = "generic"
-    temperature: float = 0.3
-    max_tokens: int = 500
     retry_on_exceed: bool = True
     max_retries: int = 3
     max_workers: int = 10
     min_text_length: int = 50
+
+    # Legacy compatibility (deprecated)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+    def __post_init__(self):
+        """Initialize LLM config from legacy fields if provided."""
+        if self.llm_config is None:
+            # Use legacy fields or defaults
+            self.llm_config = LLMTaskConfig(
+                provider=self.provider or "claude",
+                model=self.model or "haiku",
+                temperature=self.temperature or 0.3,
+                max_tokens=self.max_tokens or 500
+            )
 
 
 @dataclass
@@ -228,25 +469,11 @@ class ContextGenerationConfig:
     Results in 67% reduction in retrieval failures (Anthropic research).
     """
 
+    # LLM configuration
+    llm_config: Optional[LLMTaskConfig] = None
+
     # Enable contextual retrieval
     enable_contextual: bool = True
-
-    # LLM provider for context generation
-    provider: str = "anthropic"  # 'anthropic', 'openai', 'local'
-
-    # Model selection
-    model: str = "haiku"  # Fast & cheap for context generation
-    # Options:
-    #   Anthropic: haiku, sonnet
-    #   OpenAI: gpt-4o-mini, gpt-4o
-    #   Local: saul-7b, mistral-legal-7b, llama-3-8b
-
-    # API keys (loaded from environment if not provided)
-    api_key: Optional[str] = None
-
-    # Generation params
-    temperature: float = 0.3
-    max_tokens: int = 150  # Context should be 50-100 words
 
     # Context window params
     include_surrounding_chunks: bool = True  # Include chunks above/below for better context
@@ -259,26 +486,33 @@ class ContextGenerationConfig:
     batch_size: int = 10  # Generate contexts in batches
     max_workers: int = 5  # Parallel context generation
 
+    # Legacy compatibility (deprecated)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+
     def __post_init__(self):
-        """Load API key from environment if not provided and validate."""
+        """Initialize LLM config from legacy fields if provided."""
         import logging
         logger = logging.getLogger(__name__)
 
-        if self.api_key is None:
-            if self.provider == "anthropic":
-                self.api_key = os.getenv("ANTHROPIC_API_KEY")
-                if not self.api_key:
-                    logger.warning(
-                        "ANTHROPIC_API_KEY not set in environment. "
-                        "Contextual retrieval will fail unless API key is provided during initialization."
-                    )
-            elif self.provider == "openai":
-                self.api_key = os.getenv("OPENAI_API_KEY")
-                if not self.api_key:
-                    logger.warning(
-                        "OPENAI_API_KEY not set in environment. "
-                        "Contextual retrieval will fail unless API key is provided during initialization."
-                    )
+        if self.llm_config is None:
+            # Use legacy fields or defaults
+            self.llm_config = LLMTaskConfig(
+                provider=self.provider or "anthropic",
+                model=self.model or "haiku",
+                temperature=self.temperature or 0.3,
+                max_tokens=self.max_tokens or 150  # Context should be 50-100 words
+            )
+
+            # Warn if API key is missing
+            if not self.llm_config.api_key:
+                logger.warning(
+                    f"{self.llm_config.provider.upper()}_API_KEY not set in environment. "
+                    "Contextual retrieval will fail unless API key is provided during initialization."
+                )
 
 
 @dataclass

@@ -69,28 +69,36 @@ class ContextualRetrieval:
             api_key: API key for cloud providers (optional, will use config if not provided)
         """
         self.config = config or ContextGenerationConfig()
-        self.model = resolve_model_alias(self.config.model)
+
+        # Get LLM config (llm_config is guaranteed to exist after __post_init__)
+        llm_config = self.config.llm_config
+
+        # Extract LLM settings
+        self.provider = llm_config.provider
+        self.model = llm_config.model  # Already resolved by LLMTaskConfig.__post_init__
+        self.temperature = llm_config.temperature
+        self.max_tokens = llm_config.max_tokens
 
         # Use API key from config if not provided explicitly
         if api_key is None:
-            api_key = self.config.api_key
+            api_key = llm_config.api_key
 
         # Initialize LLM based on provider
-        if self.config.provider == "anthropic":
+        if self.provider in ["anthropic", "claude"]:
             self._init_anthropic(api_key)
-        elif self.config.provider == "openai":
+        elif self.provider == "openai":
             self._init_openai(api_key)
-        elif self.config.provider == "local":
+        elif self.provider == "local":
             self._init_local()
         else:
             raise ValueError(
-                f"Unsupported provider: {self.config.provider}. "
-                f"Supported: 'anthropic', 'openai', 'local'"
+                f"Unsupported provider: {self.provider}. "
+                f"Supported: 'anthropic', 'claude', 'openai', 'local'"
             )
 
         logger.info(
             f"ContextualRetrieval initialized: "
-            f"provider={self.config.provider}, model={self.model}"
+            f"provider={self.provider}, model={self.model}"
         )
 
     def _init_anthropic(self, api_key: Optional[str]):
@@ -339,8 +347,8 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             try:
                 response = self.client.messages.create(
                     model=self.model,
-                    max_tokens=self.config.max_tokens,
-                    temperature=self.config.temperature,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 return response.content[0].text
@@ -399,8 +407,8 @@ Please give a short succinct context (50-100 words) to situate this chunk within
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": self.config.temperature,
-                    "num_predict": self.config.max_tokens
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens
                 }
             },
             timeout=30
@@ -422,8 +430,8 @@ Please give a short succinct context (50-100 words) to situate this chunk within
         with torch.no_grad():
             outputs = self.local_model.generate(
                 **inputs,
-                max_new_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
+                max_new_tokens=self.max_tokens,
+                temperature=self.temperature,
                 do_sample=True,
                 pad_token_id=self.tokenizer.eos_token_id
             )

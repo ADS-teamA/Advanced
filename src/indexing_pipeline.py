@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
 
-from src.config import ExtractionConfig
+from src.config import ExtractionConfig, LLMTasksConfig, LLMTaskConfig
 from src.docling_extractor_v2 import DoclingExtractorV2
 from src.multi_layer_chunker import MultiLayerChunker
 from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
@@ -66,15 +66,24 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class IndexingConfig:
-    """Configuration for complete indexing pipeline."""
+    """
+    Configuration for complete indexing pipeline.
+
+    New in this version: Task-specific LLM configuration via llm_tasks field.
+    This allows using different models for different tasks (e.g., Haiku for summaries,
+    GPT-4o for entity extraction, Sonnet for agent).
+    """
+
+    # Task-specific LLM configurations (new, recommended)
+    llm_tasks: Optional[LLMTasksConfig] = None
 
     # PHASE 1: Extraction
     enable_smart_hierarchy: bool = True
     ocr_language: list = None
 
-    # PHASE 2: Summaries
+    # PHASE 2: Summaries (legacy fields, use llm_tasks instead)
     generate_summaries: bool = True
-    summary_model: str = "gpt-4o-mini"
+    summary_model: Optional[str] = None  # Deprecated: use llm_tasks.summary
     summary_max_chars: int = 150
 
     # PHASE 3: Chunking
@@ -89,8 +98,8 @@ class IndexingConfig:
 
     # PHASE 5A: Knowledge Graph (enabled by default for SOTA 2025)
     enable_knowledge_graph: bool = True  # ✅ Changed: enabled by default
-    kg_llm_provider: str = "openai"
-    kg_llm_model: str = "gpt-4o-mini"
+    kg_llm_provider: Optional[str] = None  # Deprecated: use llm_tasks.entity_extraction
+    kg_llm_model: Optional[str] = None  # Deprecated: use llm_tasks.entity_extraction
     kg_backend: str = "simple"  # simple, neo4j, networkx
     kg_min_entity_confidence: float = 0.6
     kg_min_relationship_confidence: float = 0.5
@@ -120,8 +129,37 @@ class IndexingConfig:
     include_chunk_metadata: bool = True  # Include document/section/page metadata
 
     def __post_init__(self):
+        """Initialize configs with backward compatibility for legacy fields."""
         if self.ocr_language is None:
             self.ocr_language = ["cs-CZ", "en-US"]
+
+        # Initialize llm_tasks from legacy fields if not provided
+        if self.llm_tasks is None:
+            # Create task configs from legacy fields or env vars
+            llm_tasks_kwargs = {}
+
+            # Summary task (PHASE 2)
+            if self.summary_model:
+                llm_tasks_kwargs["summary"] = LLMTaskConfig(
+                    provider="openai" if "gpt" in self.summary_model else "claude",
+                    model=self.summary_model,
+                    temperature=0.3,
+                    max_tokens=500
+                )
+
+            # Entity/relationship extraction tasks (PHASE 5A)
+            if self.kg_llm_provider and self.kg_llm_model:
+                entity_config = LLMTaskConfig(
+                    provider=self.kg_llm_provider,
+                    model=self.kg_llm_model,
+                    temperature=0.0,
+                    max_tokens=500
+                )
+                llm_tasks_kwargs["entity_extraction"] = entity_config
+                llm_tasks_kwargs["relationship_extraction"] = entity_config
+
+            # Create LLMTasksConfig (will fill in defaults for missing tasks)
+            self.llm_tasks = LLMTasksConfig(**llm_tasks_kwargs)
 
 
 class IndexingPipeline:
@@ -160,10 +198,12 @@ class IndexingPipeline:
         logger.info("Initializing IndexingPipeline...")
 
         # Initialize PHASE 1+2: Extraction
+        # Note: ExtractionConfig still uses summary_model for backward compatibility
+        # The actual summary generation uses llm_tasks via SummarizationConfig
         self.extraction_config = ExtractionConfig(
             enable_smart_hierarchy=self.config.enable_smart_hierarchy,
             generate_summaries=self.config.generate_summaries,
-            summary_model=self.config.summary_model,
+            summary_model=self.config.llm_tasks.summary.model,  # Use task-specific model
             summary_max_chars=self.config.summary_max_chars,
             ocr_language=self.config.ocr_language
         )
@@ -207,7 +247,7 @@ class IndexingPipeline:
         )
 
     def _initialize_kg_pipeline(self):
-        """Initialize Knowledge Graph pipeline."""
+        """Initialize Knowledge Graph pipeline with task-specific LLM configs."""
         import os
 
         # Map backend string to enum
@@ -218,33 +258,29 @@ class IndexingPipeline:
         }
         backend = backend_map.get(self.config.kg_backend, GraphBackend.SIMPLE)
 
-        # Get API key
-        api_key = None
-        if self.config.kg_llm_provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-        elif self.config.kg_llm_provider == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
+        # Get API keys from task configs
+        entity_llm = self.config.llm_tasks.entity_extraction
+        relationship_llm = self.config.llm_tasks.relationship_extraction
 
-        if not api_key:
+        # Verify API keys are present
+        if not entity_llm.api_key:
             logger.warning(
-                f"No API key found for {self.config.kg_llm_provider}. "
-                f"Set {self.config.kg_llm_provider.upper()}_API_KEY environment variable."
+                f"No API key found for entity extraction ({entity_llm.provider}). "
+                f"Set {entity_llm.provider.upper()}_API_KEY environment variable."
             )
             self.kg_pipeline = None
             return
 
-        # Create KG config
+        # Create KG config with task-specific LLM configs
         kg_config = KnowledgeGraphConfig(
             entity_extraction=KGEntityConfig(
-                llm_provider=self.config.kg_llm_provider,
-                llm_model=self.config.kg_llm_model,
+                llm_config=entity_llm,  # Pass LLMTaskConfig directly
                 min_confidence=self.config.kg_min_entity_confidence,
                 batch_size=self.config.kg_batch_size,
                 max_workers=self.config.kg_max_workers,
             ),
             relationship_extraction=KGRelationshipConfig(
-                llm_provider=self.config.kg_llm_provider,
-                llm_model=self.config.kg_llm_model,
+                llm_config=relationship_llm,  # Pass LLMTaskConfig directly
                 min_confidence=self.config.kg_min_relationship_confidence,
                 batch_size=self.config.kg_batch_size,
                 max_workers=self.config.kg_max_workers,
@@ -253,14 +289,15 @@ class IndexingPipeline:
                 backend=backend,
                 export_json=True,
             ),
-            openai_api_key=api_key if self.config.kg_llm_provider == "openai" else None,
-            anthropic_api_key=api_key if self.config.kg_llm_provider == "anthropic" else None,
+            openai_api_key=entity_llm.api_key if entity_llm.provider == "openai" else None,
+            anthropic_api_key=entity_llm.api_key if entity_llm.provider in ["anthropic", "claude"] else None,
         )
 
         self.kg_pipeline = KnowledgeGraphPipeline(kg_config)
         logger.info(
             f"Knowledge Graph initialized: "
-            f"model={self.config.kg_llm_model}, "
+            f"entity_model={entity_llm.provider}/{entity_llm.model}, "
+            f"relationship_model={relationship_llm.provider}/{relationship_llm.model}, "
             f"backend={self.config.kg_backend}"
         )
 

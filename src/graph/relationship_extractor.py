@@ -43,7 +43,18 @@ class RelationshipExtractor:
             api_key: API key for LLM provider
         """
         self.config = config
-        self.api_key = api_key
+
+        # Get LLM config (llm_config is guaranteed to exist after __post_init__)
+        llm_config = self.config.llm_config
+
+        # Extract LLM settings
+        self.provider = llm_config.provider
+        self.model = llm_config.model
+        self.temperature = llm_config.temperature
+        self.max_tokens = llm_config.max_tokens
+
+        # Use provided API key or config API key
+        self.api_key = api_key or llm_config.api_key
 
         # Initialize LLM client
         self._initialize_llm_client()
@@ -53,14 +64,14 @@ class RelationshipExtractor:
 
     def _initialize_llm_client(self):
         """Initialize LLM client based on provider."""
-        if self.config.llm_provider == "openai":
+        if self.provider == "openai":
             try:
                 from openai import OpenAI
                 self.client = OpenAI(api_key=self.api_key)
             except ImportError:
                 raise ImportError("openai package not installed")
 
-        elif self.config.llm_provider == "anthropic":
+        elif self.provider in ["anthropic", "claude"]:
             try:
                 from anthropic import Anthropic
                 self.client = Anthropic(api_key=self.api_key)
@@ -68,7 +79,7 @@ class RelationshipExtractor:
                 raise ImportError("anthropic package not installed")
 
         else:
-            raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
+            raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
     def extract_relationships(
         self,
@@ -281,23 +292,23 @@ class RelationshipExtractor:
 
         for attempt in range(max_retries):
             try:
-                if self.config.llm_provider == "openai":
+                if self.provider == "openai":
                     response = self.client.chat.completions.create(
-                        model=self.config.llm_model,
+                        model=self.model,
                         messages=[
                             {"role": "system", "content": "You are an expert at extracting semantic relationships from legal documents. Always return valid JSON."},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=self.config.temperature,
-                        max_tokens=4000,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
                     )
                     return response.choices[0].message.content.strip()
 
-                elif self.config.llm_provider == "anthropic":
+                elif self.provider in ["anthropic", "claude"]:
                     response = self.client.messages.create(
-                        model=self.config.llm_model,
-                        max_tokens=4000,
-                        temperature=self.config.temperature,
+                        model=self.model,
+                        max_tokens=self.max_tokens,
+                        temperature=self.temperature,
                         messages=[
                             {"role": "user", "content": prompt}
                         ],
