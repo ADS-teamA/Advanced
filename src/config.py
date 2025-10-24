@@ -1,13 +1,41 @@
 """
 Unified configuration system for RAG pipeline.
 
-All configuration is centralized here with sensible defaults based on research:
-- PHASE 1: Document Extraction (Docling)
-- PHASE 2: Summarization (Generic summaries, 150 chars)
-- PHASE 3: Chunking (Hierarchical with SAC, 500 chars)
-- PHASE 4: Embedding (Multi-layer embeddings)
+## Configuration Philosophy
 
-Environment variables (.env) - API keys and model selections
+**Single Source of Truth: .env file**
+- API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, VOYAGE_API_KEY)
+- Model selection (LLM_PROVIDER, LLM_MODEL, EMBEDDING_PROVIDER, EMBEDDING_MODEL)
+- Optional overrides for advanced users
+
+**config.py: Research-backed defaults**
+- Chunk size: 500 chars (RCTS optimal from LegalBench-RAG)
+- Summary length: 150 chars (generic summaries outperform expert)
+- Temperature: 0.3 (low for consistency)
+- Batch sizes, worker counts, etc.
+
+## Pipeline Phases
+
+- PHASE 1: Document Extraction (Docling)
+- PHASE 2: Summarization (Generic summaries, 150 chars) → Model from .env
+- PHASE 3: Chunking (Hierarchical with SAC, 500 chars)
+- PHASE 4: Embedding (Multi-layer embeddings) → Model from .env
+
+## Usage
+
+All model selections are loaded from .env automatically:
+
+```python
+from src.config import SummarizationConfig, EmbeddingConfig
+
+# Models loaded from .env automatically
+summary_config = SummarizationConfig()  # Uses LLM_PROVIDER, LLM_MODEL from .env
+embed_config = EmbeddingConfig()        # Uses EMBEDDING_PROVIDER, EMBEDDING_MODEL from .env
+
+# Research parameters can be overridden if needed
+custom_config = SummarizationConfig(max_chars=200, temperature=0.5)
+```
+
 All configuration classes can be imported by other modules.
 """
 
@@ -204,11 +232,10 @@ class ExtractionConfig:
     enable_smart_hierarchy: bool = True  # Font-size based classification
     hierarchy_tolerance: float = 0.8  # BBox height clustering tolerance (pixels, lower = stricter)
 
-    # Summary generation (PHASE 2)
-    generate_summaries: bool = False  # Enable in PHASE 2
-    summary_model: str = "gpt-4o-mini"
-    summary_max_chars: int = 150
-    summary_style: str = "generic"  # "generic" or "expert"
+    # Summary generation (PHASE 2) - Deprecated, use SummarizationConfig instead
+    generate_summaries: bool = False  # Enable in PHASE 2 (legacy, rarely used)
+    summary_max_chars: int = 150      # Legacy parameter
+    summary_style: str = "generic"    # Legacy parameter ("generic" or "expert")
 
     # Output formats
     generate_markdown: bool = True
@@ -220,19 +247,34 @@ class ExtractionConfig:
 
 @dataclass
 class SummarizationConfig:
-    """Configuration for summarization (PHASE 2)."""
+    """
+    Configuration for summarization (PHASE 2).
 
-    provider: str = "claude"  # 'claude' or 'openai'
-    model: str = "haiku"  # Alias or full model name
-    max_chars: int = 150
-    tolerance: int = 20
-    style: str = "generic"
-    temperature: float = 0.3
-    max_tokens: int = 500
-    retry_on_exceed: bool = True
-    max_retries: int = 3
-    max_workers: int = 10
-    min_text_length: int = 50
+    Model selection is loaded from .env (LLM_PROVIDER, LLM_MODEL).
+    Only research-backed parameters are configured here.
+    """
+
+    # Research-backed parameters (from LegalBench-RAG)
+    max_chars: int = 150          # Summary length (research optimal)
+    tolerance: int = 20           # Length tolerance
+    style: str = "generic"        # Generic > Expert summaries
+    temperature: float = 0.3      # Low temperature for consistency
+    max_tokens: int = 500         # Max LLM output tokens
+    retry_on_exceed: bool = True  # Retry if exceeds max_chars
+    max_retries: int = 3          # Max retry attempts
+    max_workers: int = 10         # Parallel summary generation
+    min_text_length: int = 50     # Min text length for summarization
+
+    # Model config loaded from .env (don't set here)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+    def __post_init__(self):
+        """Load model config from environment if not provided."""
+        if self.provider is None or self.model is None:
+            model_config = ModelConfig.from_env()
+            self.provider = model_config.llm_provider
+            self.model = model_config.llm_model
 
 
 @dataclass
@@ -242,46 +284,47 @@ class ContextGenerationConfig:
 
     Generates LLM-based context for each chunk instead of generic summaries.
     Results in 67% reduction in retrieval failures (Anthropic research).
+
+    Model selection is loaded from .env (LLM_PROVIDER, LLM_MODEL).
     """
 
     # Enable contextual retrieval
     enable_contextual: bool = True
 
-    # LLM provider for context generation
-    provider: str = "anthropic"  # 'anthropic', 'openai', 'local'
-
-    # Model selection
-    model: str = "haiku"  # Fast & cheap for context generation
-    # Options:
-    #   Anthropic: haiku, sonnet
-    #   OpenAI: gpt-4o-mini, gpt-4o
-    #   Local: saul-7b, mistral-legal-7b, llama-3-8b
-
-    # API keys (loaded from environment if not provided)
-    api_key: Optional[str] = None
-
-    # Generation params
-    temperature: float = 0.3
-    max_tokens: int = 150  # Context should be 50-100 words
+    # Research-backed parameters
+    temperature: float = 0.3      # Low temperature for consistency
+    max_tokens: int = 150         # Context should be 50-100 words
 
     # Context window params
     include_surrounding_chunks: bool = True  # Include chunks above/below for better context
-    num_surrounding_chunks: int = 1  # Number of chunks to include on each side
+    num_surrounding_chunks: int = 1          # Number of chunks to include on each side
 
     # Fallback behavior
     fallback_to_basic: bool = True  # Use basic chunking if context generation fails
 
     # Batch processing (for performance)
-    batch_size: int = 10  # Generate contexts in batches
-    max_workers: int = 5  # Parallel context generation
+    batch_size: int = 10   # Generate contexts in batches
+    max_workers: int = 5   # Parallel context generation
+
+    # Model config loaded from .env (don't set here)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
 
     def __post_init__(self):
-        """Load API key from environment if not provided and validate."""
+        """Load model config and API key from environment if not provided."""
         import logging
         logger = logging.getLogger(__name__)
 
+        # Load model config from .env
+        if self.provider is None or self.model is None:
+            model_config = ModelConfig.from_env()
+            self.provider = model_config.llm_provider
+            self.model = model_config.llm_model
+
+        # Load API key from .env based on provider
         if self.api_key is None:
-            if self.provider == "anthropic":
+            if self.provider == "anthropic" or self.provider == "claude":
                 self.api_key = os.getenv("ANTHROPIC_API_KEY")
                 if not self.api_key:
                     logger.warning(
@@ -322,12 +365,27 @@ class ChunkingConfig:
 
 @dataclass
 class EmbeddingConfig:
-    """Configuration for embedding generation (PHASE 4)."""
+    """
+    Configuration for embedding generation (PHASE 4).
 
-    provider: str = "huggingface"  # 'voyage', 'openai', or 'huggingface'
-    model: str = "bge-m3"
-    batch_size: int = 32
-    enable_multi_layer: bool = True
+    Model selection is loaded from .env (EMBEDDING_PROVIDER, EMBEDDING_MODEL).
+    Only research-backed parameters are configured here.
+    """
+
+    # Research-backed parameters
+    batch_size: int = 32              # Batch size for embedding generation
+    enable_multi_layer: bool = True   # Enable multi-layer indexing (document, section, chunk)
+
+    # Model config loaded from .env (don't set here)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+    def __post_init__(self):
+        """Load model config from environment if not provided."""
+        if self.provider is None or self.model is None:
+            model_config = ModelConfig.from_env()
+            self.provider = model_config.embedding_provider
+            self.model = model_config.embedding_model
 
 
 @dataclass
