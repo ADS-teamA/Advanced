@@ -38,8 +38,8 @@ class EmbeddingConfig:
     normalize: bool = True  # For cosine similarity (FAISS IndexFlatIP)
     dimensions: Optional[int] = None  # Auto-detected from model
     # Embedding cache configuration (similar_query_cache infrastructure)
-    cache_enabled: bool = True  # Enable LRU cache for embeddings
-    cache_max_size: int = 1000  # Max cache entries (40-80% hit rate expected)
+    cache_enabled: bool = True  # Enable cache for embeddings
+    cache_max_size: int = 1000  # Max cache entries (hit rate depends on query patterns)
 
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -192,10 +192,12 @@ class EmbeddingGenerator:
 
     def embed_texts(self, texts: List[str]) -> np.ndarray:
         """
-        Embed a list of texts with LRU caching.
+        Embed a list of texts with caching support.
 
         Cache key is generated from joined text strings (hash-based).
-        Expected 40-80% cache hit rate reducing API costs and latency.
+        NOTE: Cache only matches EXACT text lists. Semantically similar
+        queries with different wording will NOT hit cache.
+        Cache effectiveness depends on query repetition patterns.
 
         Args:
             texts: List of text strings to embed
@@ -207,36 +209,53 @@ class EmbeddingGenerator:
             return np.array([])
 
         # Check cache if enabled
+        cache_key = None  # Initialize to avoid UnboundLocalError
         if self._cache_enabled:
             try:
                 cache_key = self._generate_cache_key(texts)
                 if cache_key in self._embedding_cache:
-                    self._cache_hits += 1
-                    # Move to end (LRU)
+                    # Move to end (access tracking for potential LRU)
                     self._embedding_cache.move_to_end(cache_key)
                     cached_embedding = self._embedding_cache[cache_key]
 
-                    # Validate cached data
+                    # Validate cached data (assumes 2D array: [num_texts, dimensions])
                     if not isinstance(cached_embedding, np.ndarray):
                         logger.error(f"Invalid cache entry type: {type(cached_embedding)}")
                         self._embedding_cache.pop(cache_key)
-                        self._cache_misses += 1
+                        # Treat as miss (validation failed)
+                    elif cached_embedding.ndim != 2:
+                        logger.error(
+                            f"Cache dimension error: expected 2D array, "
+                            f"got {cached_embedding.ndim}D"
+                        )
+                        self._embedding_cache.pop(cache_key)
+                        # Treat as miss (validation failed)
                     elif cached_embedding.shape[1] != self.dimensions:
                         logger.error(
                             f"Cache dimension mismatch: expected {self.dimensions}, "
                             f"got {cached_embedding.shape[1]}"
                         )
                         self._embedding_cache.pop(cache_key)
-                        self._cache_misses += 1
+                        # Treat as miss (validation failed)
+                    elif cached_embedding.shape[0] != len(texts):
+                        logger.error(
+                            f"Cache count mismatch: expected {len(texts)} texts, "
+                            f"got {cached_embedding.shape[0]} embeddings. Possible hash collision!"
+                        )
+                        self._embedding_cache.pop(cache_key)
+                        # Treat as miss (validation failed)
                     else:
+                        # Valid cache hit - only increment now
+                        self._cache_hits += 1
                         logger.debug(
                             f"Cache HIT: {len(texts)} texts "
                             f"(hit_rate: {self._get_cache_hit_rate():.1%})"
                         )
                         return cached_embedding
-                else:
-                    self._cache_misses += 1
-                    logger.debug(f"Cache MISS: {len(texts)} texts")
+
+                # If we get here, it's a miss (not in cache OR validation failed)
+                self._cache_misses += 1
+                logger.debug(f"Cache MISS: {len(texts)} texts")
             except Exception as e:
                 logger.error(f"Cache lookup failed, falling back to embedding: {e}", exc_info=True)
                 self._cache_misses += 1
@@ -257,12 +276,13 @@ class EmbeddingGenerator:
         if self.config.normalize:
             embeddings = self._normalize_embeddings(embeddings)
 
-        # Store in cache if enabled
-        if self._cache_enabled:
+        # Store in cache if enabled and cache_key is available
+        if self._cache_enabled and cache_key is not None:
             try:
                 self._add_to_cache(cache_key, embeddings)
             except MemoryError as e:
-                logger.warning(f"Cache storage failed due to memory: {e}. Cache disabled for this session.")
+                logger.warning(f"Cache storage failed due to memory: {e}. Clearing cache and disabling.")
+                self._embedding_cache.clear()  # Free memory
                 self._cache_enabled = False  # Disable cache on memory error
             except Exception as e:
                 logger.error(f"Failed to store embeddings in cache: {e}", exc_info=True)
@@ -272,15 +292,27 @@ class EmbeddingGenerator:
         return embeddings
 
     def _generate_cache_key(self, texts: List[str]) -> str:
-        """Generate cache key from text list (SHA256 hash)."""
+        """
+        Generate cache key from text list (SHA256 hash).
+
+        WARNING: Uses "|" as separator. In rare cases, different text lists
+        can produce identical keys (e.g., ["a|b", "c"] and ["a", "b|c"]).
+        The shape[0] validation in cache lookup detects such collisions.
+        """
         combined = "|".join(texts)
         return hashlib.sha256(combined.encode()).hexdigest()
 
     def _add_to_cache(self, cache_key: str, embeddings: np.ndarray) -> None:
-        """Add embeddings to LRU cache with max_size enforcement."""
-        # Remove oldest if at capacity
+        """
+        Add embeddings to cache with FIFO eviction.
+
+        NOTE: Despite OrderedDict with move_to_end for access tracking,
+        eviction uses FIFO (removes oldest insertion, not least recently used).
+        Cache hits call move_to_end() but eviction ignores this ordering.
+        """
+        # Remove oldest insertion if at capacity (FIFO eviction)
         if len(self._embedding_cache) >= self._cache_max_size:
-            self._embedding_cache.popitem(last=False)  # Remove oldest (FIFO)
+            self._embedding_cache.popitem(last=False)
 
         self._embedding_cache[cache_key] = embeddings
 
