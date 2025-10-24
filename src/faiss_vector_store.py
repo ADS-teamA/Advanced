@@ -377,6 +377,73 @@ class FAISSVectorStore:
 
         return results
 
+    def merge(self, other: "FAISSVectorStore"):
+        """
+        Merge another vector store into this one (incremental indexing).
+
+        This allows adding new documents to an existing vector store without
+        rebuilding from scratch.
+
+        Args:
+            other: Another FAISSVectorStore to merge into this one
+
+        Raises:
+            ValueError: If dimensions don't match
+        """
+        if self.dimensions != other.dimensions:
+            raise ValueError(
+                f"Cannot merge stores with different dimensions: "
+                f"{self.dimensions} vs {other.dimensions}"
+            )
+
+        logger.info(f"Merging vector store with {other.get_stats()['documents']} documents...")
+
+        # Merge Layer 1
+        if other.index_layer1.ntotal > 0:
+            vectors = other.index_layer1.reconstruct_n(0, other.index_layer1.ntotal)
+            vectors = vectors.reshape(other.index_layer1.ntotal, self.dimensions).astype(np.float32)
+
+            base_idx = self.index_layer1.ntotal
+            self.index_layer1.add(vectors)
+            self.metadata_layer1.extend(other.metadata_layer1)
+
+            # Update doc_id_to_indices
+            for doc_id, indices in other.doc_id_to_indices[1].items():
+                if doc_id not in self.doc_id_to_indices[1]:
+                    self.doc_id_to_indices[1][doc_id] = []
+                self.doc_id_to_indices[1][doc_id].extend([idx + base_idx for idx in indices])
+
+        # Merge Layer 2
+        if other.index_layer2.ntotal > 0:
+            vectors = other.index_layer2.reconstruct_n(0, other.index_layer2.ntotal)
+            vectors = vectors.reshape(other.index_layer2.ntotal, self.dimensions).astype(np.float32)
+
+            base_idx = self.index_layer2.ntotal
+            self.index_layer2.add(vectors)
+            self.metadata_layer2.extend(other.metadata_layer2)
+
+            for doc_id, indices in other.doc_id_to_indices[2].items():
+                if doc_id not in self.doc_id_to_indices[2]:
+                    self.doc_id_to_indices[2][doc_id] = []
+                self.doc_id_to_indices[2][doc_id].extend([idx + base_idx for idx in indices])
+
+        # Merge Layer 3
+        if other.index_layer3.ntotal > 0:
+            vectors = other.index_layer3.reconstruct_n(0, other.index_layer3.ntotal)
+            vectors = vectors.reshape(other.index_layer3.ntotal, self.dimensions).astype(np.float32)
+
+            base_idx = self.index_layer3.ntotal
+            self.index_layer3.add(vectors)
+            self.metadata_layer3.extend(other.metadata_layer3)
+
+            for doc_id, indices in other.doc_id_to_indices[3].items():
+                if doc_id not in self.doc_id_to_indices[3]:
+                    self.doc_id_to_indices[3][doc_id] = []
+                self.doc_id_to_indices[3][doc_id].extend([idx + base_idx for idx in indices])
+
+        stats = self.get_stats()
+        logger.info(f"Merge complete: {stats['documents']} total documents, {stats['total_vectors']} vectors")
+
     def get_stats(self) -> Dict:
         """Get statistics about the vector store."""
         return {

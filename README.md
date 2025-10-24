@@ -2,7 +2,7 @@
 
 Evidence-based RAG pipeline optimized for legal and technical documentation, with hierarchical structure preservation and multi-layer chunking.
 
-**Status:** PHASE 1-4 COMPLETED ✅
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System with Interactive Agent)
 
 ---
 
@@ -346,12 +346,23 @@ PHASE 3: Multi-Layer Chunking + SAC
 
 ## 📖 Documentation
 
-### Complete Guides
+### Core Documentation
 
+- **[INSTALL.md](INSTALL.md)** - Platform-specific installation instructions
 - **[PIPELINE.md](PIPELINE.md)** - Complete pipeline specification with research
-- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - PHASE 1+2 details
-- **[PHASE3_COMPLETE.md](PHASE3_COMPLETE.md)** - PHASE 3 details
-- **[QUICK_START.md](QUICK_START.md)** - Quick start guide
+- **[CLAUDE.md](CLAUDE.md)** - Development guidelines and project instructions
+
+### User Guides
+
+- **[Agent CLI Guide](docs/agent/README.md)** - RAG Agent CLI documentation (PHASE 7)
+- **[macOS Quick Start](docs/how-to-run-macos.md)** - Quick start guide for macOS users
+- **[Vector DB Management](docs/vector-db-management.md)** - Vector database management tools
+
+### Advanced Topics
+
+- **[Cost Tracking](docs/cost-tracking.md)** - API cost monitoring and optimization
+- **[Cost Optimization Analysis](docs/development/cost-optimization.md)** - Detailed cost analysis
+- **[Batching Optimizations](docs/development/batching-optimizations.md)** - Performance optimization guide
 
 ---
 
@@ -436,6 +447,6 @@ Based on research from:
 
 ---
 
-**Status:** PHASE 1-4 COMPLETED ✅
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System with Interactive Agent)
 **Next:** PHASE 5 - Query & Retrieval API
 **Updated:** 2025-10-20

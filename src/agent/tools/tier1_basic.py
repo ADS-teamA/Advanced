@@ -335,11 +335,11 @@ class KeywordSearchTool(BaseTool):
             results = results_dict["layer3"]
 
         if not results:
+            logger.info(f"No results found for keywords '{keywords}'")
             return ToolResult(
-                success=False,
+                success=True,  # Search succeeded, just no matches
                 data=[],
-                error=f"No results found for keywords '{keywords}'",
-                metadata={"keywords": keywords},
+                metadata={"keywords": keywords, "no_results": True},
             )
 
         formatted = [format_chunk_result(c) for c in results]
@@ -372,38 +372,42 @@ class GetDocumentListInput(ToolInput):
 @register_tool
 class GetDocumentListTool(BaseTool):
     """
-    List all indexed documents.
+    List all indexed documents with their summaries.
 
-    Uses: Vector store metadata
+    Uses: Vector store metadata (Layer 1 - document level)
     Speed: <10ms
-    Use for: Discovering available documents
+    Use for: Discovering available documents and getting quick overviews
     """
 
     name = "get_document_list"
-    description = "Get a list of all indexed documents in the corpus"
+    description = "Get a list of all indexed documents with their summaries"
     tier = 1
     input_schema = GetDocumentListInput
 
     def execute_impl(self) -> ToolResult:
-        # Get documents from vector store stats
-        stats = self.vector_store.get_stats()
-
-        # Extract document IDs from metadata
-        documents = set()
+        # Extract document IDs and summaries from Layer 1 metadata
+        documents_map = {}  # {doc_id: summary}
 
         # Try different approaches depending on store type
         if hasattr(self.vector_store, "metadata_layer1"):
             for meta in self.vector_store.metadata_layer1:
                 doc_id = meta.get("document_id")
-                if doc_id:
-                    documents.add(doc_id)
+                summary = meta.get("content", "")  # Layer 1 content is the document summary
+                if doc_id and doc_id not in documents_map:
+                    # Only store first occurrence (all Layer 1 entries for same doc have same summary)
+                    documents_map[doc_id] = summary
         elif hasattr(self.vector_store, "faiss_store"):
             for meta in self.vector_store.faiss_store.metadata_layer1:
                 doc_id = meta.get("document_id")
-                if doc_id:
-                    documents.add(doc_id)
+                summary = meta.get("content", "")
+                if doc_id and doc_id not in documents_map:
+                    documents_map[doc_id] = summary
 
-        document_list = sorted(list(documents))
+        # Build list of document objects with id and summary
+        document_list = [
+            {"id": doc_id, "summary": summary}
+            for doc_id, summary in sorted(documents_map.items())
+        ]
 
         return ToolResult(
             success=True,
@@ -827,4 +831,120 @@ class GetChunkContextTool(BaseTool):
                 "context_count": len(context_before) + len(context_after),
             },
             citations=[document_id],
+        )
+
+
+# === Tool 12: List Available Tools ===
+
+
+class ListAvailableToolsInput(ToolInput):
+    """Input for list_available_tools tool."""
+
+    pass  # No parameters needed
+
+
+@register_tool
+class ListAvailableToolsTool(BaseTool):
+    """
+    List all available tools with descriptions and usage guidance.
+
+    Returns complete tool catalog with:
+    - Tool name
+    - Description
+    - Input parameters/schema
+    - When to use (best practices)
+
+    Uses: Tool registry metadata
+    Speed: <10ms
+    Use for: Understanding available capabilities and tool selection
+    """
+
+    name = "list_available_tools"
+    description = "Get a complete list of all available tools with their descriptions, parameters, and usage guidelines. Use when you need to understand what tools are available or select the right tool for a task."
+    tier = 1
+    input_schema = ListAvailableToolsInput
+
+    def execute_impl(self) -> ToolResult:
+        """Get list of all available tools with metadata."""
+        from .registry import get_registry
+
+        registry = get_registry()
+        all_tools = registry.get_all_tools()
+
+        # Build tool list with metadata
+        tools_list = []
+        for tool in all_tools:
+            # Extract input parameters from schema
+            schema = tool.input_schema.model_json_schema()
+            properties = schema.get("properties", {})
+            required = schema.get("required", [])
+
+            # Build parameters info
+            parameters = []
+            for param_name, param_info in properties.items():
+                param_desc = param_info.get("description", "No description")
+                param_type = param_info.get("type", "unknown")
+                is_required = param_name in required
+
+                parameters.append({
+                    "name": param_name,
+                    "type": param_type,
+                    "description": param_desc,
+                    "required": is_required
+                })
+
+            # Extract "when to use" from description if present
+            # Some tools have "Use for:" or "Use when:" in their docstring
+            when_to_use = tool.description
+            if hasattr(tool.__class__, "__doc__") and tool.__class__.__doc__:
+                doc = tool.__class__.__doc__.strip()
+                # Look for "Use for:" or "Use when:" lines
+                for line in doc.split("\n"):
+                    line = line.strip()
+                    if line.startswith("Use for:") or line.startswith("Use when:"):
+                        when_to_use = line
+                        break
+
+            # Add tier info for context (even though not grouping by tier)
+            tier_label = {1: "Basic (fast)", 2: "Advanced (quality)", 3: "Analysis (deep)"}
+
+            tools_list.append({
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": parameters,
+                "when_to_use": when_to_use,
+                "tier": f"Tier {tool.tier} - {tier_label.get(tool.tier, 'Unknown')}",
+            })
+
+        # Sort by name for consistent ordering
+        tools_list.sort(key=lambda t: t["name"])
+
+        return ToolResult(
+            success=True,
+            data={
+                "tools": tools_list,
+                "total_count": len(tools_list),
+                "best_practices": {
+                    "general": [
+                        "Start with Tier 1 (fast) tools before escalating to Tier 2/3",
+                        "Use simple_search for most queries (hybrid + rerank = best quality)",
+                        "For complex queries, decompose into sub-tasks and use multiple tools",
+                        "Try multiple retrieval strategies before giving up"
+                    ],
+                    "selection_strategy": {
+                        "most_queries": "simple_search",
+                        "entity_focused": "entity_search",
+                        "specific_document": "document_search",
+                        "multi_hop_reasoning": "multi_hop_search (if KG available)",
+                        "comparison": "compare_documents",
+                        "temporal_info": "temporal_search or timeline_view"
+                    }
+                }
+            },
+            metadata={
+                "total_tools": len(tools_list),
+                "tier1_count": len([t for t in all_tools if t.tier == 1]),
+                "tier2_count": len([t for t in all_tools if t.tier == 2]),
+                "tier3_count": len([t for t in all_tools if t.tier == 3]),
+            },
         )

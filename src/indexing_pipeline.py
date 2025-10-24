@@ -36,14 +36,20 @@ Usage:
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Dict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from src.config import ExtractionConfig
+from src.config import (
+    ExtractionConfig,
+    SummarizationConfig,
+    ChunkingConfig,
+    EmbeddingConfig,
+)
 from src.docling_extractor_v2 import DoclingExtractorV2
 from src.multi_layer_chunker import MultiLayerChunker
-from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
+from src.embedding_generator import EmbeddingGenerator
 from src.faiss_vector_store import FAISSVectorStore
 from src.cost_tracker import get_global_tracker, reset_global_tracker
 
@@ -67,39 +73,29 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class IndexingConfig:
-    """Configuration for complete indexing pipeline."""
+    """
+    Configuration for complete indexing pipeline.
 
-    # PHASE 1: Extraction
-    enable_smart_hierarchy: bool = True
-    ocr_language: list = None
+    Uses nested config objects for clean architecture. All sub-configs
+    can be customized or loaded from environment via from_env().
+    """
 
-    # PHASE 2: Summaries
-    generate_summaries: bool = True
-    summary_model: str = "gpt-4o-mini"
-    summary_max_chars: int = 150
+    # Speed/Cost Mode (determines Batch API usage)
+    # "fast" = completions (2-3 min, full price) | "eco" = Batch API (15-30 min, 50% cheaper)
+    speed_mode: str = "fast"  # "fast" or "eco"
 
-    # PHASE 3: Chunking
-    chunk_size: int = 500
-    chunk_overlap: int = 0
-    enable_sac: bool = True
-
-    # PHASE 4: Embedding
-    embedding_model: str = "text-embedding-3-large"
-    embedding_batch_size: int = 100
-    normalize_embeddings: bool = True
+    # Sub-configs (nested config objects)
+    extraction_config: ExtractionConfig = field(default_factory=ExtractionConfig)
+    summarization_config: SummarizationConfig = field(default_factory=SummarizationConfig)
+    chunking_config: ChunkingConfig = field(default_factory=ChunkingConfig)
+    embedding_config: EmbeddingConfig = field(default_factory=EmbeddingConfig)
 
     # PHASE 5A: Knowledge Graph (enabled by default for SOTA 2025)
-    enable_knowledge_graph: bool = True  # ✅ Changed: enabled by default
-    kg_llm_provider: str = "openai"
-    kg_llm_model: str = "gpt-4o-mini"
-    kg_backend: str = "simple"  # simple, neo4j, networkx
-    kg_min_entity_confidence: float = 0.6
-    kg_min_relationship_confidence: float = 0.5
-    kg_batch_size: int = 10
-    kg_max_workers: int = 5
+    enable_knowledge_graph: bool = True
+    kg_config: Optional[KnowledgeGraphConfig] = None
 
-    # PHASE 5B: Hybrid Search (optional)
-    enable_hybrid_search: bool = False  # BM25 + dense with RRF fusion
+    # PHASE 5B: Hybrid Search (enabled by default for SOTA 2025)
+    enable_hybrid_search: bool = True  # BM25 + dense with RRF fusion (+23% precision)
     hybrid_fusion_k: int = 60  # RRF k parameter (research: k=60 optimal)
 
     # PHASE 5C: Cross-Encoder Reranking (optional)
@@ -121,8 +117,62 @@ class IndexingConfig:
     include_chunk_metadata: bool = True  # Include document/section/page metadata
 
     def __post_init__(self):
-        if self.ocr_language is None:
-            self.ocr_language = ["cs-CZ", "en-US"]
+        """Configure speed mode and validate settings."""
+        # Validate speed mode
+        if self.speed_mode not in ["fast", "eco"]:
+            raise ValueError(f"speed_mode must be 'fast' or 'eco', got: {self.speed_mode}")
+
+        # Configure summarization based on speed mode
+        if self.speed_mode == "eco":
+            # Eco mode: Use Batch API (50% cheaper, slower)
+            self.summarization_config.use_batch_api = True
+            self.summarization_config.batch_api_timeout = 43200  # 12 hours
+            logger.info(f"💰 ECO MODE: Using Batch API (50% cost savings, 15-30 min latency)")
+        else:  # fast mode
+            # Fast mode: Use completions (full price, fast)
+            self.summarization_config.use_batch_api = False
+            logger.info(f"⚡ FAST MODE: Using completions (full price, 2-3 min latency)")
+
+        # Initialize KG config if enabled
+        if self.enable_knowledge_graph and self.kg_config is None:
+            try:
+                from src.graph.config import KnowledgeGraphConfig
+                self.kg_config = KnowledgeGraphConfig.from_env()
+            except ImportError:
+                logger.warning("Knowledge Graph enabled but graph module not available")
+
+    @classmethod
+    def from_env(cls, **overrides) -> "IndexingConfig":
+        """
+        Load configuration from environment variables.
+
+        Environment Variables:
+            SPEED_MODE: "fast" or "eco" (default: "fast")
+            ENABLE_KNOWLEDGE_GRAPH: Enable KG construction (default: "true")
+            ENABLE_HYBRID_SEARCH: Enable hybrid search (default: "true")
+
+        Args:
+            **overrides: Override specific fields
+
+        Returns:
+            IndexingConfig instance loaded from environment
+        """
+        # Load speed mode from env
+        speed_mode = os.getenv("SPEED_MODE", "fast")
+
+        # Create config with sub-configs loaded from env
+        config = cls(
+            speed_mode=speed_mode,
+            extraction_config=ExtractionConfig.from_env(),
+            summarization_config=SummarizationConfig.from_env(),
+            chunking_config=ChunkingConfig.from_env(),
+            embedding_config=EmbeddingConfig.from_env(),
+            enable_knowledge_graph=os.getenv("ENABLE_KNOWLEDGE_GRAPH", "true").lower() == "true",
+            enable_hybrid_search=os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true",
+            **overrides
+        )
+
+        return config
 
 
 class IndexingPipeline:
@@ -154,36 +204,20 @@ class IndexingPipeline:
         Initialize indexing pipeline.
 
         Args:
-            config: IndexingConfig instance (defaults to research-optimal settings)
+            config: IndexingConfig instance (defaults loaded from .env)
         """
-        self.config = config or IndexingConfig()
+        self.config = config or IndexingConfig.from_env()
 
         logger.info("Initializing IndexingPipeline...")
 
-        # Initialize PHASE 1+2: Extraction
-        self.extraction_config = ExtractionConfig(
-            enable_smart_hierarchy=self.config.enable_smart_hierarchy,
-            generate_summaries=self.config.generate_summaries,
-            summary_model=self.config.summary_model,
-            summary_max_chars=self.config.summary_max_chars,
-            ocr_language=self.config.ocr_language
-        )
-        self.extractor = DoclingExtractorV2(self.extraction_config)
+        # Initialize PHASE 1: Extraction (uses nested config)
+        self.extractor = DoclingExtractorV2(self.config.extraction_config)
 
-        # Initialize PHASE 3: Chunking
-        self.chunker = MultiLayerChunker(
-            chunk_size=self.config.chunk_size,
-            chunk_overlap=self.config.chunk_overlap,
-            enable_sac=self.config.enable_sac
-        )
+        # Initialize PHASE 3: Chunking (uses nested config)
+        self.chunker = MultiLayerChunker(config=self.config.chunking_config)
 
-        # Initialize PHASE 4: Embedding
-        self.embedding_config = EmbeddingConfig(
-            model=self.config.embedding_model,
-            batch_size=self.config.embedding_batch_size,
-            normalize=self.config.normalize_embeddings
-        )
-        self.embedder = EmbeddingGenerator(self.embedding_config)
+        # Initialize PHASE 4: Embedding (uses nested config)
+        self.embedder = EmbeddingGenerator(self.config.embedding_config)
 
         # Initialize PHASE 5A: Knowledge Graph (optional)
         self.kg_pipeline = None
@@ -198,8 +232,8 @@ class IndexingPipeline:
 
         logger.info(
             f"Pipeline initialized: "
-            f"SAC={self.config.enable_sac}, "
-            f"model={self.config.embedding_model} "
+            f"SAC={self.config.chunking_config.enable_contextual}, "
+            f"model={self.config.embedding_config.model} "
             f"({self.embedder.dimensions}D), "
             f"KG={self.config.enable_knowledge_graph}, "
             f"Hybrid={self.config.enable_hybrid_search}, "
@@ -208,61 +242,31 @@ class IndexingPipeline:
         )
 
     def _initialize_kg_pipeline(self):
-        """Initialize Knowledge Graph pipeline."""
-        import os
-
-        # Map backend string to enum
-        backend_map = {
-            "simple": GraphBackend.SIMPLE,
-            "neo4j": GraphBackend.NEO4J,
-            "networkx": GraphBackend.NETWORKX,
-        }
-        backend = backend_map.get(self.config.kg_backend, GraphBackend.SIMPLE)
-
-        # Get API key
-        api_key = None
-        if self.config.kg_llm_provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-        elif self.config.kg_llm_provider == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-
-        if not api_key:
-            logger.warning(
-                f"No API key found for {self.config.kg_llm_provider}. "
-                f"Set {self.config.kg_llm_provider.upper()}_API_KEY environment variable."
-            )
+        """Initialize Knowledge Graph pipeline using nested kg_config."""
+        if self.config.kg_config is None:
+            logger.warning("Knowledge Graph enabled but no kg_config provided")
             self.kg_pipeline = None
             return
 
-        # Create KG config
-        kg_config = KnowledgeGraphConfig(
-            entity_extraction=KGEntityConfig(
-                llm_provider=self.config.kg_llm_provider,
-                llm_model=self.config.kg_llm_model,
-                min_confidence=self.config.kg_min_entity_confidence,
-                batch_size=self.config.kg_batch_size,
-                max_workers=self.config.kg_max_workers,
-            ),
-            relationship_extraction=KGRelationshipConfig(
-                llm_provider=self.config.kg_llm_provider,
-                llm_model=self.config.kg_llm_model,
-                min_confidence=self.config.kg_min_relationship_confidence,
-                batch_size=self.config.kg_batch_size,
-                max_workers=self.config.kg_max_workers,
-            ),
-            graph_storage=GraphStorageConfig(
-                backend=backend,
-                export_json=True,
-            ),
-            openai_api_key=api_key if self.config.kg_llm_provider == "openai" else None,
-            anthropic_api_key=api_key if self.config.kg_llm_provider == "anthropic" else None,
-        )
+        # Use the kg_config directly (already initialized in IndexingConfig.__post_init__)
+        kg_config = self.config.kg_config
 
+        # Validate API key
+        if kg_config.entity_extraction.llm_provider == "openai" and not kg_config.openai_api_key:
+            logger.warning("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
+            self.kg_pipeline = None
+            return
+        elif kg_config.entity_extraction.llm_provider == "anthropic" and not kg_config.anthropic_api_key:
+            logger.warning("Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable.")
+            self.kg_pipeline = None
+            return
+
+        # Initialize pipeline with config
         self.kg_pipeline = KnowledgeGraphPipeline(kg_config)
         logger.info(
             f"Knowledge Graph initialized: "
-            f"model={self.config.kg_llm_model}, "
-            f"backend={self.config.kg_backend}"
+            f"model={kg_config.entity_extraction.llm_model}, "
+            f"backend={kg_config.graph_storage.backend.value}"
         )
 
     def index_document(
@@ -394,6 +398,7 @@ class IndexingPipeline:
 
         # PHASE 5A: Knowledge Graph (optional)
         knowledge_graph = None
+        kg_error = None
         if self.kg_pipeline:
             logger.info("PHASE 5A: Knowledge Graph Construction")
 
@@ -424,18 +429,16 @@ class IndexingPipeline:
                     f"{len(knowledge_graph.relationships)} relationships"
                 )
 
-                # Save KG if output_dir specified
-                if output_dir:
-                    output_dir = Path(output_dir)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    kg_path = output_dir / f"{result.document_id}_kg.json"
-                    knowledge_graph.save_json(str(kg_path))
-                    logger.info(f"✓ Saved Knowledge Graph: {kg_path}")
-
             except Exception as e:
-                logger.error(f"✗ Knowledge Graph construction failed: {e}")
-                logger.warning("Continuing without Knowledge Graph...")
+                logger.error(f"✗ Knowledge Graph construction failed: {e}", exc_info=True)
+                if self.config.enable_knowledge_graph:
+                    logger.error(
+                        f"ERROR: Knowledge Graph was enabled in config but construction failed.\n"
+                        f"Error: {e}\n"
+                        f"To disable KG: Set ENABLE_KNOWLEDGE_GRAPH=false in .env"
+                    )
                 knowledge_graph = None
+                kg_error = str(e)
 
         # Save intermediate results
         if save_intermediate and output_dir:
@@ -468,6 +471,8 @@ class IndexingPipeline:
                 "kg_enabled": self.config.enable_knowledge_graph,
                 "kg_entities": len(knowledge_graph.entities) if knowledge_graph else 0,
                 "kg_relationships": len(knowledge_graph.relationships) if knowledge_graph else 0,
+                "kg_construction_failed": self.config.enable_knowledge_graph and knowledge_graph is None and kg_error is not None,
+                "kg_error": kg_error if kg_error else None,
             }
         }
 
@@ -596,29 +601,69 @@ class IndexingPipeline:
         chunks: Dict,
         chunking_stats: Dict
     ):
-        """Save intermediate results (chunks, stats)."""
+        """Save intermediate results from all phases (PHASE 1, 2, 3)."""
         import json
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save chunks
-        chunks_export = {
-            "metadata": {
-                "document_id": result.document_id,
-                "source_path": result.source_path,
-                "chunking_stats": chunking_stats
-            },
+        # PHASE 1: Save extraction results (structure & hierarchy)
+        phase1_path = output_dir / "phase1_extraction.json"
+        phase1_export = {
+            "document_id": result.document_id,
+            "source_path": str(result.source_path),
+            "num_sections": result.num_sections,
+            "hierarchy_depth": result.hierarchy_depth,
+            "num_roots": result.num_roots,
+            "num_tables": result.num_tables,
+            "sections": [
+                {
+                    "section_id": s.section_id,
+                    "title": s.title,
+                    "level": s.level,
+                    "depth": s.depth,
+                    "path": s.path,
+                    "page_number": s.page_number,
+                    "content_length": len(s.content)
+                }
+                for s in result.sections
+            ]
+        }
+        with open(phase1_path, 'w', encoding='utf-8') as f:
+            json.dump(phase1_export, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Saved PHASE 1: {phase1_path}")
+
+        # PHASE 2: Save summaries
+        phase2_path = output_dir / "phase2_summaries.json"
+        phase2_export = {
+            "document_id": result.document_id,
+            "document_summary": result.document_summary,
+            "section_summaries": [
+                {
+                    "section_id": s.section_id,
+                    "title": s.title,
+                    "summary": s.summary
+                }
+                for s in result.sections
+            ]
+        }
+        with open(phase2_path, 'w', encoding='utf-8') as f:
+            json.dump(phase2_export, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Saved PHASE 2: {phase2_path}")
+
+        # PHASE 3: Save chunks
+        phase3_path = output_dir / "phase3_chunks.json"
+        phase3_export = {
+            "document_id": result.document_id,
+            "source_path": str(result.source_path),
+            "chunking_stats": chunking_stats,
             "layer1": [c.to_dict() for c in chunks["layer1"]],
             "layer2": [c.to_dict() for c in chunks["layer2"]],
             "layer3": [c.to_dict() for c in chunks["layer3"]]
         }
-
-        chunks_path = output_dir / f"{result.document_id}_chunks.json"
-        with open(chunks_path, 'w', encoding='utf-8') as f:
-            json.dump(chunks_export, f, indent=2, ensure_ascii=False)
-
-        logger.info(f"✓ Saved intermediate: {chunks_path}")
+        with open(phase3_path, 'w', encoding='utf-8') as f:
+            json.dump(phase3_export, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Saved PHASE 3: {phase3_path}")
 
 
 # Example usage

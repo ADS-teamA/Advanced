@@ -1,0 +1,47 @@
+Extract semantic relationships between entities in the following legal document text.
+
+**Entities** (extracted from this text):
+{entities_str}
+
+**Relationship Types**:
+- superseded_by: Old standard → New standard (e.g., "GRI 306:2016" superseded_by "GRI 306:2020")
+- supersedes: New standard → Old standard (inverse of superseded_by)
+- references: Document A → Document B (e.g., "GRI 303" references "ISO 14001")
+- issued_by: Standard → Organization (e.g., "GRI 306" issued_by "GSSB")
+- developed_by: Standard → Organization
+- published_by: Document → Organization
+- effective_date: Standard → Date (e.g., "GRI 303" effective_date "2018-07-01")
+- expiry_date: Contract → Date
+- covers_topic: Standard → Topic (e.g., "GRI 306" covers_topic "waste management")
+- contains_clause: Document → Clause
+- applies_to: Regulation → Location
+- mentioned_in: Entity → Chunk (for provenance)
+
+**Document Text**:
+{chunk_content}
+
+**Output Format** (JSON array):
+[
+  {{
+    "source_entity_id": "E1",
+    "relationship_type": "superseded_by",
+    "target_entity_id": "E2",
+    "confidence": 0.9,
+    "evidence": "GRI 306:2020 supersedes GRI 306:2016"
+  }}
+]
+
+**Instructions**:
+1. Identify ALL relationships between the entities above that are present in the text
+2. Only use relationship types: {rel_types_str}
+3. For each relationship, provide:
+   - source_entity_id: Source entity ID (E1, E2, etc.)
+   - relationship_type: Type of relationship
+   - target_entity_id: Target entity ID
+   - confidence: Confidence score (0.0-1.0)
+   - evidence: Supporting text snippet (max {max_evidence_length} chars)
+4. Only include relationships with confidence >= {min_confidence}
+5. Evidence must be exact text from the document
+6. Return valid JSON array
+
+**Output** (JSON array only):

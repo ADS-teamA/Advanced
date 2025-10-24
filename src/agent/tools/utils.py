@@ -10,19 +10,28 @@ from typing import Any, Dict, List
 logger = logging.getLogger(__name__)
 
 
-def format_chunk_result(chunk: Dict[str, Any], include_score: bool = True) -> Dict[str, Any]:
+def format_chunk_result(
+    chunk: Dict[str, Any], include_score: bool = True, max_content_length: int = 800
+) -> Dict[str, Any]:
     """
     Format a chunk result for tool output.
 
     Args:
         chunk: Chunk dict from retrieval
         include_score: Whether to include score
+        max_content_length: Maximum content length (chars). Default 800 to prevent token overflow.
+                          Set to None for no truncation.
 
     Returns:
         Formatted dict
     """
+    # Get content and truncate if needed
+    content = chunk.get("content", chunk.get("raw_content", ""))
+    if max_content_length and len(content) > max_content_length:
+        content = content[:max_content_length] + "... [truncated]"
+
     result = {
-        "content": chunk.get("content", chunk.get("raw_content", "")),
+        "content": content,
         "document_id": chunk.get("document_id", "unknown"),
         "section_title": chunk.get("section_title", ""),
         "chunk_id": chunk.get("chunk_id", ""),

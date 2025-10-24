@@ -76,6 +76,11 @@ class ContextualRetrieval:
         # Initialize cost tracker
         self.tracker = get_global_tracker()
 
+        # Extract Batch API config
+        self.use_batch_api = self.config.use_batch_api
+        self.batch_api_poll_interval = self.config.batch_api_poll_interval
+        self.batch_api_timeout = self.config.batch_api_timeout
+
         # Use API key from config if not provided explicitly
         if api_key is None:
             api_key = self.config.api_key
@@ -383,12 +388,22 @@ Please give a short succinct context (50-100 words) to situate this chunk within
 
         for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens
-                )
+                # GPT-5 and O-series models use max_completion_tokens instead of max_tokens
+                # GPT-5 models only support temperature=1.0 (default)
+                if self.model.startswith(('gpt-5', 'o1', 'o3', 'o4')):
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=1.0,  # GPT-5 only supports default temperature
+                        max_completion_tokens=self.config.max_tokens
+                    )
+                else:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self.config.temperature,
+                        max_tokens=self.config.max_tokens
+                    )
 
                 # Track cost
                 self.tracker.track_llm(
@@ -494,12 +509,202 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             text = text.replace('<', '&lt;').replace('>', '&gt;')
         return text
 
+    # ===== OpenAI Batch API Methods (50% cost savings) =====
+
+    def _create_batch_requests(
+        self,
+        chunks: List[Tuple[str, dict]]  # [(chunk_text, metadata), ...]
+    ) -> list[dict]:
+        """Create batch API requests for OpenAI Batch API."""
+        batch_requests = []
+
+        for idx, (chunk_text, metadata) in enumerate(chunks):
+            # Build context prompt
+            doc_summary = metadata.get("document_summary", "")
+            section_title = metadata.get("section_title", "")
+            section_path = metadata.get("section_path", "")
+
+            # Build prompt (similar to generate_context but simpler)
+            chunk_preview = chunk_text[:1500]  # Limit chunk size for context
+
+            prompt = f"""Document: {doc_summary}
+
+Section: {section_path or section_title}
+
+Chunk content:
+{chunk_preview}
+
+Provide a brief context (50-100 words) explaining what this chunk discusses within the document."""
+
+            request = {
+                "custom_id": f"chunk_{idx}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": self.config.temperature
+                }
+            }
+            batch_requests.append(request)
+
+        return batch_requests
+
+    def _submit_batch(self, requests: list[dict]) -> str:
+        """Submit batch job to OpenAI Batch API."""
+        import tempfile
+        import json
+
+        # Create temporary JSONL file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+            for request in requests:
+                f.write(json.dumps(request) + '\n')
+            jsonl_path = f.name
+
+        # Upload file to OpenAI
+        with open(jsonl_path, 'rb') as f:
+            file_response = self.client.files.create(file=f, purpose='batch')
+
+        # Create batch job
+        batch_response = self.client.batches.create(
+            input_file_id=file_response.id,
+            endpoint="/v1/chat/completions",
+            completion_window="24h"
+        )
+
+        logger.info(f"Batch job created: {batch_response.id} (file: {file_response.id})")
+
+        # Track batch ID for cost
+        self.tracker.add_batch_job(
+            provider="openai",
+            model=self.model,
+            operation="context_generation",
+            batch_id=batch_response.id
+        )
+
+        # Clean up temp file
+        import os
+        os.unlink(jsonl_path)
+
+        return batch_response.id
+
+    def _poll_batch(self, batch_id: str) -> dict:
+        """Poll batch job status until completion."""
+        import time
+        start_time = time.time()
+        poll_count = 0
+
+        while True:
+            poll_count += 1
+            elapsed = time.time() - start_time
+
+            # Check timeout
+            if elapsed > self.batch_api_timeout:
+                raise TimeoutError(
+                    f"Batch job {batch_id} did not complete within {self.batch_api_timeout}s"
+                )
+
+            # Poll status
+            batch = self.client.batches.retrieve(batch_id)
+            status = batch.status
+
+            logger.info(f"Batch {batch_id} status: {status} (poll {poll_count}, {elapsed:.0f}s elapsed)")
+
+            if status == "completed":
+                logger.info(f"✓ Batch job {batch_id} completed successfully")
+                return batch
+            elif status in ["failed", "expired", "cancelled"]:
+                error_msg = f"Batch job {batch_id} {status}"
+                if hasattr(batch, 'errors') and batch.errors:
+                    error_msg += f": {batch.errors}"
+                raise Exception(error_msg)
+            elif status in ["validating", "in_progress", "finalizing"]:
+                # Expected states - keep polling
+                time.sleep(self.batch_api_poll_interval)
+            else:
+                # Unknown status - keep polling but warn
+                logger.warning(f"Unknown batch status: {status}")
+                time.sleep(self.batch_api_poll_interval)
+
+    def _parse_batch_results(self, batch: dict, chunks: List[Tuple[str, dict]]) -> dict:
+        """Parse batch results from OpenAI Batch API."""
+        import json
+        import tempfile
+
+        # Download output file
+        output_file_id = batch.output_file_id
+        content = self.client.files.content(output_file_id)
+
+        # Save to temp file and parse
+        results_map = {}
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as f:
+            f.write(content.read())
+            temp_path = f.name
+
+        # Parse JSONL results
+        with open(temp_path, 'r') as f:
+            for line in f:
+                if line.strip():
+                    result = json.loads(line)
+                    custom_id = result['custom_id']
+                    idx = int(custom_id.split('_')[1])  # Extract index from "chunk_123"
+
+                    # Extract context from response
+                    if result['response']['status_code'] == 200:
+                        body = result['response']['body']
+                        context = body['choices'][0]['message']['content'].strip()
+                        results_map[idx] = context
+                    else:
+                        logger.warning(f"Chunk {idx} failed: {result['response']}")
+                        results_map[idx] = ""  # Empty context for failed chunks
+
+        # Clean up
+        import os
+        os.unlink(temp_path)
+
+        # Track cost for batch
+        self.tracker.finalize_batch_job(batch.id, batch)
+
+        return results_map
+
+    def _generate_contexts_with_openai_batch(
+        self,
+        chunks: List[Tuple[str, dict]]
+    ) -> dict:
+        """Generate contexts using OpenAI Batch API (50% cost savings)."""
+        logger.info(f"Using OpenAI Batch API: {len(chunks)} chunks (50% cost savings, async processing)")
+
+        # Step 1: Create batch requests
+        requests = self._create_batch_requests(chunks)
+
+        # Step 2: Submit batch
+        batch_id = self._submit_batch(requests)
+
+        # Step 3: Poll for completion
+        logger.info(
+            f"Polling batch {batch_id} "
+            f"(timeout: {self.batch_api_timeout}s, interval: {self.batch_api_poll_interval}s)"
+        )
+        batch = self._poll_batch(batch_id)
+
+        # Step 4: Parse results
+        results_map = self._parse_batch_results(batch, chunks)
+
+        logger.info(f"✓ Batch API succeeded: {len(results_map)} contexts generated")
+        return results_map
+
     def generate_contexts_batch(
         self,
         chunks: List[Tuple[str, dict]]
     ) -> List[ChunkContext]:
         """
         Generate contexts for multiple chunks in parallel.
+
+        Tries OpenAI Batch API first (50% cheaper), falls back to parallel mode if:
+        - Batch API disabled
+        - Provider is not OpenAI
+        - Batch job times out or fails
 
         Args:
             chunks: List of (chunk_text, metadata) tuples
@@ -508,6 +713,71 @@ Please give a short succinct context (50-100 words) to situate this chunk within
         Returns:
             List of ChunkContext objects
         """
+        # Try Batch API first (OpenAI only, 50% cheaper)
+        contexts_map = {}
+        if self.use_batch_api and self.config.provider == "openai":
+            try:
+                contexts_map = self._generate_contexts_with_openai_batch(chunks)
+                logger.info(f"✓ Batch API succeeded: {len(contexts_map)} contexts generated")
+            except Exception as e:
+                # Classify error type for better user guidance
+                error_str = str(e).lower()
+                if "timeout" in error_str or "time" in error_str:
+                    logger.warning(
+                        f"⚠️  Batch API timeout ({e}). Batch processing took >12 hours. "
+                        f"Falling back to fast mode (full price). Consider indexing smaller batches."
+                    )
+                    print("\n⚠️  ECO MODE TIMEOUT")
+                    print(f"   Reason: Batch processing exceeded 12-hour limit")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document")
+                    print("   Suggestion: Index smaller documents or use fast mode\n")
+                elif "auth" in error_str or "key" in error_str:
+                    logger.error(
+                        f"❌ Batch API authentication failed ({e}). Check OPENAI_API_KEY. "
+                        f"Falling back to fast mode (full price)."
+                    )
+                    print("\n❌ ECO MODE UNAVAILABLE - Authentication Error")
+                    print(f"   Reason: {e}")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document")
+                    print("   Fix: Verify OPENAI_API_KEY in .env\n")
+                elif "rate" in error_str or "quota" in error_str:
+                    logger.warning(
+                        f"⚠️  Batch API rate limit/quota exceeded ({e}). "
+                        f"Falling back to fast mode (full price). Try again later."
+                    )
+                    print("\n⚠️  ECO MODE UNAVAILABLE - Rate Limit")
+                    print(f"   Reason: {e}")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document")
+                    print("   Suggestion: Wait before indexing more documents\n")
+                else:
+                    logger.warning(
+                        f"⚠️  Batch API failed ({e}). "
+                        f"Falling back to fast mode (full price). See error above for details."
+                    )
+                    print("\n⚠️  ECO MODE UNAVAILABLE")
+                    print(f"   Reason: {e}")
+                    print("   Fallback: Using fast mode (full API pricing)")
+                    print("   Impact: 2x cost for this document\n")
+                contexts_map = {}
+
+        # If Batch API succeeded, build results from contexts_map
+        if contexts_map:
+            results = []
+            for idx, (chunk_text, metadata) in enumerate(chunks):
+                context = contexts_map.get(idx, "")
+                results.append(ChunkContext(
+                    chunk_text=chunk_text,
+                    context=context,
+                    success=bool(context),
+                    error=None if context else "Batch API returned empty context"
+                ))
+            return results
+
+        # Otherwise, use parallel mode (fallback or default)
+        logger.info(f"Using parallel mode: {len(chunks)} chunks → {len(chunks)} API calls")
         results = []
 
         def generate_one(chunk_text: str, metadata: dict) -> ChunkContext:

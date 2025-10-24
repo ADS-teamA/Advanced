@@ -318,11 +318,11 @@ class AgentValidator:
             )
             return
 
-        # Check required files
+        # Check required files (FAISSVectorStore naming convention)
         required_files = [
-            "index_layer1.faiss",
-            "index_layer2.faiss",
-            "index_layer3.faiss",
+            "layer1.index",
+            "layer2.index",
+            "layer3.index",
         ]
 
         missing_files = []
@@ -469,9 +469,14 @@ class AgentValidator:
 
         try:
             from src.embedding_generator import EmbeddingConfig, EmbeddingGenerator
+            from src.config import ModelConfig
 
-            # Try creating embedder
-            config = EmbeddingConfig(model="text-embedding-3-large")
+            # Use model from environment (.env)
+            model_config = ModelConfig.from_env()
+            embed_config_dict = model_config.get_embedding_config()
+
+            # EmbeddingConfig only takes 'model', not 'provider'
+            config = EmbeddingConfig(model=embed_config_dict["model"])
             embedder = EmbeddingGenerator(config)
 
             self.results.append(
