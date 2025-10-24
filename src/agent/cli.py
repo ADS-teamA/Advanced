@@ -247,57 +247,8 @@ class AgentCLI:
             print("\nAgent will run with limited functionality.")
             print("To enable missing features, check configuration and dependencies.\n")
 
-        # Initialize with document list (show available documents to user)
-        self._print_available_documents(registry)
-
+        # Agent will automatically call get_document_list on first user query
         print("✅ Agent ready!\n")
-
-    def _print_available_documents(self, registry):
-        """
-        Print list of available documents during startup.
-
-        Calls get_document_list tool and displays document names and summaries.
-        """
-        try:
-            # Get the get_document_list tool
-            doc_list_tool = registry.get_tool("get_document_list")
-            if not doc_list_tool:
-                logger.warning("get_document_list tool not available")
-                return
-
-            # Execute tool to get document list
-            result = doc_list_tool.execute()
-
-            if not result.success or not result.data:
-                logger.warning("Failed to retrieve document list")
-                return
-
-            documents = result.data.get("documents", [])
-            count = result.data.get("count", 0)
-
-            if count == 0:
-                print("📚 No documents indexed yet.")
-                print("   Add documents using: uv run python manage_vector_db.py add <document_path>\n")
-                return
-
-            # Print document list
-            print(f"📚 Available documents ({count}):")
-            for doc in documents:
-                doc_id = doc.get("id", "Unknown")
-                summary = doc.get("summary", "No summary available")
-
-                # Truncate summary if too long
-                max_summary_len = 100
-                if len(summary) > max_summary_len:
-                    summary = summary[:max_summary_len] + "..."
-
-                print(f"   • {doc_id}: {summary}")
-
-            print()  # Empty line for spacing
-
-        except Exception as e:
-            logger.debug(f"Could not display document list: {e}")
-            # Silent failure - don't block startup
 
     def run_repl(self):
         """

@@ -33,6 +33,10 @@ except ImportError:
     from cost_tracker import get_global_tracker
     from config import EmbeddingConfig  # Import unified config from src.config
 
+# Re-export for backward compatibility (will be removed in v2.0)
+# This allows existing code importing from embedding_generator to continue working
+__all__ = ['EmbeddingGenerator', 'EmbeddingConfig']
+
 logger = logging.getLogger(__name__)
 
 

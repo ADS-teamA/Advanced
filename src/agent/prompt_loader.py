@@ -21,9 +21,18 @@ def load_prompt(prompt_name: str) -> str:
         str: The prompt text
 
     Raises:
-        FileNotFoundError: If prompt file doesn't exist
+        FileNotFoundError: If prompts directory or prompt file doesn't exist
     """
-    prompt_path = Path(__file__).parent / "prompts" / f"{prompt_name}.txt"
+    prompt_dir = Path(__file__).parent / "prompts"
+
+    # Check if prompts directory exists
+    if not prompt_dir.exists():
+        raise FileNotFoundError(
+            f"Prompts directory not found: {prompt_dir}\n"
+            f"Expected location: src/agent/prompts/"
+        )
+
+    prompt_path = prompt_dir / f"{prompt_name}.txt"
 
     if not prompt_path.exists():
         raise FileNotFoundError(
