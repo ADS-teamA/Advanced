@@ -40,33 +40,78 @@ All configuration classes can be imported by other modules.
 """
 
 import os
+import logging
 from typing import Optional, List
 from pathlib import Path
 from dataclasses import dataclass, field
 
+logger = logging.getLogger(__name__)
+
 
 def load_env():
-    """Load environment variables from .env file."""
-    # __file__ is src/config.py, so parent.parent gets to project root
+    """Load environment variables from .env file with robust error handling."""
+    # Primary path: project root (src/config.py -> parent.parent)
     env_path = Path(__file__).parent.parent / ".env"
 
-    if env_path.exists():
-        with open(env_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key.strip()] = value.strip()
-    else:
-        # Fallback: look for .env in current working directory
-        cwd_env = Path.cwd() / ".env"
-        if cwd_env.exists():
-            with open(cwd_env, 'r') as f:
-                for line in f:
+    def _load_env_file(path: Path, is_fallback: bool = False):
+        """Helper to load a single .env file with error handling."""
+        try:
+            if is_fallback:
+                logger.warning(
+                    f"Primary .env not found at {env_path}\n"
+                    f"Using fallback: {path}\n"
+                    f"This may cause unexpected configuration behavior."
+                )
+            else:
+                logger.info(f"Loading configuration from {path}")
+
+            with open(path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
                     line = line.strip()
                     if line and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
-                        os.environ[key.strip()] = value.strip()
+                        try:
+                            key, value = line.split('=', 1)
+                            os.environ[key.strip()] = value.strip()
+                        except ValueError as e:
+                            logger.warning(f"Skipping malformed line {line_num} in {path}: {line}")
+            return True
+
+        except UnicodeDecodeError as e:
+            logger.error(f"Failed to read .env file (encoding error): {e}")
+            raise RuntimeError(
+                f".env file contains invalid UTF-8 characters.\n"
+                f"Please ensure .env is saved with UTF-8 encoding.\n"
+                f"Path: {path}"
+            )
+        except PermissionError as e:
+            logger.error(f"Permission denied reading .env file: {e}")
+            raise RuntimeError(
+                f"Cannot read .env file (permission denied).\n"
+                f"Please check file permissions.\n"
+                f"Path: {path}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to load .env file: {e}")
+            raise RuntimeError(
+                f"Failed to load configuration from .env file: {e}\n"
+                f"Path: {path}"
+            )
+
+    # Try primary path first
+    if env_path.exists():
+        _load_env_file(env_path, is_fallback=False)
+    else:
+        # Fallback: current working directory
+        cwd_env = Path.cwd() / ".env"
+        if cwd_env.exists():
+            _load_env_file(cwd_env, is_fallback=True)
+        else:
+            logger.warning(
+                f"No .env file found.\n"
+                f"Expected: {env_path}\n"
+                f"Fallback: {cwd_env}\n"
+                f"Using default configuration values and environment variables."
+            )
 
 
 # Load .env on module import

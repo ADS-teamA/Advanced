@@ -10,14 +10,14 @@ Analyzovaný dokument: BZ_VR1 (1).pdf (46 MB, 1173 sekcí)
 - **Cena:** $0.25 input / $1.00 output (za 1M tokenů)
 - **Použití:** 1x dokument summary + 1173 section summaries
 - **Batching:** ✅ AKTIVNÍ (`generate_batch_summaries`)
-- **Paralelizace:** ✅ ThreadPoolExecutor (max_workers=5)
+- **Paralelizace:** ✅ ThreadPoolExecutor (max_workers=20)
 
 ### PHASE 3: Kontextuální retrieval (SAC)
 - **Model:** GPT-5 Nano
 - **Cena:** $0.25 input / $1.00 output (za 1M tokenů)
 - **Použití:** ~2000-4000 chunků (odhad na základě 1173 sekcí)
 - **Batching:** ✅ AKTIVNÍ (`generate_contexts_batch`)
-- **Paralelizace:** ✅ ThreadPoolExecutor (max_workers=5)
+- **Paralelizace:** ✅ ThreadPoolExecutor (max_workers=10)
 
 ### PHASE 4: Embeddingy
 - **Model:** text-embedding-3-small (OpenAI)
@@ -31,7 +31,7 @@ Analyzovaný dokument: BZ_VR1 (1).pdf (46 MB, 1173 sekcí)
 - **Model:** GPT-5 Mini
 - **Cena:** $0.50 input / $2.00 output (za 1M tokenů)
 - **Použití:** Entity extraction + Relationship extraction pro každý chunk
-- **Batching:** ✅ AKTIVNÍ (batch_size=10, max_workers=5)
+- **Batching:** ✅ AKTIVNÍ (batch_size=20, max_workers=10)
 
 ## Odhad nákladů pro aktuální dokument
 

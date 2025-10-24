@@ -448,14 +448,17 @@ Summary (max {self.max_chars} characters):"""
 
         # Generate summaries in parallel
         summaries_map = {}
+        failures = []  # Track failed summaries
 
-        def generate_one(idx: int, text: str, title: str) -> tuple[int, str]:
+        def generate_one(idx: int, text: str, title: str) -> tuple[int, str, bool]:
+            """Generate one summary. Returns (idx, summary, success)."""
             try:
                 summary = self.generate_section_summary(text, title)
-                return (idx, summary)
+                return (idx, summary, True)  # Success
             except Exception as e:
                 logger.error(f"Failed to generate summary for '{title}': {e}")
-                return (idx, text[:self.max_chars].strip() + "...")
+                fallback = text[:self.max_chars].strip() + "..."
+                return (idx, fallback, False)  # Failure
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = [
@@ -464,8 +467,30 @@ Summary (max {self.max_chars} characters):"""
             ]
 
             for future in as_completed(futures):
-                idx, summary = future.result()
+                idx, summary, success = future.result()
                 summaries_map[idx] = summary
+                if not success:
+                    failures.append(idx)
+
+        # Report failures if any
+        if failures:
+            failure_rate = len(failures) / len(filtered_texts) * 100
+            logger.warning(
+                f"Summary generation: {len(failures)}/{len(filtered_texts)} failed ({failure_rate:.1f}%)\n"
+                f"Failed sections will use truncated content (reduced quality)"
+            )
+
+            # High failure rate warning
+            if failure_rate > 25:
+                logger.error(
+                    f"HIGH FAILURE RATE: {failure_rate:.1f}% of summaries failed!\n"
+                    f"This will significantly impact RAG quality.\n"
+                    f"Common causes:\n"
+                    f"  - API quota exhausted\n"
+                    f"  - Invalid API key\n"
+                    f"  - Network connectivity issues\n"
+                    f"  - Model unavailable"
+                )
 
         # Build result list in original order
         result = []
@@ -475,7 +500,11 @@ Summary (max {self.max_chars} characters):"""
             else:
                 result.append(summaries_map[i])
 
-        logger.info(f"Generated {len(summaries_map)} summaries in parallel (skipped {len(skip_indices)} tiny sections)")
+        successful = len(summaries_map) - len(failures)
+        logger.info(
+            f"Generated {successful}/{len(summaries_map)} summaries successfully "
+            f"(skipped {len(skip_indices)} tiny sections)"
+        )
         return result
 
 

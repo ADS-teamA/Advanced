@@ -403,7 +403,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")
-    parser.add_argument("--vector-store", type=str, help="Path to vector store directory", default="output/vector_store")
+    parser.add_argument("--vector-store", type=str, help="Path to vector store directory",
+                       default=os.getenv("VECTOR_STORE_PATH", "output/vector_store"))
     parser.add_argument("--model", type=str, help="Claude model to use", default=os.getenv("AGENT_MODEL", "claude-haiku-4-5"))
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--no-streaming", action="store_true", help="Disable streaming responses")

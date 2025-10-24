@@ -259,7 +259,12 @@ def run_single_document(document_path: Path, output_base: Path = None):
             print_info("ℹ️  Hybrid Search: DISABLED (dense-only retrieval)")
 
         # Knowledge graph stats
-        if stats.get("kg_enabled") and knowledge_graph:
+        if stats.get("kg_construction_failed"):
+            print()
+            print_info("❌ Knowledge Graph: FAILED")
+            print_info(f"   Error: {stats.get('kg_error', 'Unknown error')}")
+            print_info("   Continuing with vector search only")
+        elif stats.get("kg_enabled") and knowledge_graph:
             print()
             print_info("✅ Knowledge Graph: ACTIVE")
             print_info(f"   Entities:          {stats['kg_entities']}")
@@ -273,14 +278,60 @@ def run_single_document(document_path: Path, output_base: Path = None):
 
         print()
 
+    except FileNotFoundError as e:
+        logger.error(f"Document not found: {e}", exc_info=True)
+        print(f"\n✗ ERROR: Document not found")
+        print(f"   {e}")
+        print("\nPlease check:")
+        print(f"  - Path is correct: {document_path}")
+        print("  - File exists and is readable")
+        sys.exit(1)
+
+    except PermissionError as e:
+        logger.error(f"Permission denied: {e}", exc_info=True)
+        print(f"\n✗ ERROR: Permission denied")
+        print(f"   {e}")
+        print("\nPlease check:")
+        print("  - File/directory permissions")
+        print("  - Current user has read/write access")
+        sys.exit(1)
+
+    except MemoryError as e:
+        logger.error(f"Out of memory: {e}", exc_info=True)
+        print(f"\n✗ ERROR: Out of memory")
+        print(f"   Document may be too large: {document_path}")
+        print("\nSolutions:")
+        print("  - Process smaller documents")
+        print("  - Increase system memory")
+        print("  - Reduce batch_size in config")
+        sys.exit(1)
+
+    except KeyboardInterrupt:
+        logger.info("Pipeline interrupted by user")
+        print("\n\n⚠️  Pipeline interrupted by user (Ctrl+C)")
+        sys.exit(130)
+
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}", exc_info=True)
-        print(f"\n✗ ERROR: {e}")
-        print()
-        print("Common issues:")
-        print("  - Missing API keys (check .env file)")
-        print("  - Invalid document format")
-        print("  - Insufficient disk space")
+        # Check if it's an API error (works for both anthropic and openai)
+        error_str = str(e).lower()
+        if any(keyword in error_str for keyword in ['api', 'authentication', 'auth', 'key', 'quota', 'rate limit']):
+            logger.error(f"API error: {e}", exc_info=True)
+            print(f"\n✗ ERROR: API call failed")
+            print(f"   {e}")
+            print("\nPlease check:")
+            print("  - API keys are valid (check .env file)")
+            print("  - API quota/rate limits")
+            print("  - Internet connectivity")
+            print("  - API service status")
+        else:
+            logger.error(f"Pipeline failed: {e}", exc_info=True)
+            print(f"\n✗ ERROR: {e}")
+            print()
+            print("Common issues:")
+            print("  - Missing API keys (check .env file)")
+            print("  - Invalid document format")
+            print("  - Insufficient disk space")
+            print("\nFor more details, check the log file above.")
         sys.exit(1)
 
     # Print cost summary

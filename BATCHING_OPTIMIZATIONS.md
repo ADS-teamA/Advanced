@@ -23,14 +23,14 @@ Všechny fáze pipeline nyní používají **agresivní batching a paralelizaci*
 ## Detaily implementace
 
 ### PHASE 2: Section Summary Generation
-**Soubor:** `src/config.py:276` (SummarizationConfig)
+**Soubor:** `src/config.py` → `SummarizationConfig.max_workers`
 
 ```python
 # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
 max_workers: int = 20  # Parallel summary generation
 ```
 
-**Implementace:** `src/summary_generator.py:418`
+**Implementace:** `src/summary_generator.py` → `SummaryGenerator.generate_batch_summaries()`
 ```python
 def generate_batch_summaries(self, texts: list[tuple[str, str]]) -> list[str]:
     with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -48,13 +48,14 @@ def generate_batch_summaries(self, texts: list[tuple[str, str]]) -> list[str]:
 
 **Benefit:**
 - Původně: 1173 sekcí sekvenčně = ~1173 × 0.5s = 587s
-- Nyní: 1173 / 20 = 59 dávek × 0.5s = ~30s
-- **Zrychlení: 20×**
+- Nyní (best case): ceil(1173/20) = 59 dávek × 0.5s = ~30s (teoretických 20×)
+- Reálně: ~40-50s s overhead (network, thread switching, rate limits)
+- **Zrychlení: 12-15× (realistický odhad s overhead)**
 
 ---
 
 ### PHASE 3: Context Generation (SAC)
-**Soubor:** `src/config.py:317-319` (ContextGenerationConfig)
+**Soubor:** `src/config.py` → `ContextGenerationConfig`
 
 ```python
 # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
@@ -62,7 +63,7 @@ batch_size: int = 20   # Generate contexts in batches
 max_workers: int = 10   # Parallel context generation
 ```
 
-**Implementace:** `src/contextual_retrieval.py:506`
+**Implementace:** `src/contextual_retrieval.py` → `ContextualRetrieval.generate_contexts_batch()`
 ```python
 def generate_contexts_batch(self, chunks: List[Tuple[str, dict]]) -> List[ChunkContext]:
     with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
@@ -88,14 +89,14 @@ def generate_contexts_batch(self, chunks: List[Tuple[str, dict]]) -> List[ChunkC
 ---
 
 ### PHASE 4: Embedding Generation
-**Soubor:** `src/embedding_generator.py:42-43` (EmbeddingConfig)
+**Soubor:** `src/embedding_generator.py` → `EmbeddingConfig.batch_size`
 
 ```python
 # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
 batch_size: int = 64  # Optimized for local inference
 ```
 
-**Implementace:** `src/embedding_generator.py:348-370`
+**Implementace:** `src/embedding_generator.py` → `EmbeddingGenerator.embed_texts()`
 ```python
 def _embed_voyage(self, texts: List[str]) -> np.ndarray:
     for i in range(0, len(texts), self.batch_size):
@@ -118,7 +119,7 @@ def _embed_voyage(self, texts: List[str]) -> np.ndarray:
 ---
 
 ### PHASE 5A: Entity Extraction
-**Soubor:** `src/graph/config.py:49-51` (EntityExtractionConfig)
+**Soubor:** `src/graph/config.py` → `EntityExtractionConfig`
 
 ```python
 # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
@@ -126,7 +127,7 @@ batch_size: int = 20                   # Chunks per batch
 max_workers: int = 10                  # Parallel extraction threads
 ```
 
-**Implementace:** `src/graph/entity_extractor.py:96`
+**Implementace:** `src/graph/entity_extractor.py` → `EntityExtractor.extract_batch()`
 ```python
 batches = [chunks[i:i + self.config.batch_size] for i in range(0, len(chunks), self.config.batch_size)]
 with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
@@ -146,7 +147,7 @@ with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
 ---
 
 ### PHASE 5A: Relationship Extraction
-**Soubor:** `src/graph/config.py:90-92` (RelationshipExtractionConfig)
+**Soubor:** `src/graph/config.py` → `RelationshipExtractionConfig`
 
 ```python
 # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
@@ -154,7 +155,7 @@ batch_size: int = 10                   # Entity pairs per batch
 max_workers: int = 10
 ```
 
-**Implementace:** `src/graph/relationship_extractor.py:159`
+**Implementace:** `src/graph/relationship_extractor.py` → `RelationshipExtractor.extract_batch()`
 ```python
 batches = [chunk_tasks[i:i + self.config.batch_size] for i in range(0, len(chunk_tasks), self.config.batch_size)]
 with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:

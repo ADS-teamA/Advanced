@@ -72,3 +72,7 @@ htmlcov/
 
 # UV (Python package manager)
 .uv/
+
+# Test data files (large PDFs)
+data_test/*.pdf
+!data_test/.gitkeep

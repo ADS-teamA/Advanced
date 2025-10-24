@@ -396,6 +396,7 @@ class IndexingPipeline:
 
         # PHASE 5A: Knowledge Graph (optional)
         knowledge_graph = None
+        kg_error = None
         if self.kg_pipeline:
             logger.info("PHASE 5A: Knowledge Graph Construction")
 
@@ -427,9 +428,15 @@ class IndexingPipeline:
                 )
 
             except Exception as e:
-                logger.error(f"✗ Knowledge Graph construction failed: {e}")
-                logger.warning("Continuing without Knowledge Graph...")
+                logger.error(f"✗ Knowledge Graph construction failed: {e}", exc_info=True)
+                if self.config.enable_knowledge_graph:
+                    logger.error(
+                        f"ERROR: Knowledge Graph was enabled in config but construction failed.\n"
+                        f"Error: {e}\n"
+                        f"To disable KG: Set ENABLE_KNOWLEDGE_GRAPH=false in .env"
+                    )
                 knowledge_graph = None
+                kg_error = str(e)
 
         # Save intermediate results
         if save_intermediate and output_dir:
@@ -462,6 +469,8 @@ class IndexingPipeline:
                 "kg_enabled": self.config.enable_knowledge_graph,
                 "kg_entities": len(knowledge_graph.entities) if knowledge_graph else 0,
                 "kg_relationships": len(knowledge_graph.relationships) if knowledge_graph else 0,
+                "kg_construction_failed": self.config.enable_knowledge_graph and knowledge_graph is None and kg_error is not None,
+                "kg_error": kg_error if kg_error else None,
             }
         }
 
