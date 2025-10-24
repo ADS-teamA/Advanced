@@ -88,10 +88,119 @@ class AgentCore:
             tool_list = list(self.registry._tool_classes.keys())
             logger.debug(f"Available tools: {tool_list}")
 
+        # Flag to track if initialized
+        self._initialized_with_documents = False
+
+    def _clean_summary_text(self, text: str) -> str:
+        """
+        Clean summary text for conversation history.
+
+        Removes:
+        - HTML entities (&lt;, &gt;, etc.)
+        - Markdown formatting (##, **, etc.)
+        - Extra whitespace and newlines
+        """
+        import html
+        import re
+
+        # Unescape HTML entities
+        text = html.unescape(text)
+
+        # Remove markdown headers (## Header)
+        text = re.sub(r'#+\s+', '', text)
+
+        # Remove markdown bold/italic (**text**, *text*)
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+
+        # Replace multiple newlines with space
+        text = re.sub(r'\n+', ' ', text)
+
+        # Replace multiple spaces with single space
+        text = re.sub(r'\s+', ' ', text)
+
+        # Strip leading/trailing whitespace
+        text = text.strip()
+
+        return text
+
+    def initialize_with_documents(self):
+        """
+        Initialize conversation by calling get_document_list tool.
+
+        Adds document list to conversation history so agent has context
+        about available documents before first user query.
+        """
+        if self._initialized_with_documents:
+            return  # Already initialized
+
+        try:
+            # Get document list tool
+            doc_list_tool = self.registry.get_tool("get_document_list")
+            if not doc_list_tool:
+                logger.warning("get_document_list tool not available for initialization")
+                return
+
+            # Execute tool
+            result = doc_list_tool.execute()
+
+            if not result.success or not result.data:
+                logger.warning("Failed to get document list for initialization")
+                return
+
+            documents = result.data.get("documents", [])
+            count = result.data.get("count", 0)
+
+            if count == 0:
+                logger.info("No documents available for initialization")
+                return
+
+            # Build initialization message
+            doc_list_text = f"Available documents in the system ({count}):\n\n"
+            for doc in documents:
+                doc_id = doc.get("id", "Unknown")
+                summary = doc.get("summary", "No summary")
+
+                # Clean summary text
+                summary = self._clean_summary_text(summary)
+
+                # Truncate to first sentence or 150 chars
+                if len(summary) > 150:
+                    # Try to cut at sentence boundary
+                    sentence_end = summary.find('. ', 0, 150)
+                    if sentence_end > 50:  # Found reasonable sentence
+                        summary = summary[:sentence_end + 1]
+                    else:
+                        summary = summary[:150] + "..."
+
+                doc_list_text += f"- {doc_id}: {summary}\n"
+
+            doc_list_text += "\n(This is system initialization - the user will now ask questions about these documents)"
+
+            # Add as first message in conversation history
+            self.conversation_history.append({
+                "role": "user",
+                "content": doc_list_text
+            })
+
+            # Add simple acknowledgment from assistant
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": "I understand. I have access to these documents and will search them to answer user questions."
+            })
+
+            self._initialized_with_documents = True
+            logger.debug(f"Initialized conversation with {count} documents")
+
+        except Exception as e:
+            logger.warning(f"Could not initialize with documents: {e}")
+            # Don't fail - just continue without initialization
+
     def reset_conversation(self):
         """Reset conversation history."""
         self.conversation_history = []
         self.tool_call_history = []
+        self._initialized_with_documents = False
         logger.info("Conversation reset")
 
     def get_conversation_stats(self) -> Dict[str, Any]:

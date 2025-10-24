@@ -233,6 +233,9 @@ class AgentCLI:
         # Create agent
         self.agent = AgentCore(self.config)
 
+        # Initialize with document list (adds to conversation history)
+        self.agent.initialize_with_documents()
+
         # Check for degraded mode
         degraded_features = []
         if self.config.enable_knowledge_graph and knowledge_graph is None:
@@ -247,7 +250,6 @@ class AgentCLI:
             print("\nAgent will run with limited functionality.")
             print("To enable missing features, check configuration and dependencies.\n")
 
-        # Agent will automatically call get_document_list on first user query
         print("✅ Agent ready!\n")
 
     def run_repl(self):
