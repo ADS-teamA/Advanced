@@ -82,7 +82,7 @@ class ToolConfig:
     context_window: int = 2  # Number of chunks before/after for context expansion
 
     # Performance
-    lazy_load_reranker: bool = True
+    lazy_load_reranker: bool = False  # Load reranker at startup for better tool availability
     lazy_load_graph: bool = True
     cache_embeddings: bool = True
 
