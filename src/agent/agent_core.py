@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 MAX_HISTORY_MESSAGES = 50  # Keep last 50 messages to prevent unbounded memory growth
 MAX_QUERY_LENGTH = 10000  # Maximum characters in a single query
 
+# ANSI color codes for terminal output
+COLOR_BLUE = "\033[1;34m"  # Bold blue for tool calls and debug
+COLOR_RESET = "\033[0m"  # Reset color
+
 
 class AgentCore:
     """
@@ -126,10 +130,10 @@ class AgentCore:
 
     def initialize_with_documents(self):
         """
-        Initialize conversation by calling get_document_list tool.
+        Initialize conversation by calling get_document_list and list_available_tools.
 
-        Adds document list to conversation history so agent has context
-        about available documents before first user query.
+        Adds document list and tool list to conversation history so agent has context
+        about available documents and tools before first user query.
         """
         if self._initialized_with_documents:
             return  # Already initialized
@@ -141,21 +145,21 @@ class AgentCore:
                 logger.warning("get_document_list tool not available for initialization")
                 return
 
-            # Execute tool
-            result = doc_list_tool.execute()
+            # Execute document list tool
+            doc_result = doc_list_tool.execute()
 
-            if not result.success or not result.data:
+            if not doc_result.success or not doc_result.data:
                 logger.warning("Failed to get document list for initialization")
                 return
 
-            documents = result.data.get("documents", [])
-            count = result.data.get("count", 0)
+            documents = doc_result.data.get("documents", [])
+            count = doc_result.data.get("count", 0)
 
             if count == 0:
                 logger.info("No documents available for initialization")
                 return
 
-            # Build initialization message
+            # Build document list message
             doc_list_text = f"Available documents in the system ({count}):\n\n"
             for doc in documents:
                 doc_id = doc.get("id", "Unknown")
@@ -175,22 +179,64 @@ class AgentCore:
 
                 doc_list_text += f"- {doc_id}: {summary}\n"
 
-            doc_list_text += "\n(This is system initialization - the user will now ask questions about these documents)"
+            # Get tool list tool
+            tool_list_tool = self.registry.get_tool("list_available_tools")
+            if not tool_list_tool:
+                logger.warning("list_available_tools tool not available for initialization")
+                # Continue without tools list
+                tool_list_text = ""
+            else:
+                # Execute tool list tool
+                tool_result = tool_list_tool.execute()
+
+                if not tool_result.success or not tool_result.data:
+                    logger.warning("Failed to get tool list for initialization")
+                    tool_list_text = ""
+                else:
+                    tools = tool_result.data.get("tools", [])
+                    tool_count = len(tools)
+
+                    # Build tool list message (summary only, not full details)
+                    tool_list_text = f"\n\nAvailable tools ({tool_count}):\n\n"
+
+                    # Group by tier
+                    tier1_tools = [t for t in tools if "Tier 1" in t.get("tier", "")]
+                    tier2_tools = [t for t in tools if "Tier 2" in t.get("tier", "")]
+                    tier3_tools = [t for t in tools if "Tier 3" in t.get("tier", "")]
+
+                    if tier1_tools:
+                        tool_list_text += "TIER 1 - Basic Retrieval (fast, <100ms):\n"
+                        for tool in tier1_tools:
+                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
+
+                    if tier2_tools:
+                        tool_list_text += "\nTIER 2 - Advanced Retrieval (500-1000ms):\n"
+                        for tool in tier2_tools:
+                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
+
+                    if tier3_tools:
+                        tool_list_text += "\nTIER 3 - Analysis & Insights (1-3s):\n"
+                        for tool in tier3_tools:
+                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
+
+            # Combine messages
+            init_message = doc_list_text + tool_list_text
+            init_message += "\n\n(This is system initialization - the user will now ask questions about these documents)"
 
             # Add as first message in conversation history
             self.conversation_history.append({
                 "role": "user",
-                "content": doc_list_text
+                "content": init_message
             })
 
             # Add simple acknowledgment from assistant
             self.conversation_history.append({
                 "role": "assistant",
-                "content": "I understand. I have access to these documents and will search them to answer user questions."
+                "content": "I understand. I have access to these documents and will use the appropriate tools to search them and answer user questions."
             })
 
             self._initialized_with_documents = True
-            logger.debug(f"Initialized conversation with {count} documents")
+            logger.debug(f"Initialized conversation with {count} documents and {len(self.registry)} tools")
 
         except Exception as e:
             logger.warning(f"Could not initialize with documents: {e}")
@@ -378,9 +424,9 @@ class AgentCore:
                         tool_name = tool_use.name
                         tool_input = tool_use.input
 
-                        # Show tool call
+                        # Show tool call (in blue)
                         if self.config.cli_config.show_tool_calls:
-                            yield f"[Using {tool_name}...]\n"
+                            yield f"{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
 
                         # Execute tool
                         logger.info(f"Executing tool: {tool_name} with input {tool_input}")
@@ -393,9 +439,9 @@ class AgentCore:
                                 f"Tool '{tool_name}' failed: {result.error}",
                                 extra={"tool_input": tool_input, "metadata": result.metadata}
                             )
-                            # Alert user in streaming mode if show_tool_calls is enabled
+                            # Alert user in streaming mode if show_tool_calls is enabled (in blue)
                             if self.config.cli_config.show_tool_calls:
-                                yield f"[⚠️  Tool '{tool_name}' failed: {result.error}]\n"
+                                yield f"{COLOR_BLUE}[⚠️  Tool '{tool_name}' failed: {result.error}]{COLOR_RESET}\n"
 
                         # Track in history
                         self.tool_call_history.append(

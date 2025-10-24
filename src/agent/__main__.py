@@ -14,6 +14,45 @@ from src.agent.cli import main
 logger = logging.getLogger(__name__)
 
 
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter that adds blue color to all log messages."""
+
+    COLOR_BLUE = "\033[1;34m"
+    COLOR_RESET = "\033[0m"
+
+    def format(self, record):
+        # Format the message using parent formatter
+        message = super().format(record)
+        # Add blue color
+        return f"{self.COLOR_BLUE}{message}{self.COLOR_RESET}"
+
+
+def setup_logging(debug: bool = False):
+    """
+    Setup colored logging for CLI.
+
+    Args:
+        debug: Enable debug level logging
+    """
+    level = logging.DEBUG if debug else logging.INFO
+
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+
+    # Use colored formatter for console output
+    formatter = ColoredFormatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.addHandler(console_handler)
+
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -56,6 +95,10 @@ if __name__ == "__main__":
 
     try:
         args = parse_args()
+
+        # Setup colored logging
+        setup_logging(debug=args.debug)
+
         logger.debug(f"Args parsed: vector_store={args.vector_store}, model={args.model}, debug={args.debug}")
 
         # Create config from args

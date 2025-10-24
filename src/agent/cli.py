@@ -27,6 +27,10 @@ from .tools.registry import get_registry
 
 logger = logging.getLogger(__name__)
 
+# ANSI color codes for terminal output
+COLOR_GREEN = "\033[1;32m"  # Bold green for assistant messages
+COLOR_RESET = "\033[0m"  # Reset color
+
 
 class AgentCLI:
     """
@@ -283,13 +287,19 @@ class AgentCLI:
 
                 # Process message with agent
                 if self.config.cli_config.enable_streaming:
-                    print("\nAssistant: ", end="", flush=True)
+                    print(f"\n{COLOR_GREEN}A: {COLOR_RESET}", end="", flush=True)
                     for chunk in self.agent.process_message(user_input, stream=True):
-                        print(chunk, end="", flush=True)
+                        # Check if chunk starts with ANSI color code (tool call/debug)
+                        if chunk.startswith("\033["):
+                            # Don't colorize - already has color
+                            print(chunk, end="", flush=True)
+                        else:
+                            # Colorize assistant message in green
+                            print(f"{COLOR_GREEN}{chunk}{COLOR_RESET}", end="", flush=True)
                     print()  # Newline after response
                 else:
                     response = self.agent.process_message(user_input, stream=False)
-                    print(f"\nAssistant: {response}")
+                    print(f"\n{COLOR_GREEN}A: {response}{COLOR_RESET}")
 
             except KeyboardInterrupt:
                 print("\n\n👋 Goodbye!")
