@@ -384,24 +384,102 @@ mypy src/ --config-file pyproject.toml
 
 ## Configuration System
 
-The pipeline uses a centralized configuration system with sensible defaults based on research:
+The pipeline uses a **clean, hierarchical configuration system** with sensible defaults based on research.
 
-### IndexingConfig (Main Pipeline)
-Located in `src/indexing_pipeline.py`, controls all phases:
-- `enable_smart_hierarchy=True`: Font-size based hierarchy (PHASE 1)
-- `generate_summaries=True`: Generic summaries (PHASE 2)
-- `chunk_size=500`: RCTS optimal chunk size (PHASE 3)
-- `enable_sac=True`: Summary-Augmented Chunking (PHASE 3)
-- `embedding_model="text-embedding-3-large"`: 3072D embeddings (PHASE 4)
-- `enable_knowledge_graph=False`: Knowledge graph construction (PHASE 5A)
+### Architecture Overview
+
+**Config Hierarchy:**
+```
+IndexingConfig (main orchestrator)
+├─ extraction_config: ExtractionConfig     # PHASE 1 settings
+├─ summarization_config: SummarizationConfig  # PHASE 2 settings
+├─ chunking_config: ChunkingConfig         # PHASE 3 settings
+├─ embedding_config: EmbeddingConfig       # PHASE 4 settings
+└─ kg_config: KnowledgeGraphConfig         # PHASE 5A settings (optional)
+```
+
+### Loading from Environment (Recommended)
+
+All configs support `from_env()` classmethod for loading from `.env` file:
+
+```python
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+
+# Option 1: Load everything from .env (easiest)
+config = IndexingConfig.from_env()
+pipeline = IndexingPipeline(config)
+
+# Option 2: Load from .env with overrides
+config = IndexingConfig.from_env(
+    enable_knowledge_graph=True,
+    enable_hybrid_search=True
+)
+
+# Option 3: Full customization with nested configs
+from src.config import EmbeddingConfig, ChunkingConfig
+
+config = IndexingConfig(
+    embedding_config=EmbeddingConfig.from_env(),
+    chunking_config=ChunkingConfig(chunk_size=750),
+    enable_knowledge_graph=True
+)
+```
+
+### Key Configuration Classes
+
+**`ExtractionConfig`** (`src/config.py`) - PHASE 1
+- `enable_smart_hierarchy=True`: Font-size based hierarchy detection
+- `ocr_language=["ces", "eng"]`: Tesseract language codes
+- `from_env()`: Loads OCR_LANGUAGE, ENABLE_SMART_HIERARCHY
+
+**`SummarizationConfig`** (`src/config.py`) - PHASE 2
+- `max_chars=150`: Generic summary length (research optimal)
+- `temperature=0.3`: Low temperature for consistency
+- `use_batch_api=False`: Use OpenAI Batch API (set via SPEED_MODE)
+- `from_env()`: Loads LLM_PROVIDER, LLM_MODEL, SPEED_MODE
+
+**`ChunkingConfig`** (`src/config.py`) - PHASE 3
+- `chunk_size=500`: RCTS optimal chunk size
+- `enable_contextual=True`: Summary-Augmented Chunking (SAC)
+- `from_env()`: Loads CHUNK_SIZE, ENABLE_SAC
+
+**`EmbeddingConfig`** (`src/config.py`) - PHASE 4 (UNIFIED)
+- `provider`: "voyage", "openai", or "huggingface" (loaded from .env)
+- `model`: Model name (loaded from .env)
+- `batch_size=64`: Batch size for embedding generation
+- `cache_enabled=True`: Enable embedding cache (40-80% hit rate)
+- `from_env()`: Loads EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BATCH_SIZE, EMBEDDING_CACHE_*
+
+**`IndexingConfig`** (`src/indexing_pipeline.py`) - Main Pipeline
+- `speed_mode="fast"`: "fast" or "eco" (affects Batch API usage)
+- `enable_knowledge_graph=True`: Enable KG construction (SOTA 2025)
+- `enable_hybrid_search=True`: BM25 + Dense + RRF fusion
+- `from_env()`: Loads SPEED_MODE, ENABLE_KNOWLEDGE_GRAPH, ENABLE_HYBRID_SEARCH
+
+### Environment Variables
+
+See `.env.example` for complete list. Key variables:
+
+**Required:**
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (for PHASE 2 summaries)
+
+**Model Selection:**
+- `LLM_PROVIDER=claude` (claude or openai)
+- `LLM_MODEL=claude-sonnet-4-5-20250929`
+- `EMBEDDING_PROVIDER=huggingface` (voyage, openai, huggingface)
+- `EMBEDDING_MODEL=bge-m3`
+
+**Optional Performance:**
+- `SPEED_MODE=fast` (fast or eco - affects cost/speed tradeoff)
+- `EMBEDDING_BATCH_SIZE=64`
+- `EMBEDDING_CACHE_ENABLED=true`
+- `EMBEDDING_CACHE_SIZE=1000`
 
 ### Knowledge Graph Configuration
-Enable KG by setting `enable_knowledge_graph=True` in IndexingConfig:
-- `kg_llm_provider`: "openai" or "anthropic"
-- `kg_llm_model`: Model for extraction (default: "gpt-4o-mini")
-- `kg_backend`: "simple", "neo4j", or "networkx"
-- `kg_min_entity_confidence=0.6`: Minimum confidence for entities
-- `kg_min_relationship_confidence=0.5`: Minimum confidence for relationships
+Enable KG by setting `enable_knowledge_graph=True`:
+- Automatically loads `KnowledgeGraphConfig.from_env()`
+- Environment variables: `KG_LLM_PROVIDER`, `KG_LLM_MODEL`, `KG_BACKEND`
+- Defaults: `gpt-4o-mini` model, `simple` backend
 
 ## Knowledge Graph (PHASE 5A)
 

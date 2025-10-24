@@ -23,38 +23,17 @@ import logging
 import os
 import hashlib
 from typing import List, Dict, Optional, Union
-from dataclasses import dataclass
 from collections import OrderedDict
 import numpy as np
 
 try:
     from .cost_tracker import get_global_tracker
+    from .config import EmbeddingConfig  # Import unified config from src.config
 except ImportError:
     from cost_tracker import get_global_tracker
+    from config import EmbeddingConfig  # Import unified config from src.config
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class EmbeddingConfig:
-    """Configuration for embedding generation."""
-    model: str = "bge-m3"  # Default: BGE-M3-v2 (multilingual, local, M1 optimized)
-    # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
-    batch_size: int = 64  # Optimized for local inference
-    normalize: bool = True  # For cosine similarity (FAISS IndexFlatIP)
-    dimensions: Optional[int] = None  # Auto-detected from model
-    # Embedding cache configuration (similar_query_cache infrastructure)
-    cache_enabled: bool = True  # Enable cache for embeddings
-    cache_max_size: int = 1000  # Max cache entries (hit rate depends on query patterns)
-
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        if self.batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
-        if self.dimensions is not None and self.dimensions <= 0:
-            raise ValueError(f"dimensions must be positive if specified, got {self.dimensions}")
-        if self.cache_max_size <= 0:
-            raise ValueError(f"cache_max_size must be positive, got {self.cache_max_size}")
 
 
 class EmbeddingGenerator:

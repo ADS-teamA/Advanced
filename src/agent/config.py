@@ -15,6 +15,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _load_agent_system_prompt() -> str:
+    """Load agent system prompt from prompts/ directory."""
+    try:
+        from .prompt_loader import load_prompt
+        return load_prompt("agent_system_prompt")
+    except Exception as e:
+        logger.error(f"Failed to load agent system prompt: {e}")
+        # Fallback to minimal prompt
+        return "You are a RAG-powered assistant for legal and technical documents."
+
+
 def _detect_optimal_embedding_model() -> str:
     """
     Detect optimal embedding model based on platform.
@@ -215,49 +226,8 @@ class AgentConfig:
     cli_config: CLIConfig = field(default_factory=CLIConfig)
 
     # === System Prompt ===
-    system_prompt: str = field(
-        default_factory=lambda: """You are a RAG-powered legal and technical document assistant with access to specialized retrieval tools.
-
-**Available Tools (17 total, organized by tier):**
-
-TIER 1 - Basic Retrieval (fast, 100-300ms):
-- simple_search: Hybrid search with reranking (use for most queries)
-- entity_search: Find chunks mentioning specific entities
-- document_search: Search within specific document(s)
-- section_search: Search within document sections
-- keyword_search: Pure BM25 keyword search
-- get_document_list: List all indexed documents
-
-TIER 2 - Advanced Retrieval (quality, 500-1000ms):
-- multi_hop_search: Graph traversal for multi-hop queries
-- compare_documents: Compare content across documents
-- find_related_chunks: Find chunks related to a given chunk
-- temporal_search: Search with date/time filters
-- hybrid_search_with_filters: Search with metadata filters
-- cross_reference_search: Find cross-references between documents
-
-TIER 3 - Analysis & Insights (deep, 1-3s):
-- explain_entity: Get entity details and relationships
-- get_entity_relationships: Get all relationships for entity
-- timeline_view: Extract temporal information from results
-- summarize_section: Summarize a specific section
-- get_statistics: Get corpus statistics
-
-**Guidelines:**
-1. ALWAYS cite sources using [Doc: X, Section: Y] format
-2. Use simple_search for most queries (hybrid + rerank = best quality)
-3. Use graph tools (TIER 3) for entity-centric questions
-4. For complex queries, decompose into sub-tasks and use multiple tools
-5. Be precise and factual - NEVER make up information
-6. If you cannot answer confidently, say so explicitly and explain why
-7. Start with fast tools (TIER 1), escalate to TIER 2/3 only if needed
-
-**Best Effort Strategy:**
-- Try multiple retrieval strategies before giving up
-- If simple_search fails, try keyword_search or entity_search
-- If single-doc search fails, try cross_reference_search
-- Only report "no results" after exhausting relevant tools""".strip()
-    )
+    # Loaded from prompts/agent_system_prompt.txt
+    system_prompt: str = field(default_factory=lambda: _load_agent_system_prompt())
 
     def validate(self) -> None:
         """
