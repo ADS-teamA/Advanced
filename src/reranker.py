@@ -21,7 +21,7 @@ Usage:
     from reranker import CrossEncoderReranker
 
     reranker = CrossEncoderReranker(
-        model_name='cross-encoder/ms-marco-MiniLM-L-6-v2'
+        model_name='bge-reranker-large'  # SOTA accuracy
     )
 
     reranked_results = reranker.rerank(
@@ -88,7 +88,7 @@ class CrossEncoderReranker:
 
     def __init__(
         self,
-        model_name: str = "ms-marco-mini",
+        model_name: str = "bge-reranker-large",  # SOTA accuracy (was: ms-marco-mini)
         device: str = "cpu",
         max_length: int = 512,
         batch_size: int = 32
@@ -354,11 +354,11 @@ if __name__ == "__main__":
     ]
 
     print("1. Initialize cross-encoder reranker:")
-    print("   reranker = CrossEncoderReranker(model_name='ms-marco-mini')")
+    print("   reranker = CrossEncoderReranker(model_name='bge-reranker-large')")
     print("")
 
     # Initialize reranker
-    reranker = CrossEncoderReranker(model_name="ms-marco-mini")
+    reranker = CrossEncoderReranker(model_name="bge-reranker-large")
 
     print("2. Rerank candidates:")
     query = "waste disposal requirements"

@@ -79,7 +79,7 @@ class ToolConfig:
     default_k: int = 6
     enable_reranking: bool = True
     reranker_candidates: int = 50
-    reranker_model: str = "ms-marco-mini"
+    reranker_model: str = "bge-reranker-large"  # SOTA accuracy (was: ms-marco-mini)
 
     # Graph settings
     enable_graph_boost: bool = True
