@@ -207,59 +207,32 @@ class ModelConfig:
             raise ValueError(f"Unsupported embedding provider: {self.embedding_provider}")
 
 
-# Model aliases for convenience
-MODEL_ALIASES = {
-    # Claude 4.5 models (latest)
-    "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-5-20250929",
-    "claude-haiku": "claude-haiku-4-5-20251001",
-    "claude-sonnet": "claude-sonnet-4-5-20250929",
-    "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-    "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
-
-    # OpenAI GPT-4o models
-    "gpt-4o-mini": "gpt-4o-mini",
-    "gpt-4o": "gpt-4o",
-
-    # OpenAI GPT-5 models (August 2025)
-    "gpt-5": "gpt-5",
-    "gpt-5-mini": "gpt-5-mini",
-    "gpt-5-nano": "gpt-5-nano",
-    "gpt-5-pro": "gpt-5-pro",
-    "gpt-5-codex": "gpt-5-codex",
-    "gpt-5-chat": "gpt-5-chat",
-
-    # OpenAI O-series (reasoning models)
-    "o1": "o1",
-    "o1-mini": "o1-mini",
-    "o3": "o3",
-    "o3-mini": "o3-mini",
-    "o3-pro": "o3-pro",
-    "o4-mini": "o4-mini",
-
-    # Local Legal LLM models (via Ollama or Transformers)
-    "saul-7b": "Equall/Saul-7B-Instruct-v1",  # Legal Mistral fine-tune
-    "mistral-legal-7b": "Equall/Saul-7B-Instruct-v1",  # Alias
-    "llama-3-8b": "meta-llama/Meta-Llama-3-8B-Instruct",
-    "mistral-7b": "mistralai/Mistral-7B-Instruct-v0.3",
-
-    # Embedding models (Voyage AI)
-    "kanon-2": "kanon-2",
-    "voyage-3": "voyage-3-large",
-    "voyage-law-2": "voyage-law-2",
-
-    # OpenAI embeddings
-    "text-embedding-3-large": "text-embedding-3-large",
-    "text-embedding-3-small": "text-embedding-3-small",
-
-    # HuggingFace models
-    "bge-m3": "BAAI/bge-m3",
-}
+# Import ModelRegistry for centralized model management
+from src.utils.model_registry import ModelRegistry
 
 
 def resolve_model_alias(model_name: str) -> str:
-    """Resolve model alias to full model name."""
-    return MODEL_ALIASES.get(model_name, model_name)
+    """
+    Resolve model alias to full model name using centralized ModelRegistry.
+
+    This function is kept for backward compatibility. All model aliases are now
+    managed in utils.model_registry.ModelRegistry.
+
+    Args:
+        model_name: Model name or alias (e.g., "haiku", "sonnet", "gpt-4o-mini")
+
+    Returns:
+        Full model name (e.g., "claude-haiku-4-5-20251001")
+    """
+    # Try LLM models first
+    if model_name in ModelRegistry.LLM_MODELS:
+        return ModelRegistry.resolve_llm(model_name)
+    # Then try embedding models
+    elif model_name in ModelRegistry.EMBEDDING_MODELS:
+        return ModelRegistry.resolve_embedding(model_name)
+    # Fallback: return as-is
+    else:
+        return model_name
 
 
 @dataclass

@@ -15,7 +15,6 @@ Implementation:
 """
 
 import logging
-import pickle
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import numpy as np
@@ -27,6 +26,9 @@ except ImportError:
         "FAISS required for vector store. "
         "Install with: uv pip install faiss-cpu (or faiss-gpu)"
     )
+
+# Import utilities
+from src.utils.persistence import PersistenceManager, VectorStoreLoader
 
 logger = logging.getLogger(__name__)
 
@@ -407,11 +409,12 @@ class FAISSVectorStore:
             self.index_layer1.add(vectors)
             self.metadata_layer1.extend(other.metadata_layer1)
 
-            # Update doc_id_to_indices
-            for doc_id, indices in other.doc_id_to_indices[1].items():
-                if doc_id not in self.doc_id_to_indices[1]:
-                    self.doc_id_to_indices[1][doc_id] = []
-                self.doc_id_to_indices[1][doc_id].extend([idx + base_idx for idx in indices])
+            # Update doc_id_to_indices using centralized utility
+            PersistenceManager.update_doc_id_indices(
+                self.doc_id_to_indices[1],
+                other.doc_id_to_indices[1],
+                base_idx
+            )
 
         # Merge Layer 2
         if other.index_layer2.ntotal > 0:
@@ -422,10 +425,12 @@ class FAISSVectorStore:
             self.index_layer2.add(vectors)
             self.metadata_layer2.extend(other.metadata_layer2)
 
-            for doc_id, indices in other.doc_id_to_indices[2].items():
-                if doc_id not in self.doc_id_to_indices[2]:
-                    self.doc_id_to_indices[2][doc_id] = []
-                self.doc_id_to_indices[2][doc_id].extend([idx + base_idx for idx in indices])
+            # Update doc_id_to_indices using centralized utility
+            PersistenceManager.update_doc_id_indices(
+                self.doc_id_to_indices[2],
+                other.doc_id_to_indices[2],
+                base_idx
+            )
 
         # Merge Layer 3
         if other.index_layer3.ntotal > 0:
@@ -436,10 +441,12 @@ class FAISSVectorStore:
             self.index_layer3.add(vectors)
             self.metadata_layer3.extend(other.metadata_layer3)
 
-            for doc_id, indices in other.doc_id_to_indices[3].items():
-                if doc_id not in self.doc_id_to_indices[3]:
-                    self.doc_id_to_indices[3][doc_id] = []
-                self.doc_id_to_indices[3][doc_id].extend([idx + base_idx for idx in indices])
+            # Update doc_id_to_indices using centralized utility
+            PersistenceManager.update_doc_id_indices(
+                self.doc_id_to_indices[3],
+                other.doc_id_to_indices[3],
+                base_idx
+            )
 
         stats = self.get_stats()
         logger.info(f"Merge complete: {stats['documents']} total documents, {stats['total_vectors']} vectors")
@@ -466,6 +473,10 @@ class FAISSVectorStore:
         """
         Save FAISS indexes and metadata to disk.
 
+        Uses hybrid serialization:
+        - JSON for config (dimensions, human-readable)
+        - Pickle for large arrays (metadata lists, doc_id_to_indices)
+
         Args:
             output_dir: Directory to save indexes
         """
@@ -475,21 +486,28 @@ class FAISSVectorStore:
         logger.info(f"Saving vector store to {output_dir}")
 
         # Save FAISS indexes
-        faiss.write_index(self.index_layer1, str(output_dir / "layer1.index"))
-        faiss.write_index(self.index_layer2, str(output_dir / "layer2.index"))
-        faiss.write_index(self.index_layer3, str(output_dir / "layer3.index"))
+        faiss.write_index(self.index_layer1, str(output_dir / "faiss_layer1.index"))
+        faiss.write_index(self.index_layer2, str(output_dir / "faiss_layer2.index"))
+        faiss.write_index(self.index_layer3, str(output_dir / "faiss_layer3.index"))
 
-        # Save metadata
-        metadata = {
+        # Save config (JSON - human-readable)
+        config = {
             "dimensions": self.dimensions,
+            "layer1_count": self.index_layer1.ntotal,
+            "layer2_count": self.index_layer2.ntotal,
+            "layer3_count": self.index_layer3.ntotal,
+            "format_version": "1.0"
+        }
+        PersistenceManager.save_json(output_dir / "faiss_metadata.json", config)
+
+        # Save arrays (Pickle - performance)
+        arrays = {
             "metadata_layer1": self.metadata_layer1,
             "metadata_layer2": self.metadata_layer2,
             "metadata_layer3": self.metadata_layer3,
             "doc_id_to_indices": self.doc_id_to_indices
         }
-
-        with open(output_dir / "metadata.pkl", "wb") as f:
-            pickle.dump(metadata, f)
+        PersistenceManager.save_pickle(output_dir / "faiss_arrays.pkl", arrays)
 
         logger.info(f"Vector store saved: {self.get_stats()}")
 
@@ -497,6 +515,10 @@ class FAISSVectorStore:
     def load(cls, input_dir: Path) -> "FAISSVectorStore":
         """
         Load FAISS indexes and metadata from disk.
+
+        Supports backward compatibility:
+        - Old format: layer1.index, metadata.pkl
+        - New format: faiss_layer1.index, faiss_metadata.json, faiss_arrays.pkl
 
         Args:
             input_dir: Directory containing saved indexes
@@ -508,23 +530,54 @@ class FAISSVectorStore:
 
         logger.info(f"Loading vector store from {input_dir}")
 
-        # Load metadata
-        with open(input_dir / "metadata.pkl", "rb") as f:
-            metadata = pickle.load(f)
+        # Detect format
+        format_type = VectorStoreLoader.detect_format(input_dir)
+        logger.info(f"Detected format: {format_type}")
 
-        # Create instance
-        store = cls(dimensions=metadata["dimensions"])
+        if format_type == "new":
+            # Load config (JSON)
+            config = PersistenceManager.load_json(input_dir / "faiss_metadata.json")
+            dimensions = config["dimensions"]
 
-        # Load FAISS indexes
-        store.index_layer1 = faiss.read_index(str(input_dir / "layer1.index"))
-        store.index_layer2 = faiss.read_index(str(input_dir / "layer2.index"))
-        store.index_layer3 = faiss.read_index(str(input_dir / "layer3.index"))
+            # Load arrays (Pickle)
+            arrays = PersistenceManager.load_pickle(input_dir / "faiss_arrays.pkl")
 
-        # Load metadata
-        store.metadata_layer1 = metadata["metadata_layer1"]
-        store.metadata_layer2 = metadata["metadata_layer2"]
-        store.metadata_layer3 = metadata["metadata_layer3"]
-        store.doc_id_to_indices = metadata["doc_id_to_indices"]
+            # Create instance
+            store = cls(dimensions=dimensions)
+
+            # Load FAISS indexes (new naming)
+            store.index_layer1 = faiss.read_index(str(input_dir / "faiss_layer1.index"))
+            store.index_layer2 = faiss.read_index(str(input_dir / "faiss_layer2.index"))
+            store.index_layer3 = faiss.read_index(str(input_dir / "faiss_layer3.index"))
+
+            # Load metadata arrays
+            store.metadata_layer1 = arrays["metadata_layer1"]
+            store.metadata_layer2 = arrays["metadata_layer2"]
+            store.metadata_layer3 = arrays["metadata_layer3"]
+            store.doc_id_to_indices = arrays["doc_id_to_indices"]
+
+        else:  # old format
+            logger.warning(
+                "Loading old format vector store. "
+                "Consider re-saving in new format for better performance."
+            )
+
+            # Load metadata (old pickle format)
+            metadata = PersistenceManager.load_pickle(input_dir / "metadata.pkl")
+
+            # Create instance
+            store = cls(dimensions=metadata["dimensions"])
+
+            # Load FAISS indexes (old naming)
+            store.index_layer1 = faiss.read_index(str(input_dir / "layer1.index"))
+            store.index_layer2 = faiss.read_index(str(input_dir / "layer2.index"))
+            store.index_layer3 = faiss.read_index(str(input_dir / "layer3.index"))
+
+            # Load metadata
+            store.metadata_layer1 = metadata["metadata_layer1"]
+            store.metadata_layer2 = metadata["metadata_layer2"]
+            store.metadata_layer3 = metadata["metadata_layer3"]
+            store.doc_id_to_indices = metadata["doc_id_to_indices"]
 
         logger.info(f"Vector store loaded: {store.get_stats()}")
 

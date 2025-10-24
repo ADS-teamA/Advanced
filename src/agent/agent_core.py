@@ -20,11 +20,13 @@ from .tools.registry import get_registry
 
 try:
     from ..cost_tracker import get_global_tracker
+    from ..utils.security import sanitize_error
 except ImportError:
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from cost_tracker import get_global_tracker
+    from utils.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 
@@ -494,11 +496,11 @@ class AgentCore:
             logger.error(f"Rate limit hit: {e}")
             yield "\n\n[⚠️  Rate limit exceeded - please wait a moment and try again.]\n"
         except anthropic.APIError as e:
-            logger.error(f"Claude API error: {e}")
-            yield f"\n\n[❌ API Error: {e}]\n"
+            logger.error(f"Claude API error: {sanitize_error(e)}")
+            yield f"\n\n[❌ API Error: {sanitize_error(e)}]\n"
         except Exception as e:
-            logger.error(f"Streaming failed: {e}", exc_info=True)
-            yield f"\n\n[❌ Unexpected error: {type(e).__name__}: {e}]\n"
+            logger.error(f"Streaming failed: {sanitize_error(e)}", exc_info=True)
+            yield f"\n\n[❌ Unexpected error: {type(e).__name__}: {sanitize_error(e)}]\n"
 
     def _process_non_streaming(self, tools: List[Dict]) -> str:
         """
