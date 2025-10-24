@@ -499,8 +499,8 @@ class AgentValidator:
                 ValidationResult(
                     name="Embedding Generator",
                     passed=False,
-                    message=f"Failed to initialize embedding generator: {str(e)}",
-                    details={"error": str(e)},
+                    message=f"Failed to initialize embedding generator: {sanitize_error(e)}",
+                    details={"error": sanitize_error(e)},
                 )
             )
 

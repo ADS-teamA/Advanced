@@ -25,6 +25,8 @@ import time
 from functools import wraps
 from typing import Callable, Optional, Tuple, Type
 
+from .security import sanitize_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -124,7 +126,7 @@ def retry_with_exponential_backoff(
                     # Log retry
                     logger.warning(
                         f"Function '{func.__name__}' failed (attempt {attempt + 1}/{max_retries}). "
-                        f"Retrying in {delay:.1f}s... Error: {type(e).__name__}: {str(e)[:100]}"
+                        f"Retrying in {delay:.1f}s... Error: {type(e).__name__}: {sanitize_error(str(e))[:100]}"
                     )
 
                     # Call retry callback if provided
@@ -133,7 +135,7 @@ def retry_with_exponential_backoff(
                             on_retry(e, attempt + 1, delay)
                         except Exception as callback_error:
                             logger.error(
-                                f"Retry callback failed: {callback_error}",
+                                f"Retry callback failed: {sanitize_error(callback_error)}",
                                 exc_info=True
                             )
 
