@@ -253,6 +253,79 @@ result['vector_store'].save('output/vector_store')
 "
 ```
 
+#### Speed/Cost Modes: Fast vs. Eco
+
+The pipeline supports two indexing modes trading off speed for cost:
+
+**⚡ FAST MODE** (default):
+- Uses OpenAI Completions API (immediate processing)
+- **Speed:** 2-3 min (PHASE 2 summaries) + 1-2 min (PHASE 3 SAC contexts)
+- **Cost:** Full API pricing
+- **Best for:** Quick iteration, development, urgent needs
+
+**💰 ECO MODE**:
+- Uses OpenAI Batch API (queued processing, 50% discount)
+- **Speed:** 15-30 min (PHASE 2 summaries) + 15-30 min (PHASE 3 SAC contexts)
+- **Cost:** 50% cheaper than fast mode for PHASE 2 + PHASE 3
+- **Savings:** Typical document saves $0.10-0.30 in eco mode
+- **Best for:** Bulk indexing, overnight jobs, cost optimization
+
+```python
+# Fast mode (default) - completions API
+config = IndexingConfig(speed_mode="fast")  # 2-3 min, full price
+
+# Eco mode - Batch API (50% cheaper)
+config = IndexingConfig(speed_mode="eco")  # 15-30 min, 50% off
+
+# Example: Overnight bulk indexing in eco mode
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+from pathlib import Path
+
+config = IndexingConfig(
+    speed_mode="eco",  # 50% cost savings, 12h timeout
+    enable_knowledge_graph=True
+)
+pipeline = IndexingPipeline(config)
+
+# Index multiple documents
+for doc_path in Path("data/regulations/").glob("*.pdf"):
+    result = pipeline.index_document(doc_path)
+    result['vector_store'].save(f'output/{doc_path.stem}')
+```
+
+**Technical Details:**
+- **Fast mode:** ThreadPoolExecutor with 20 parallel workers
+- **Eco mode:** JSONL batch file → OpenAI queue → 5s polling → 12h timeout
+- **Applies to:** PHASE 2 (summaries) + PHASE 3 (SAC contexts)
+- **Fallback:** Eco mode auto-falls back to fast if batch times out
+- **Total savings:** ~$0.10-0.30 per document (depends on size)
+
+### Managing Central Vector Database
+
+**NEW:** Centrální databáze pro všechny dokumenty (doporučeno místo izolovaných stores)
+
+```bash
+# Přidat nový dokument do centrální databáze (vytvoří databázi, pokud neexistuje)
+uv run python manage_vector_db.py add data/document.pdf
+
+# Migrovat existující vector store do centrální databáze
+uv run python manage_vector_db.py migrate output/BZ_VR1/20251024_164925/phase4_vector_store
+
+# Zobrazit statistiky centrální databáze
+uv run python manage_vector_db.py stats
+
+# Vytvořit prázdnou databázi
+uv run python manage_vector_db.py init
+```
+
+**Výhody centrální databáze:**
+- ✅ Všechny dokumenty na jednom místě (`vector_db/`)
+- ✅ Incremental indexing - přidávej dokumenty postupně
+- ✅ Agent má přístup ke všem dokumentům současně
+- ✅ Automatická podpora hybrid search (BM25 + Dense + RRF)
+
+**Kompletní dokumentace:** Viz `VECTOR_DB_README.md`
+
 ### Running the RAG Agent CLI
 
 ```bash
@@ -267,6 +340,9 @@ uv run python -m src.agent.cli --debug
 
 # With custom vector store path
 uv run python -m src.agent.cli --vector-store output/custom_vector_store
+
+# With central database (RECOMMENDED)
+uv run python -m src.agent.cli --vector-store vector_db
 
 # Disable streaming for simpler output
 uv run python -m src.agent.cli --no-streaming

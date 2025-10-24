@@ -219,6 +219,9 @@ class ExtractedDocument:
     # PHASE 2: Document-level summary
     document_summary: Optional[str] = None
 
+    # Document title
+    title: Optional[str] = None
+
     # Extraction metadata
     extraction_method: str = "smart_hierarchy_by_font_size"
     config: Optional[Dict] = None
@@ -284,7 +287,11 @@ class DoclingExtractorV2:
                 summary_config = SummarizationConfig(
                     model=self.config.summary_model,
                     max_chars=self.config.summary_max_chars,
-                    style=self.config.summary_style
+                    style=self.config.summary_style,
+                    # Batch API parameters (50% cost savings)
+                    use_batch_api=self.config.use_batch_api,
+                    batch_api_poll_interval=self.config.batch_api_poll_interval,
+                    batch_api_timeout=self.config.batch_api_timeout
                 )
 
                 self.summary_generator = SummaryGenerator(
@@ -415,11 +422,24 @@ class DoclingExtractorV2:
         hierarchy_depth = max((s.depth for s in sections), default=0)
         num_roots = sum(1 for s in sections if s.parent_id is None)
 
+        # Extract document title
+        title = None
+        # Try metadata first
+        if hasattr(docling_doc, 'name') and docling_doc.name:
+            title = docling_doc.name
+        # Fallback to first section title
+        elif sections and sections[0].title:
+            title = sections[0].title
+        # Last resort: clean filename
+        else:
+            title = source_path.stem.replace('_', ' ')
+
         extraction_time = (datetime.now() - start_time).total_seconds()
 
         extracted_doc = ExtractedDocument(
             document_id=doc_id,
             source_path=str(source_path),
+            title=title,
             extraction_time=extraction_time,
             full_text=full_text,
             markdown=markdown,

@@ -51,7 +51,10 @@ class ChunkMetadata:
     char_start: int = 0
     char_end: int = 0
 
-    # Hierarchy context
+    # Document info (Layer 1)
+    title: Optional[str] = None
+
+    # Hierarchy context (Layer 2-3)
     section_title: Optional[str] = None
     section_path: Optional[str] = None
     section_level: int = 0
@@ -81,6 +84,7 @@ class Chunk:
                 "chunk_id": self.metadata.chunk_id,
                 "layer": self.metadata.layer,
                 "document_id": self.metadata.document_id,
+                "title": self.metadata.title,
                 "section_id": self.metadata.section_id,
                 "parent_chunk_id": self.metadata.parent_chunk_id,
                 "page_number": self.metadata.page_number,
@@ -219,6 +223,7 @@ class MultiLayerChunker:
                 chunk_id=f"{extracted_doc.document_id}_L1",
                 layer=1,
                 document_id=extracted_doc.document_id,
+                title=extracted_doc.title,
                 section_id=None,
                 parent_chunk_id=None,
                 page_number=0,

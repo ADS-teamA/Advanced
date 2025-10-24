@@ -294,6 +294,11 @@ class ExtractionConfig:
     generate_summaries: bool = False  # Enable in PHASE 2 (legacy, rarely used)
     summary_max_chars: int = 150      # Legacy parameter
     summary_style: str = "generic"    # Legacy parameter ("generic" or "expert")
+    summary_model: str = "gpt-5-nano"  # Model for summary generation
+    # Batch API parameters (passed to SummarizationConfig)
+    use_batch_api: bool = True         # Use OpenAI Batch API (50% cost savings)
+    batch_api_poll_interval: int = 5   # Seconds between polls (faster response)
+    batch_api_timeout: int = 43200     # Max wait time (12 hours - batch jobs can be slow)
 
     # Output formats
     generate_markdown: bool = True
@@ -317,12 +322,22 @@ class SummarizationConfig:
     tolerance: int = 20           # Length tolerance
     style: str = "generic"        # Generic > Expert summaries
     temperature: float = 0.3      # Low temperature for consistency
-    max_tokens: int = 500         # Max LLM output tokens
+    max_tokens: int = 100         # Max LLM output tokens (optimized: 150 chars ≈ 40-60 tokens)
     retry_on_exceed: bool = True  # Retry if exceeds max_chars
     max_retries: int = 3          # Max retry attempts
     # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
     max_workers: int = 20         # Parallel summary generation
     min_text_length: int = 50     # Min text length for summarization
+
+    # Prompt batching optimization (DISABLED - JSON overhead makes it slower)
+    # For most LLMs, parallel mode with smaller max_tokens is faster than batching
+    enable_prompt_batching: bool = False  # Batch multiple sections in one API call
+    batch_size: int = 8           # Number of sections per API call (if enabled)
+
+    # OpenAI Batch API optimization (NEW - 50% cost savings, async processing)
+    use_batch_api: bool = True    # Use OpenAI Batch API for summaries (50% cheaper)
+    batch_api_poll_interval: int = 5   # Seconds between status checks (faster response)
+    batch_api_timeout: int = 43200  # Max wait time in seconds (12 hours default)
 
     # Model config loaded from .env (don't set here)
     provider: Optional[str] = None
@@ -365,6 +380,11 @@ class ContextGenerationConfig:
     # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
     batch_size: int = 20   # Generate contexts in batches
     max_workers: int = 10   # Parallel context generation
+
+    # OpenAI Batch API optimization (NEW - 50% cost savings, async processing)
+    use_batch_api: bool = True    # Use OpenAI Batch API for contexts (50% cheaper)
+    batch_api_poll_interval: int = 5   # Seconds between status checks
+    batch_api_timeout: int = 43200  # Max wait time in seconds (12 hours default)
 
     # Model config loaded from .env (don't set here)
     provider: Optional[str] = None

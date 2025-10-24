@@ -193,6 +193,39 @@ class BM25Index:
 
         return results
 
+    def merge(self, other: "BM25Index") -> None:
+        """
+        Merge another BM25Index into this one (incremental indexing).
+
+        Args:
+            other: Another BM25Index to merge
+        """
+        if not other.corpus:
+            logger.warning("Other BM25Index is empty, skipping merge")
+            return
+
+        logger.info(f"Merging BM25 index with {len(other.corpus)} documents...")
+
+        # Track base index for doc_id mapping
+        base_idx = len(self.metadata)
+
+        # Extend corpus and metadata
+        self.corpus.extend(other.corpus)
+        self.chunk_ids.extend(other.chunk_ids)
+        self.tokenized_corpus.extend(other.tokenized_corpus)
+        self.metadata.extend(other.metadata)
+
+        # Update doc_id_map with offset indices
+        for doc_id, indices in other.doc_id_map.items():
+            if doc_id not in self.doc_id_map:
+                self.doc_id_map[doc_id] = []
+            self.doc_id_map[doc_id].extend([idx + base_idx for idx in indices])
+
+        # Rebuild BM25 index with merged corpus
+        self.bm25 = BM25Okapi(self.tokenized_corpus)
+
+        logger.info(f"BM25 merge complete: {len(self.corpus)} total documents")
+
     def save(self, path: Path) -> None:
         """
         Save BM25 index to disk.
@@ -300,6 +333,21 @@ class BM25Store:
     ) -> List[Dict]:
         """Search Layer 3 (Chunk level - PRIMARY)."""
         return self.index_layer3.search(query, k, document_filter)
+
+    def merge(self, other: "BM25Store") -> None:
+        """
+        Merge another BM25Store into this one (incremental indexing).
+
+        Args:
+            other: Another BM25Store to merge
+        """
+        logger.info("Merging BM25 stores...")
+
+        self.index_layer1.merge(other.index_layer1)
+        self.index_layer2.merge(other.index_layer2)
+        self.index_layer3.merge(other.index_layer3)
+
+        logger.info("BM25 store merge complete")
 
     def save(self, output_dir: Path) -> None:
         """
@@ -478,6 +526,32 @@ class HybridVectorStore:
         )
 
         return results
+
+    def merge(self, other: "HybridVectorStore") -> None:
+        """
+        Merge another HybridVectorStore into this one (incremental indexing).
+
+        Args:
+            other: Another HybridVectorStore to merge
+
+        Raises:
+            ValueError: If fusion_k parameters don't match
+        """
+        if self.fusion_k != other.fusion_k:
+            logger.warning(
+                f"Fusion k mismatch: {self.fusion_k} vs {other.fusion_k}. "
+                f"Using this store's value: {self.fusion_k}"
+            )
+
+        logger.info("Merging hybrid vector stores...")
+
+        # Merge FAISS stores
+        self.faiss_store.merge(other.faiss_store)
+
+        # Merge BM25 stores
+        self.bm25_store.merge(other.bm25_store)
+
+        logger.info("Hybrid vector store merge complete")
 
     def _rrf_fusion(
         self,

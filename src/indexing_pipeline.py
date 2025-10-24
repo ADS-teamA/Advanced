@@ -69,6 +69,10 @@ logger = logging.getLogger(__name__)
 class IndexingConfig:
     """Configuration for complete indexing pipeline."""
 
+    # Speed/Cost Mode (determines Batch API usage)
+    # "fast" = completions (2-3 min, full price) | "eco" = Batch API (15-30 min, 50% cheaper)
+    speed_mode: str = "fast"  # "fast" or "eco"
+
     # PHASE 1: Extraction
     enable_smart_hierarchy: bool = True
     # Tesseract language codes (ces=Czech, eng=English)
@@ -78,6 +82,10 @@ class IndexingConfig:
     generate_summaries: bool = True
     summary_model: str = "gpt-4o-mini"
     summary_max_chars: int = 150
+    # Batch API optimization (auto-configured by speed_mode)
+    use_batch_api: bool = None  # Auto-set: eco=True, fast=False
+    batch_api_poll_interval: int = 5   # Seconds between status checks
+    batch_api_timeout: int = None  # Auto-set: eco=43200 (12h), fast=N/A
 
     # PHASE 3: Chunking
     chunk_size: int = 500
@@ -126,6 +134,25 @@ class IndexingConfig:
             # Default: Czech + English (Tesseract language codes)
             self.ocr_language = ["ces", "eng"]
 
+        # Configure Batch API based on speed_mode
+        if self.speed_mode not in ["fast", "eco"]:
+            raise ValueError(f"speed_mode must be 'fast' or 'eco', got: {self.speed_mode}")
+
+        if self.speed_mode == "eco":
+            # Eco mode: Use Batch API (50% cheaper, slower)
+            if self.use_batch_api is None:
+                self.use_batch_api = True
+            if self.batch_api_timeout is None:
+                self.batch_api_timeout = 43200  # 12 hours
+            logger.info(f"💰 ECO MODE: Using Batch API (50% cost savings, 15-30 min latency, 12h timeout)")
+        else:  # fast mode
+            # Fast mode: Use completions (full price, fast)
+            if self.use_batch_api is None:
+                self.use_batch_api = False
+            if self.batch_api_timeout is None:
+                self.batch_api_timeout = 600  # Not used, but set default
+            logger.info(f"⚡ FAST MODE: Using completions (full price, 2-3 min latency)")
+
 
 class IndexingPipeline:
     """
@@ -165,17 +192,34 @@ class IndexingPipeline:
         # Initialize PHASE 1+2: Extraction
         self.extraction_config = ExtractionConfig(
             enable_smart_hierarchy=self.config.enable_smart_hierarchy,
-            generate_summaries=False,  # Will be done separately in pipeline
-            ocr_language=self.config.ocr_language
+            generate_summaries=self.config.generate_summaries,  # ✅ Fixed: Use pipeline config
+            ocr_language=self.config.ocr_language,
+            summary_model=self.config.summary_model,
+            summary_max_chars=self.config.summary_max_chars,
+            # Batch API parameters (50% cost savings)
+            use_batch_api=self.config.use_batch_api,
+            batch_api_poll_interval=self.config.batch_api_poll_interval,
+            batch_api_timeout=self.config.batch_api_timeout
         )
         self.extractor = DoclingExtractorV2(self.extraction_config)
 
         # Initialize PHASE 3: Chunking
-        from src.config import ChunkingConfig as ChunkConfig
+        from src.config import ChunkingConfig as ChunkConfig, ContextGenerationConfig
+
+        # Create context config with Batch API settings (if enabled)
+        context_config = None
+        if self.config.enable_sac:
+            context_config = ContextGenerationConfig(
+                use_batch_api=self.config.use_batch_api,
+                batch_api_poll_interval=self.config.batch_api_poll_interval,
+                batch_api_timeout=self.config.batch_api_timeout
+            )
+
         chunking_config = ChunkConfig(
             chunk_size=self.config.chunk_size,
             chunk_overlap=self.config.chunk_overlap,
-            enable_contextual=self.config.enable_sac
+            enable_contextual=self.config.enable_sac,
+            context_config=context_config
         )
         self.chunker = MultiLayerChunker(config=chunking_config)
 

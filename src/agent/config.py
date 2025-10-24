@@ -192,7 +192,7 @@ class AgentConfig:
     temperature: float = 0.3
 
     # === Paths ===
-    vector_store_path: Path = field(default_factory=lambda: Path("output/hybrid_store"))
+    vector_store_path: Path = field(default_factory=lambda: Path("vector_db"))
     knowledge_graph_path: Optional[Path] = None
 
     # === Embedding Configuration ===
@@ -329,7 +329,7 @@ TIER 3 - Analysis & Insights (deep, 1-3s):
         config = cls(
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             model=os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929"),
-            vector_store_path=Path(os.getenv("VECTOR_STORE_PATH", "output/hybrid_store")),
+            vector_store_path=Path(os.getenv("VECTOR_STORE_PATH", "vector_db")),
             enable_hyde=os.getenv("ENABLE_HYDE", "false").lower() == "true",
             enable_query_decomposition=os.getenv("ENABLE_DECOMPOSITION", "false").lower() == "true",
         )

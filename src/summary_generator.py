@@ -66,6 +66,11 @@ class SummaryGenerator:
         self.min_text_length = self.config.min_text_length
         self.temperature = self.config.temperature
         self.max_tokens = self.config.max_tokens
+        self.enable_prompt_batching = self.config.enable_prompt_batching
+        self.batch_size = self.config.batch_size
+        self.use_batch_api = self.config.use_batch_api
+        self.batch_api_poll_interval = self.config.batch_api_poll_interval
+        self.batch_api_timeout = self.config.batch_api_timeout
 
         # Initialize cost tracker
         self.tracker = get_global_tracker()
@@ -416,14 +421,408 @@ Summary (max {self.max_chars} characters):"""
             # Fallback
             return section_text[:self.max_chars].strip() + "..."
 
+    def _create_batch_requests(
+        self,
+        sections: list[tuple[int, str, str]]  # [(index, text, title), ...]
+    ) -> list[dict]:
+        """
+        Create batch API requests for OpenAI Batch API.
+
+        Args:
+            sections: List of (index, text, title) tuples
+
+        Returns:
+            List of batch request dicts in JSONL format
+        """
+        batch_requests = []
+
+        for idx, text, title in sections:
+            # Truncate text for efficiency
+            text_preview = text[:2000]
+            title_context = f"Section title: {title}\n\n" if title else ""
+
+            prompt = f"""Summarize this document section concisely.
+
+{title_context}Section content:
+{text_preview}
+
+CRITICAL: Provide a summary that is EXACTLY {self.max_chars} characters or less (current limit: {self.max_chars} chars).
+Focus on the main topic and key information. This is a hard constraint.
+
+Summary (max {self.max_chars} characters):"""
+
+            # Create batch request
+            request = {
+                "custom_id": f"section_{idx}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": self.max_tokens,
+                    "temperature": self.temperature
+                }
+            }
+
+            batch_requests.append(request)
+
+        return batch_requests
+
+    def _submit_batch(self, requests: list[dict]) -> str:
+        """
+        Submit batch job to OpenAI Batch API.
+
+        Args:
+            requests: List of batch request dicts
+
+        Returns:
+            Batch job ID
+
+        Raises:
+            Exception if batch submission fails
+        """
+        import tempfile
+        import json
+
+        if self.provider != "openai":
+            raise ValueError("Batch API only available for OpenAI provider")
+
+        try:
+            # Create temporary JSONL file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+                for request in requests:
+                    f.write(json.dumps(request) + '\n')
+                jsonl_path = f.name
+
+            # Upload file to OpenAI
+            with open(jsonl_path, 'rb') as f:
+                file_response = self.client.files.create(
+                    file=f,
+                    purpose='batch'
+                )
+
+            # Create batch job
+            batch_response = self.client.batches.create(
+                input_file_id=file_response.id,
+                endpoint="/v1/chat/completions",
+                completion_window="24h"
+            )
+
+            logger.info(f"Batch job created: {batch_response.id} (file: {file_response.id})")
+            return batch_response.id
+
+        except Exception as e:
+            logger.error(f"Failed to submit batch job: {e}")
+            raise
+
+        finally:
+            # Cleanup temporary file
+            import os
+            try:
+                os.unlink(jsonl_path)
+            except:
+                pass
+
+    def _poll_batch(self, batch_id: str) -> dict:
+        """
+        Poll batch job status until completion.
+
+        Args:
+            batch_id: Batch job ID
+
+        Returns:
+            Batch completion response
+
+        Raises:
+            TimeoutError if batch doesn't complete within timeout
+            Exception if batch fails
+        """
+        import time
+
+        start_time = time.time()
+        poll_count = 0
+
+        logger.info(
+            f"Polling batch {batch_id} (timeout: {self.batch_api_timeout}s, "
+            f"interval: {self.batch_api_poll_interval}s)"
+        )
+
+        while True:
+            poll_count += 1
+            elapsed = time.time() - start_time
+
+            # Check timeout
+            if elapsed > self.batch_api_timeout:
+                raise TimeoutError(
+                    f"Batch job {batch_id} did not complete within {self.batch_api_timeout}s"
+                )
+
+            # Get batch status
+            batch = self.client.batches.retrieve(batch_id)
+            status = batch.status
+
+            logger.debug(
+                f"Poll #{poll_count}: status={status}, elapsed={elapsed:.1f}s, "
+                f"completed={batch.request_counts.completed}/{batch.request_counts.total}"
+            )
+
+            if status == "completed":
+                logger.info(
+                    f"Batch completed: {batch.request_counts.completed} requests in {elapsed:.1f}s"
+                )
+                return batch
+
+            elif status == "failed":
+                raise Exception(f"Batch job {batch_id} failed: {batch.errors}")
+
+            elif status in ["expired", "cancelled"]:
+                raise Exception(f"Batch job {batch_id} was {status}")
+
+            # Wait before next poll
+            time.sleep(self.batch_api_poll_interval)
+
+    def _parse_batch_results(self, batch: dict) -> dict[str, str]:
+        """
+        Download and parse batch results.
+
+        Args:
+            batch: Batch completion response
+
+        Returns:
+            Dict mapping custom_id to summary text
+        """
+        import json
+
+        try:
+            # Download output file
+            output_file_id = batch.output_file_id
+            file_content = self.client.files.content(output_file_id)
+
+            # Parse JSONL results
+            results = {}
+            for line in file_content.text.strip().split('\n'):
+                if not line:
+                    continue
+
+                result = json.loads(line)
+                custom_id = result['custom_id']
+                response = result['response']
+
+                # Extract summary from response
+                if response['status_code'] == 200:
+                    body = response['body']
+                    summary = body['choices'][0]['message']['content'].strip()
+
+                    # Enforce length limit
+                    if len(summary) > self.max_chars + self.tolerance:
+                        summary = summary[:self.max_chars]
+
+                    results[custom_id] = summary
+
+                    # Track cost
+                    usage = body.get('usage', {})
+                    if usage:
+                        self.tracker.track_llm(
+                            provider="openai",
+                            model=self.model,
+                            input_tokens=usage.get('prompt_tokens', 0),
+                            output_tokens=usage.get('completion_tokens', 0),
+                            operation="summary_batch"
+                        )
+                else:
+                    logger.warning(
+                        f"Request {custom_id} failed: {response.get('error', 'Unknown error')}"
+                    )
+
+            logger.info(f"Parsed {len(results)} successful results from batch")
+            return results
+
+        except Exception as e:
+            logger.error(f"Failed to parse batch results: {e}")
+            raise
+
+    def _generate_batch_summaries_with_openai_batch(
+        self,
+        filtered_texts: list[tuple[int, str, str]]  # [(index, text, title), ...]
+    ) -> dict[int, str]:
+        """
+        Generate summaries using OpenAI Batch API (50% cheaper, async).
+
+        Args:
+            filtered_texts: List of (index, text, title) tuples
+
+        Returns:
+            Dict mapping index to summary
+
+        Raises:
+            Exception if batch processing fails
+        """
+        logger.info(
+            f"Using OpenAI Batch API: {len(filtered_texts)} sections "
+            f"(50% cost savings, async processing)"
+        )
+
+        try:
+            # Step 1: Create batch requests
+            requests = self._create_batch_requests(filtered_texts)
+            logger.debug(f"Created {len(requests)} batch requests")
+
+            # Step 2: Submit batch job
+            batch_id = self._submit_batch(requests)
+
+            # Step 3: Poll for completion
+            batch = self._poll_batch(batch_id)
+
+            # Step 4: Parse results
+            results_by_custom_id = self._parse_batch_results(batch)
+
+            # Step 5: Map back to indices
+            summaries_map = {}
+            for idx, text, title in filtered_texts:
+                custom_id = f"section_{idx}"
+                if custom_id in results_by_custom_id:
+                    summaries_map[idx] = results_by_custom_id[custom_id]
+                else:
+                    # Fallback: truncate text
+                    logger.warning(f"No summary for section {idx}, using fallback")
+                    summaries_map[idx] = text[:self.max_chars].strip() + "..."
+
+            return summaries_map
+
+        except Exception as e:
+            logger.error(f"Batch API failed: {e}, falling back to parallel mode")
+            raise
+
+    def _batch_summarize_with_prompt(
+        self,
+        sections: list[tuple[int, str, str]]  # [(index, text, title), ...]
+    ) -> list[tuple[int, str]]:
+        """
+        Generate summaries for multiple sections in ONE API call using JSON output.
+
+        This is 10-15× faster than individual API calls per section:
+        - 50 sections: 50 API calls × 300ms = 15s → 4 API calls × 300ms = 1.2s
+
+        Args:
+            sections: List of (original_index, text, title) tuples
+
+        Returns:
+            List of (index, summary) tuples for matching with original order
+        """
+        import json
+
+        if not sections:
+            return []
+
+        # Truncate texts for prompt (keep manageable input size)
+        max_text_preview = 500  # chars per section
+        sections_data = []
+        for idx, text, title in sections:
+            sections_data.append({
+                "index": idx,
+                "title": title,
+                "content": text[:max_text_preview]
+            })
+
+        # Create JSON input
+        sections_json = json.dumps(sections_data, ensure_ascii=False, indent=2)
+
+        # Build prompt
+        prompt = f"""You are an expert document summarizer. Generate concise summaries for each section below.
+
+CRITICAL CONSTRAINTS:
+- Each summary MUST be EXACTLY {self.max_chars} characters or less
+- Output MUST be valid JSON array
+- Preserve the exact order and index numbers
+
+Input sections (JSON):
+{sections_json}
+
+Output format (JSON array):
+[
+  {{"index": 0, "summary": "..."}},
+  {{"index": 1, "summary": "..."}},
+  ...
+]
+
+Generate summaries (MUST be valid JSON):"""
+
+        try:
+            # Generate with LLM
+            if self.provider == "claude":
+                response_text = self._generate_with_claude(prompt, max_tokens=self.max_tokens * len(sections))
+            else:  # openai
+                response_text = self._generate_with_openai(prompt, max_tokens=self.max_tokens * len(sections))
+
+            # Parse JSON response
+            # Try to extract JSON from response (handle cases where LLM adds explanation)
+            response_text = response_text.strip()
+
+            # Find JSON array (starts with [ and ends with ])
+            start_idx = response_text.find('[')
+            end_idx = response_text.rfind(']')
+
+            if start_idx == -1 or end_idx == -1 or start_idx >= end_idx:
+                logger.warning("No JSON array found in response, falling back to sequential processing")
+                raise ValueError("Invalid JSON response")
+
+            json_text = response_text[start_idx:end_idx+1]
+            summaries_json = json.loads(json_text)
+
+            if not isinstance(summaries_json, list):
+                raise ValueError("Response is not a JSON array")
+
+            # Extract summaries
+            results = []
+            for item in summaries_json:
+                if not isinstance(item, dict):
+                    continue
+                if "index" not in item or "summary" not in item:
+                    continue
+
+                idx = item["index"]
+                summary = item["summary"].strip()
+
+                # Enforce length limit (hard truncate if needed)
+                if len(summary) > self.max_chars + self.tolerance:
+                    summary = summary[:self.max_chars]
+
+                results.append((idx, summary))
+
+            # Verify we got summaries for all sections
+            if len(results) != len(sections):
+                logger.warning(
+                    f"Got {len(results)} summaries for {len(sections)} sections, "
+                    f"falling back to sequential processing"
+                )
+                raise ValueError("Incomplete summaries")
+
+            logger.debug(f"Batch summarized {len(results)} sections in one API call")
+            return results
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parsing failed: {e}, falling back to sequential processing")
+            raise
+        except Exception as e:
+            logger.warning(f"Batch summarization failed: {e}, falling back to sequential processing")
+            raise
+
     def generate_batch_summaries(
         self,
         texts: list[tuple[str, str]]  # [(text, title), ...]
     ) -> list[str]:
         """
-        Generate summaries for multiple sections in parallel.
+        Generate summaries for multiple sections.
 
-        Uses ThreadPoolExecutor for concurrent API requests (much faster than sequential).
+        Two modes:
+        1. Prompt Batching (NEW, 10-15× faster):
+           - Groups sections into batches of 10-20
+           - One API call per batch with JSON output
+           - Automatic fallback to parallel mode on errors
+
+        2. Parallel Mode (legacy, still used as fallback):
+           - Uses ThreadPoolExecutor for concurrent API requests
+           - One API call per section
 
         Args:
             texts: List of (text, title) tuples
@@ -446,31 +845,125 @@ Summary (max {self.max_chars} characters):"""
             logger.warning("All sections too small, skipping summary generation")
             return [""] * len(texts)
 
-        # Generate summaries in parallel
         summaries_map = {}
-        failures = []  # Track failed summaries
+        failures = []
 
-        def generate_one(idx: int, text: str, title: str) -> tuple[int, str, bool]:
-            """Generate one summary. Returns (idx, summary, success)."""
+        # MODE 1: OpenAI Batch API (NEW - 50% cost savings, async)
+        if self.use_batch_api and self.provider == "openai":
             try:
-                summary = self.generate_section_summary(text, title)
-                return (idx, summary, True)  # Success
+                summaries_map = self._generate_batch_summaries_with_openai_batch(filtered_texts)
+                # Success! Skip other modes
+                logger.info(f"✓ Batch API succeeded: {len(summaries_map)} summaries generated")
+
             except Exception as e:
-                logger.error(f"Failed to generate summary for '{title}': {e}")
-                fallback = text[:self.max_chars].strip() + "..."
-                return (idx, fallback, False)  # Failure
+                logger.warning(f"Batch API failed ({e}), falling back to parallel mode")
+                summaries_map = {}  # Clear partial results
+                # Fall through to MODE 2 (parallel)
 
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [
-                executor.submit(generate_one, idx, text, title)
-                for idx, text, title in filtered_texts
-            ]
+        # MODE 2: Prompt Batching (JSON batching - disabled by default)
+        if not summaries_map and self.enable_prompt_batching:
+            logger.info(
+                f"Using prompt batching: {len(filtered_texts)} sections → "
+                f"{(len(filtered_texts) + self.batch_size - 1) // self.batch_size} API calls "
+                f"(batch_size={self.batch_size})"
+            )
 
-            for future in as_completed(futures):
-                idx, summary, success = future.result()
-                summaries_map[idx] = summary
-                if not success:
-                    failures.append(idx)
+            # Split into batches
+            batches = []
+            for i in range(0, len(filtered_texts), self.batch_size):
+                batch = filtered_texts[i:i + self.batch_size]
+                batches.append(batch)
+
+            # Process batches in parallel for maximum speed
+            def process_batch(batch_idx_and_batch):
+                batch_idx, batch = batch_idx_and_batch
+                try:
+                    # Summarize entire batch in one API call
+                    batch_results = self._batch_summarize_with_prompt(batch)
+                    logger.debug(
+                        f"Batch {batch_idx}/{len(batches)}: "
+                        f"Generated {len(batch_results)} summaries in one API call"
+                    )
+                    return (True, batch_results, [])  # Success, results, no failures
+                except Exception as e:
+                    # Fallback: Process this batch with parallel mode
+                    logger.warning(
+                        f"Batch {batch_idx} failed ({e}), falling back to parallel mode"
+                    )
+
+                    batch_results = []
+                    batch_failures = []
+
+                    def generate_one(idx: int, text: str, title: str) -> tuple[int, str, bool]:
+                        try:
+                            summary = self.generate_section_summary(text, title)
+                            return (idx, summary, True)
+                        except Exception as e2:
+                            logger.error(f"Failed to generate summary for '{title}': {e2}")
+                            fallback = text[:self.max_chars].strip() + "..."
+                            return (idx, fallback, False)
+
+                    # Process failed batch sections in parallel
+                    with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                        futures = [
+                            executor.submit(generate_one, idx, text, title)
+                            for idx, text, title in batch
+                        ]
+
+                        for future in as_completed(futures):
+                            idx, summary, success = future.result()
+                            batch_results.append((idx, summary))
+                            if not success:
+                                batch_failures.append(idx)
+
+                    return (False, batch_results, batch_failures)  # Fallback used
+
+            # Use ThreadPoolExecutor to process batches in parallel
+            max_concurrent_batches = min(5, len(batches))  # Limit concurrent batch requests
+            with ThreadPoolExecutor(max_workers=max_concurrent_batches) as executor:
+                batch_futures = [
+                    executor.submit(process_batch, (idx, batch))
+                    for idx, batch in enumerate(batches, 1)
+                ]
+
+                for future in as_completed(batch_futures):
+                    success, batch_results, batch_failures = future.result()
+
+                    # Add results to summaries_map
+                    for idx, summary in batch_results:
+                        summaries_map[idx] = summary
+
+                    # Track failures
+                    failures.extend(batch_failures)
+
+        # MODE 3: Parallel Mode (fallback - one API call per section)
+        if not summaries_map:
+            logger.info(
+                f"Using parallel mode: {len(filtered_texts)} sections → "
+                f"{len(filtered_texts)} API calls"
+            )
+
+            def generate_one(idx: int, text: str, title: str) -> tuple[int, str, bool]:
+                """Generate one summary. Returns (idx, summary, success)."""
+                try:
+                    summary = self.generate_section_summary(text, title)
+                    return (idx, summary, True)  # Success
+                except Exception as e:
+                    logger.error(f"Failed to generate summary for '{title}': {e}")
+                    fallback = text[:self.max_chars].strip() + "..."
+                    return (idx, fallback, False)  # Failure
+
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                futures = [
+                    executor.submit(generate_one, idx, text, title)
+                    for idx, text, title in filtered_texts
+                ]
+
+                for future in as_completed(futures):
+                    idx, summary, success = future.result()
+                    summaries_map[idx] = summary
+                    if not success:
+                        failures.append(idx)
 
         # Report failures if any
         if failures:

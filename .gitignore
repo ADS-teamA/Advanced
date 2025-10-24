@@ -51,10 +51,6 @@ env/
 output/*
 !output/GRI_306__Effluents_and_Waste_2016
 
-# Ignore FAISS indices (can be regenerated)
-*.faiss
-*.index
-
 # Logs
 *.log
 logs/
