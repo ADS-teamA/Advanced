@@ -1285,7 +1285,11 @@ Interactive RAG agent with Claude SDK integration, comprehensive tool ecosystem,
 
 **Basic Usage:**
 ```bash
-python run_agent.py
+# Using shell script (recommended)
+./run_cli.sh
+
+# Or using Python directly
+uv run python -m src.agent.cli --vector-store vector_db
 ```
 
 **With Configuration:**
@@ -1597,7 +1601,8 @@ class EmbeddingConfig:
 - `src/agent/query/` - HyDE & query decomposition
 - `src/embedding_generator.py` - With LRU embedding cache ✨ NEW
 - `src/hybrid_search.py` - With score preservation ✨ ENHANCED
-- `run_agent.py` - Entry point
+- `src/agent/cli.py` - CLI entry point
+- `run_cli.sh` - Shell script wrapper
 
 **Tests:**
 - `tests/agent/test_agent_core.py` - Core agent tests (15 tests)
