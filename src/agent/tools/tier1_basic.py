@@ -17,6 +17,112 @@ from .utils import format_chunk_result, validate_k_parameter
 logger = logging.getLogger(__name__)
 
 
+# === Tool 0: Get Tool Help (Meta Tool) ===
+
+
+class GetToolHelpInput(ToolInput):
+    """Input for get_tool_help tool."""
+
+    tool_name: str = Field(
+        ...,
+        description="Name of tool to get help for (e.g., 'simple_search', 'compare_documents')"
+    )
+
+
+@register_tool
+class GetToolHelpTool(BaseTool):
+    """Get detailed documentation for a specific tool."""
+
+    name = "get_tool_help"
+    description = "Get detailed help for any tool"
+    detailed_help = """
+    Returns comprehensive documentation for a specific tool including:
+    - Full description and use cases
+    - All parameters with types and defaults
+    - Examples of when to use this tool
+    - Performance characteristics (tier, speed)
+
+    Use this whenever you need to understand a tool's capabilities or parameters
+    before using it for the first time.
+    """
+    tier = 1
+    input_schema = GetToolHelpInput
+
+    def execute_impl(self, tool_name: str) -> ToolResult:
+        """Get detailed help for a tool."""
+        from .registry import get_registry
+
+        registry = get_registry()
+
+        # Check if tool exists
+        if tool_name not in registry._tool_classes:
+            available_tools = sorted(registry._tool_classes.keys())
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Tool '{tool_name}' not found. Available tools: {', '.join(available_tools[:10])}...",
+                metadata={"requested_tool": tool_name, "available_count": len(available_tools)},
+            )
+
+        # Get tool class
+        tool_class = registry._tool_classes[tool_name]
+
+        # Build detailed help
+        help_text = f"# {tool_class.name}\n\n"
+        help_text += f"**Tier:** {tool_class.tier} "
+        help_text += f"({'Basic/Fast' if tool_class.tier == 1 else 'Advanced' if tool_class.tier == 2 else 'Analysis/Slow'})\n\n"
+
+        # Description
+        help_text += f"**Description:** {tool_class.description}\n\n"
+
+        # Detailed help if available
+        if tool_class.detailed_help:
+            help_text += f"**Details:**\n{tool_class.detailed_help.strip()}\n\n"
+
+        # Parameters from Pydantic schema
+        if tool_class.input_schema and tool_class.input_schema != ToolInput:
+            help_text += "**Parameters:**\n"
+            schema = tool_class.input_schema.model_json_schema()
+
+            properties = schema.get("properties", {})
+            required = schema.get("required", [])
+
+            for param_name, param_info in properties.items():
+                param_type = param_info.get("type", "any")
+                param_desc = param_info.get("description", "No description")
+                is_required = "✓ Required" if param_name in required else "Optional"
+                default = param_info.get("default", "N/A")
+
+                help_text += f"- `{param_name}` ({param_type}) - {is_required}\n"
+                help_text += f"  {param_desc}\n"
+                if default != "N/A":
+                    help_text += f"  Default: {default}\n"
+                help_text += "\n"
+
+        # Requirements
+        requirements = []
+        if tool_class.requires_kg:
+            requirements.append("Knowledge Graph")
+        if tool_class.requires_reranker:
+            requirements.append("Reranker")
+
+        if requirements:
+            help_text += f"**Requires:** {', '.join(requirements)}\n\n"
+
+        return ToolResult(
+            success=True,
+            data={
+                "tool_name": tool_name,
+                "tier": tool_class.tier,
+                "help_text": help_text,
+                "short_description": tool_class.description,
+                "requires_kg": tool_class.requires_kg,
+                "requires_reranker": tool_class.requires_reranker,
+            },
+            metadata={"tool": tool_name},
+        )
+
+
 # === Tool 1: Simple Search (Hybrid + Reranking) ===
 
 
@@ -29,16 +135,23 @@ class SimpleSearchInput(ToolInput):
 
 @register_tool
 class SimpleSearchTool(BaseTool):
-    """
-    Fast hybrid search with reranking.
-
-    Uses: BM25 + Dense + RRF fusion → Cross-encoder reranking
-    Speed: ~200-300ms
-    Use for: Most queries (best quality/speed tradeoff)
-    """
+    """Fast hybrid search with reranking."""
 
     name = "simple_search"
-    description = "Search documents using hybrid retrieval (BM25 + dense embeddings) with reranking for best quality"
+    description = "Hybrid search with reranking"
+    detailed_help = """
+    Fast hybrid search combining BM25 keyword matching with dense embeddings,
+    followed by cross-encoder reranking for best quality.
+
+    **When to use:**
+    - Most queries (80% of use cases)
+    - Best quality/speed tradeoff
+    - General document search
+
+    **Method:** BM25 + Dense + RRF fusion → Cross-encoder reranking
+    **Speed:** ~200-300ms
+    **Quality:** Highest (reranked results)
+    """
     tier = 1
     input_schema = SimpleSearchInput
     requires_reranker = True
@@ -100,16 +213,21 @@ class GetDocumentListInput(ToolInput):
 
 @register_tool
 class GetDocumentListTool(BaseTool):
-    """
-    List all indexed documents with their summaries.
-
-    Uses: Vector store metadata (Layer 1 - document level)
-    Speed: <10ms
-    Use for: Discovering available documents and getting quick overviews
-    """
+    """List all indexed documents."""
 
     name = "get_document_list"
-    description = "Get a list of all indexed documents with their summaries"
+    description = "List all indexed documents"
+    detailed_help = """
+    Returns a list of all indexed documents with their summaries.
+
+    **When to use:**
+    - User asks "what documents are available?"
+    - Need to discover corpus contents
+    - Before document-specific queries
+
+    **Data source:** Vector store metadata (Layer 1 - document level)
+    **Speed:** <10ms (metadata lookup only)
+    """
     tier = 1
     input_schema = GetDocumentListInput
 
@@ -155,22 +273,23 @@ class ListAvailableToolsInput(ToolInput):
 
 @register_tool
 class ListAvailableToolsTool(BaseTool):
-    """
-    List all available tools with descriptions and usage guidance.
-
-    Returns complete tool catalog with:
-    - Tool name
-    - Description
-    - Input parameters/schema
-    - When to use (best practices)
-
-    Uses: Tool registry metadata
-    Speed: <10ms
-    Use for: Understanding available capabilities and tool selection
-    """
+    """List all available tools."""
 
     name = "list_available_tools"
-    description = "Get a complete list of all available tools with their descriptions, parameters, and usage guidelines. Use when you need to understand what tools are available or select the right tool for a task."
+    description = "List all available tools"
+    detailed_help = """
+    Returns a complete list of all available tools with short descriptions.
+    For detailed help on a specific tool, use get_tool_help instead.
+
+    **When to use:**
+    - Need to see all available tools
+    - Understand available capabilities
+    - Select the right tool for a task
+
+    **Best practice:** Use get_tool_help for detailed docs on specific tools.
+
+    **Speed:** <10ms (metadata lookup)
+    """
     tier = 1
     input_schema = ListAvailableToolsInput
 
@@ -294,19 +413,31 @@ class GetDocumentInfoInput(ToolInput):
 
 @register_tool
 class GetDocumentInfoTool(BaseTool):
-    """
-    Unified document information tool.
-
-    Combines get_document_summary, get_document_metadata, get_document_sections, and get_section_details
-    into a single tool with info_type parameter.
-
-    Uses: Vector store metadata (Layer 1/2/3)
-    Speed: <50ms
-    Use for: All document information queries
-    """
+    """Get document information."""
 
     name = "get_document_info"
-    description = "Get document information (summary, metadata, sections, or section details)"
+    description = "Get document info/metadata"
+    detailed_help = """
+    Unified tool for retrieving document information with multiple info types:
+    - 'summary': High-level document overview
+    - 'metadata': Comprehensive stats (sections, chunks, source info)
+    - 'sections': List all sections with titles and hierarchy
+    - 'section_details': Detailed info about a specific section
+
+    **When to use:**
+    - Need document overview before detailed search
+    - Want to understand document structure
+    - Looking for specific section to search within
+
+    **Best practices:**
+    - Use 'summary' for quick overview
+    - Use 'sections' to understand structure
+    - Use 'metadata' for comprehensive stats
+    - Combine with filtered_search to search within sections
+
+    **Data source:** Vector store metadata (Layer 1/2/3)
+    **Speed:** <50ms
+    """
     tier = 1
     input_schema = GetDocumentInfoInput
 
@@ -557,18 +688,33 @@ class ExactMatchSearchInput(ToolInput):
 
 @register_tool
 class ExactMatchSearchTool(BaseTool):
-    """
-    Unified exact match search tool.
-
-    Combines keyword_search and cross_reference_search into a single tool.
-
-    Uses: BM25 sparse retrieval
-    Speed: ~50-100ms (fastest)
-    Use for: Exact keyword/phrase matching and cross-reference finding
-    """
+    """Fast BM25 keyword/exact match search."""
 
     name = "exact_match_search"
-    description = "Fast BM25 keyword search or cross-reference lookup with optional scope limiting (document/section ROI)"
+    description = "Fast BM25 keyword search"
+    detailed_help = """
+    Fast BM25-based search optimized for exact keyword matches and cross-references.
+    Supports optional scope limiting to specific documents or sections.
+
+    **Search types:**
+    - 'keywords': General keyword search
+    - 'cross_references': Find references to specific clauses/articles
+
+    **When to use:**
+    - Exact keyword or phrase matching
+    - Finding cross-references (e.g., "článek 5", "section 3.2")
+    - When speed is critical over semantic understanding
+
+    **Best practices for queries:**
+    - Keep queries SHORT and SPECIFIC (2-5 words ideal)
+    - Use exact terms from documents
+    - For cross-refs: Use standard format (e.g., "článek 5", "§ 15")
+    - Avoid long sentences (BM25 works better with keywords)
+    - Use document_id filter when possible for faster results
+
+    **Method:** BM25 sparse retrieval only (no embeddings)
+    **Speed:** ~50-100ms (fastest tool)
+    """
     tier = 1
     input_schema = ExactMatchSearchInput
 

@@ -109,7 +109,8 @@ class BaseTool(ABC):
 
     # Class attributes (override in subclasses)
     name: str = "base_tool"
-    description: str = "Base tool (override in subclass)"
+    description: str = "Base tool (override in subclass)"  # Short description (API)
+    detailed_help: str = ""  # Detailed help text (for get_tool_help)
     tier: int = 1
     input_schema: type[ToolInput] = ToolInput
 
