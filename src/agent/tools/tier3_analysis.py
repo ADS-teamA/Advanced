@@ -24,239 +24,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-class ExplainEntityInput(ToolInput):
-    entity_id: str = Field(..., description="Entity ID or entity name to explain")
-
-
-@register_tool
-class ExplainEntityTool(BaseTool):
-    """Get detailed entity information and relationships."""
-
-    name = "explain_entity"
-    description = "Get detailed information about an entity including all relationships, mentions, and context. Use for queries like 'explain what is GRI 306'"
-    tier = 3
-    input_schema = ExplainEntityInput
-    requires_kg = True
-
-    def execute_impl(self, entity_id: str) -> ToolResult:
-        """Get comprehensive entity information."""
-        if not self.knowledge_graph:
-            return ToolResult(
-                success=False,
-                data=None,
-                error="Knowledge graph not available. Use entity_search instead.",
-            )
-
-        try:
-            # Find entity by ID or name
-            entity = None
-
-            # Try exact ID match first
-            if entity_id in self.knowledge_graph.entities:
-                entity = self.knowledge_graph.entities[entity_id]
-            else:
-                # Search by name (case-insensitive)
-                entity_id_lower = entity_id.lower()
-                for ent_id, ent in self.knowledge_graph.entities.items():
-                    if ent.name.lower() == entity_id_lower:
-                        entity = ent
-                        break
-
-            if not entity:
-                return ToolResult(
-                    success=False,
-                    data=None,
-                    error=f"Entity '{entity_id}' not found in knowledge graph",
-                )
-
-            # Get all relationships
-            outgoing_rels = self.knowledge_graph.get_outgoing_relationships(entity.id)
-            incoming_rels = self.knowledge_graph.get_incoming_relationships(entity.id)
-
-            # Get related entities
-            related_entities = []
-            for rel in outgoing_rels + incoming_rels:
-                target_id = rel.target if rel.source == entity.id else rel.source
-                if target_id in self.knowledge_graph.entities:
-                    related_entities.append(self.knowledge_graph.entities[target_id])
-
-            # Get chunks mentioning this entity
-            query_embedding = self.embedder.embed_texts([entity.name])
-            chunk_results = self.vector_store.hierarchical_search(
-                query_text=entity.name, query_embedding=query_embedding, k_layer3=10
-            )
-
-            chunks = chunk_results.get("layer3", [])
-
-            # Build entity explanation
-            entity_data = {
-                "entity_id": entity.id,
-                "name": entity.name,
-                "type": entity.type,
-                "properties": entity.properties,
-                "confidence": entity.confidence,
-                "outgoing_relationships": [
-                    {
-                        "type": rel.type,
-                        "target": (
-                            self.knowledge_graph.entities[rel.target].name
-                            if rel.target in self.knowledge_graph.entities
-                            else rel.target
-                        ),
-                        "confidence": rel.confidence,
-                    }
-                    for rel in outgoing_rels
-                ],
-                "incoming_relationships": [
-                    {
-                        "type": rel.type,
-                        "source": (
-                            self.knowledge_graph.entities[rel.source].name
-                            if rel.source in self.knowledge_graph.entities
-                            else rel.source
-                        ),
-                        "confidence": rel.confidence,
-                    }
-                    for rel in incoming_rels
-                ],
-                "related_entities": [
-                    {"id": e.id, "name": e.name, "type": e.type} for e in related_entities
-                ],
-                "mentions": [format_chunk_result(chunk) for chunk in chunks[:5]],
-                "mention_count": len(chunks),
-            }
-
-            return ToolResult(
-                success=True,
-                data=entity_data,
-                citations=[chunk.get("doc_id", "Unknown") for chunk in chunks[:5]],
-                metadata={
-                    "entity_id": entity.id,
-                    "relationship_count": len(outgoing_rels) + len(incoming_rels),
-                },
-            )
-
-        except Exception as e:
-            logger.error(f"Entity explanation failed: {e}", exc_info=True)
-            return ToolResult(success=False, data=None, error=str(e))
-
-
-class GetEntityRelationshipsInput(ToolInput):
-    entity_id: str = Field(..., description="Entity ID or name")
-    relationship_type: Optional[str] = Field(
-        None, description="Filter by relationship type (e.g., 'REFERENCES', 'ISSUED_BY')"
-    )
-    direction: str = Field("both", description="Direction: 'outgoing', 'incoming', or 'both'")
-
-
-@register_tool
-class GetEntityRelationshipsTool(BaseTool):
-    """Get entity relationships with filtering."""
-
-    name = "get_entity_relationships"
-    description = "Get relationships for an entity with optional filtering by type and direction. Use for queries like 'what documents reference GRI 306?'"
-    tier = 3
-    input_schema = GetEntityRelationshipsInput
-    requires_kg = True
-
-    def execute_impl(
-        self,
-        entity_id: str,
-        relationship_type: Optional[str] = None,
-        direction: str = "both",
-    ) -> ToolResult:
-        """Get filtered entity relationships."""
-        if not self.knowledge_graph:
-            return ToolResult(
-                success=False,
-                data=None,
-                error="Knowledge graph not available.",
-            )
-
-        try:
-            # Find entity
-            entity = None
-            if entity_id in self.knowledge_graph.entities:
-                entity = self.knowledge_graph.entities[entity_id]
-            else:
-                # Search by name
-                for ent_id, ent in self.knowledge_graph.entities.items():
-                    if ent.name.lower() == entity_id.lower():
-                        entity = ent
-                        break
-
-            if not entity:
-                return ToolResult(
-                    success=False,
-                    data=None,
-                    error=f"Entity '{entity_id}' not found",
-                )
-
-            # Get relationships
-            relationships = []
-
-            if direction in ["outgoing", "both"]:
-                outgoing = self.knowledge_graph.get_outgoing_relationships(entity.id)
-                if relationship_type:
-                    outgoing = [r for r in outgoing if r.type == relationship_type]
-                relationships.extend(
-                    [
-                        {
-                            "direction": "outgoing",
-                            "type": r.type,
-                            "target": (
-                                self.knowledge_graph.entities[r.target].name
-                                if r.target in self.knowledge_graph.entities
-                                else r.target
-                            ),
-                            "target_id": r.target,
-                            "confidence": r.confidence,
-                            "properties": r.properties,
-                        }
-                        for r in outgoing
-                    ]
-                )
-
-            if direction in ["incoming", "both"]:
-                incoming = self.knowledge_graph.get_incoming_relationships(entity.id)
-                if relationship_type:
-                    incoming = [r for r in incoming if r.type == relationship_type]
-                relationships.extend(
-                    [
-                        {
-                            "direction": "incoming",
-                            "type": r.type,
-                            "source": (
-                                self.knowledge_graph.entities[r.source].name
-                                if r.source in self.knowledge_graph.entities
-                                else r.source
-                            ),
-                            "source_id": r.source,
-                            "confidence": r.confidence,
-                            "properties": r.properties,
-                        }
-                        for r in incoming
-                    ]
-                )
-
-            return ToolResult(
-                success=True,
-                data={
-                    "entity_id": entity.id,
-                    "entity_name": entity.name,
-                    "relationship_type_filter": relationship_type,
-                    "direction": direction,
-                    "relationships": relationships,
-                    "count": len(relationships),
-                },
-                metadata={"entity_id": entity.id, "relationship_count": len(relationships)},
-            )
-
-        except Exception as e:
-            logger.error(f"Get relationships failed: {e}", exc_info=True)
-            return ToolResult(success=False, data=None, error=str(e))
-
-
 class TimelineViewInput(ToolInput):
     query: Optional[str] = Field(None, description="Optional query to filter timeline")
     k: int = Field(10, description="Number of events to return", ge=1, le=50)
@@ -421,34 +188,48 @@ class SummarizeSectionTool(BaseTool):
             return ToolResult(success=False, data=None, error=str(e))
 
 
-class GetStatisticsInput(ToolInput):
-    stat_type: str = Field(
-        "corpus",
-        description="Statistics type: 'corpus' (overall), 'document' (per-doc), or 'entity' (KG stats)",
+# ============================================================================
+# UNIFIED TOOLS (Consolidated from multiple similar tools)
+# ============================================================================
+
+
+class GetStatsInput(ToolInput):
+    """Input for unified get_stats tool."""
+
+    stat_scope: str = Field(
+        ...,
+        description="Statistics scope: 'corpus' (overall stats), 'index' (comprehensive index stats with embedding/cache info), 'document' (per-document stats), 'entity' (knowledge graph stats)"
     )
+    include_cache_stats: bool = Field(False, description="Include embedding cache statistics (for 'index' scope)")
 
 
 @register_tool
-class GetStatisticsTool(BaseTool):
-    """Get corpus statistics and analytics."""
+class GetStatsTool(BaseTool):
+    """
+    Unified statistics tool.
 
-    name = "get_statistics"
-    description = "Get statistics about the indexed corpus (document count, entity types, relationships). Use for queries like 'how many documents are indexed?' or 'show me corpus statistics'"
+    Combines get_statistics and get_index_statistics into a single tool.
+
+    Uses: Vector store + KG metadata
+    Speed: <100ms
+    Use for: All statistics and analytics queries
+    """
+
+    name = "get_stats"
+    description = "Get corpus, index, document, or entity statistics"
     tier = 3
-    input_schema = GetStatisticsInput
+    input_schema = GetStatsInput
 
-    def execute_impl(self, stat_type: str = "corpus") -> ToolResult:
-        """Get various statistics."""
+    def execute_impl(self, stat_scope: str, include_cache_stats: bool = False) -> ToolResult:
         try:
             stats = {}
 
-            if stat_type in ["corpus", "document"]:
+            if stat_scope in ["corpus", "document", "index"]:
                 # Get vector store statistics
                 vs_stats = self.vector_store.get_stats()
-                stats.update(vs_stats)
+                stats["vector_store"] = vs_stats
 
                 # Count unique documents
-                # This is a simplified approach - in production you'd track this properly
                 sample_results = self.vector_store.hierarchical_search(
                     query_text="",
                     query_embedding=None,
@@ -457,14 +238,16 @@ class GetStatisticsTool(BaseTool):
 
                 unique_docs = set()
                 for doc in sample_results.get("layer1", []):
-                    unique_docs.add(doc.get("doc_id", "Unknown"))
+                    doc_id = doc.get("document_id") or doc.get("doc_id", "Unknown")
+                    unique_docs.add(doc_id)
 
                 stats["unique_documents"] = len(unique_docs)
-                stats["document_list"] = list(unique_docs)
+                stats["document_list"] = sorted(list(unique_docs))
 
-            if stat_type in ["corpus", "entity"]:
+            if stat_scope in ["corpus", "entity", "index"]:
                 # Get knowledge graph statistics
                 if self.knowledge_graph:
+                    from collections import Counter
                     entity_types = Counter()
                     relationship_types = Counter()
 
@@ -479,117 +262,65 @@ class GetStatisticsTool(BaseTool):
                         "total_relationships": len(self.knowledge_graph.relationships),
                         "entity_types": dict(entity_types),
                         "relationship_types": dict(relationship_types),
-                        "top_entities": [
+                    }
+
+                    if stat_scope == "index":
+                        # Add top entities for index scope
+                        stats["knowledge_graph"]["top_entities"] = [
                             {"id": e.id, "name": e.name, "type": e.type}
                             for e in sorted(
                                 self.knowledge_graph.entities.values(),
                                 key=lambda x: x.confidence,
                                 reverse=True,
                             )[:10]
-                        ],
-                    }
+                        ]
                 else:
                     stats["knowledge_graph"] = None
 
-            return ToolResult(
-                success=True,
-                data=stats,
-                metadata={"stat_type": stat_type},
-            )
+            if stat_scope == "index":
+                # Additional index-specific information
+                stats["hybrid_search_enabled"] = stats.get("vector_store", {}).get("hybrid_enabled", False)
 
-        except Exception as e:
-            logger.error(f"Get statistics failed: {e}", exc_info=True)
-            return ToolResult(success=False, data=None, error=str(e))
+                # Embedding model information
+                if self.embedder:
+                    stats["embedding_model"] = {
+                        "model_name": self.embedder.model_name,
+                        "dimensions": self.embedder.dimensions,
+                        "model_type": self.embedder.model_type,
+                    }
 
+                    # Cache statistics if requested
+                    if include_cache_stats and hasattr(self.embedder, "get_cache_stats"):
+                        stats["embedding_cache"] = self.embedder.get_cache_stats()
 
-class GetIndexStatisticsInput(ToolInput):
-    include_cache_stats: bool = Field(
-        False, description="Include embedding cache statistics"
-    )
-
-
-@register_tool
-class GetIndexStatisticsTool(BaseTool):
-    """Get comprehensive index statistics and metadata."""
-
-    name = "get_index_statistics"
-    description = "Get comprehensive statistics about the indexed corpus including document counts, embedding model info, cache statistics, and system configuration. Use for queries like 'what documents are indexed?' or 'show me system statistics'"
-    tier = 3
-    input_schema = GetIndexStatisticsInput
-
-    def execute_impl(self, include_cache_stats: bool = False) -> ToolResult:
-        """Get comprehensive index statistics."""
-        try:
-            stats = {}
-
-            # Vector store statistics
-            vs_stats = self.vector_store.get_stats()
-            stats["vector_store"] = vs_stats
-
-            # Detect if hybrid search is enabled
-            stats["hybrid_search_enabled"] = vs_stats.get("hybrid_enabled", False)
-
-            # Embedding model information
-            if self.embedder:
-                stats["embedding_model"] = {
-                    "model_name": self.embedder.model_name,
-                    "dimensions": self.embedder.dimensions,
-                    "model_type": self.embedder.model_type,
+                # Document info
+                stats["documents"] = {
+                    "count": stats["unique_documents"],
+                    "document_ids": stats["document_list"],
                 }
 
-                # Cache statistics if requested
-                if include_cache_stats and hasattr(self.embedder, "get_cache_stats"):
-                    stats["embedding_cache"] = self.embedder.get_cache_stats()
-
-            # Knowledge graph statistics
-            if self.knowledge_graph:
-                entity_types = Counter()
-                relationship_types = Counter()
-
-                for entity in self.knowledge_graph.entities.values():
-                    entity_types[entity.type] += 1
-
-                for rel in self.knowledge_graph.relationships.values():
-                    relationship_types[rel.type] += 1
-
-                stats["knowledge_graph"] = {
-                    "total_entities": len(self.knowledge_graph.entities),
-                    "total_relationships": len(self.knowledge_graph.relationships),
-                    "entity_types": dict(entity_types),
-                    "relationship_types": dict(relationship_types),
+                # System configuration
+                stats["configuration"] = {
+                    "reranking_enabled": hasattr(self, "reranker") and self.reranker is not None,
+                    "context_assembler_enabled": hasattr(self, "context_assembler") and self.context_assembler is not None,
                 }
-            else:
-                stats["knowledge_graph"] = None
 
-            # Get document list
-            # Sample layer 1 to get unique documents
-            sample_results = self.vector_store.hierarchical_search(
-                query_text="",
-                query_embedding=None,
-                k_layer1=100,
-            )
-
-            unique_docs = set()
-            for doc in sample_results.get("layer1", []):
-                unique_docs.add(doc.get("document_id", "Unknown"))
-
-            stats["documents"] = {
-                "count": len(unique_docs),
-                "document_ids": sorted(list(unique_docs)),
-            }
-
-            # System configuration
-            stats["configuration"] = {
-                "reranking_enabled": hasattr(self, "reranker") and self.reranker is not None,
-                "context_assembler_enabled": hasattr(self, "context_assembler") and self.context_assembler is not None,
-            }
+            if stat_scope not in ["corpus", "index", "document", "entity"]:
+                return ToolResult(
+                    success=False,
+                    data=None,
+                    error=f"Invalid stat_scope: {stat_scope}. Must be 'corpus', 'index', 'document', or 'entity'",
+                )
 
             return ToolResult(
                 success=True,
                 data=stats,
-                metadata={"stat_categories": list(stats.keys())},
+                metadata={
+                    "stat_scope": stat_scope,
+                    "stat_categories": list(stats.keys()),
+                },
             )
 
         except Exception as e:
-            logger.error(f"Get index statistics failed: {e}", exc_info=True)
+            logger.error(f"Get stats failed: {e}", exc_info=True)
             return ToolResult(success=False, data=None, error=str(e))
