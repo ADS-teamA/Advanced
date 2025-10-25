@@ -322,6 +322,9 @@ class AdaptiveFormatter:
         estimated_tokens = len(chunks) * tokens_per_chunk
         actual_detail_level = detail_level
 
+        chunks_capped = False
+        original_chunk_count = len(chunks)
+
         if auto_adjust and estimated_tokens > content_budget:
             # Try reducing detail level
             if detail_level == DetailLevel.FULL:
@@ -335,6 +338,19 @@ class AdaptiveFormatter:
                 f"Auto-adjusting detail level: {detail_level.value} → {actual_detail_level.value} "
                 f"(estimated {estimated_tokens} tokens exceeds budget {content_budget})"
             )
+
+            # After detail reduction, check if we still exceed budget
+            estimated_tokens_after_adjustment = len(chunks) * tokens_per_chunk
+            if estimated_tokens_after_adjustment > content_budget:
+                # Cap chunk count to fit within budget
+                max_chunks = max(3, content_budget // tokens_per_chunk)  # At least 3 chunks
+                if len(chunks) > max_chunks:
+                    logger.info(
+                        f"Capping chunk count: {len(chunks)} → {max_chunks} "
+                        f"(budget {content_budget} tokens / {tokens_per_chunk} per chunk)"
+                    )
+                    chunks = chunks[:max_chunks]
+                    chunks_capped = True
 
         # Format each chunk
         formatted = []
@@ -384,8 +400,10 @@ class AdaptiveFormatter:
             "actual_detail_level": actual_detail_level.value,
             "total_tokens": total_tokens,
             "chunks_count": len(formatted),
+            "original_chunk_count": original_chunk_count,
             "truncated_count": truncated_count,
-            "auto_adjusted": actual_detail_level != detail_level
+            "auto_adjusted": actual_detail_level != detail_level,
+            "chunks_capped": chunks_capped
         }
 
         return formatted, metadata

@@ -132,7 +132,6 @@ class UsageEntry:
     cache_read_tokens: int = 0  # Tokens read from cache
 
 
-@dataclass
 class CostTracker:
     """
     Track API costs across indexing pipeline and RAG agent.
@@ -143,6 +142,7 @@ class CostTracker:
     - Support multiple providers (Anthropic, OpenAI, Voyage)
     - Session-based tracking (reset for each indexing/conversation)
     - Detailed breakdown by operation type
+    - Immutable public interface (private fields with read-only properties)
 
     Usage:
         tracker = CostTracker()
@@ -150,19 +150,53 @@ class CostTracker:
         tracker.track_embedding("openai", "text-embedding-3-large", 10000, "indexing")
 
         print(tracker.get_summary())
+        print(f"Total cost: ${tracker.total_cost:.4f}")
     """
 
-    # Storage
-    entries: List[UsageEntry] = field(default_factory=list)
+    def __init__(self):
+        """Initialize cost tracker with private fields."""
+        # Private storage - prevents external mutation
+        self._entries: List[UsageEntry] = []
 
-    # Accumulators
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_cost: float = 0.0
+        # Private accumulators
+        self._total_input_tokens: int = 0
+        self._total_output_tokens: int = 0
+        self._total_cost: float = 0.0
 
-    # Breakdown by provider
-    cost_by_provider: Dict[str, float] = field(default_factory=dict)
-    cost_by_operation: Dict[str, float] = field(default_factory=dict)
+        # Private breakdowns
+        self._cost_by_provider: Dict[str, float] = {}
+        self._cost_by_operation: Dict[str, float] = {}
+
+    # Read-only properties for public access
+    @property
+    def entries(self) -> List[UsageEntry]:
+        """Get copy of usage entries (read-only)."""
+        return self._entries.copy()
+
+    @property
+    def total_input_tokens(self) -> int:
+        """Get total input tokens."""
+        return self._total_input_tokens
+
+    @property
+    def total_output_tokens(self) -> int:
+        """Get total output tokens."""
+        return self._total_output_tokens
+
+    @property
+    def total_cost(self) -> float:
+        """Get total cost."""
+        return self._total_cost
+
+    @property
+    def cost_by_provider(self) -> Dict[str, float]:
+        """Get cost breakdown by provider (read-only copy)."""
+        return self._cost_by_provider.copy()
+
+    @property
+    def cost_by_operation(self) -> Dict[str, float]:
+        """Get cost breakdown by operation (read-only copy)."""
+        return self._cost_by_operation.copy()
 
     def track_llm(
         self,
@@ -208,16 +242,16 @@ class CostTracker:
             cache_creation_tokens=cache_creation_tokens,
             cache_read_tokens=cache_read_tokens
         )
-        self.entries.append(entry)
+        self._entries.append(entry)
 
         # Update accumulators
-        self.total_input_tokens += input_tokens
-        self.total_output_tokens += output_tokens
-        self.total_cost += cost
+        self._total_input_tokens += input_tokens
+        self._total_output_tokens += output_tokens
+        self._total_cost += cost
 
         # Update breakdowns
-        self.cost_by_provider[provider] = self.cost_by_provider.get(provider, 0.0) + cost
-        self.cost_by_operation[operation] = self.cost_by_operation.get(operation, 0.0) + cost
+        self._cost_by_provider[provider] = self._cost_by_provider.get(provider, 0.0) + cost
+        self._cost_by_operation[operation] = self._cost_by_operation.get(operation, 0.0) + cost
 
         # Log with cache info if applicable
         if cache_creation_tokens > 0 or cache_read_tokens > 0:
@@ -266,15 +300,15 @@ class CostTracker:
             cost=cost,
             operation=operation
         )
-        self.entries.append(entry)
+        self._entries.append(entry)
 
         # Update accumulators
-        self.total_input_tokens += tokens
-        self.total_cost += cost
+        self._total_input_tokens += tokens
+        self._total_cost += cost
 
         # Update breakdowns
-        self.cost_by_provider[provider] = self.cost_by_provider.get(provider, 0.0) + cost
-        self.cost_by_operation[operation] = self.cost_by_operation.get(operation, 0.0) + cost
+        self._cost_by_provider[provider] = self._cost_by_provider.get(provider, 0.0) + cost
+        self._cost_by_operation[operation] = self._cost_by_operation.get(operation, 0.0) + cost
 
         logger.debug(
             f"Embedding usage tracked: {provider}/{model} - "
@@ -345,7 +379,7 @@ class CostTracker:
         cache_read = 0
         cache_creation = 0
 
-        for entry in self.entries:
+        for entry in self._entries:
             cache_read += entry.cache_read_tokens
             cache_creation += entry.cache_creation_tokens
 
@@ -389,22 +423,22 @@ class CostTracker:
 
         # Total tokens and cost
         lines.append(f"Total tokens:  {self.get_total_tokens():,}")
-        lines.append(f"  Input:       {self.total_input_tokens:,}")
-        lines.append(f"  Output:      {self.total_output_tokens:,}")
-        lines.append(f"Total cost:    ${self.total_cost:.4f}")
+        lines.append(f"  Input:       {self._total_input_tokens:,}")
+        lines.append(f"  Output:      {self._total_output_tokens:,}")
+        lines.append(f"Total cost:    ${self._total_cost:.4f}")
         lines.append("")
 
         # Cost by provider
-        if self.cost_by_provider:
+        if self._cost_by_provider:
             lines.append("Cost by provider:")
-            for provider, cost in sorted(self.cost_by_provider.items()):
+            for provider, cost in sorted(self._cost_by_provider.items()):
                 lines.append(f"  {provider:15s} ${cost:.4f}")
             lines.append("")
 
         # Cost by operation
-        if self.cost_by_operation:
+        if self._cost_by_operation:
             lines.append("Cost by operation:")
-            for operation, cost in sorted(self.cost_by_operation.items()):
+            for operation, cost in sorted(self._cost_by_operation.items()):
                 lines.append(f"  {operation:15s} ${cost:.4f}")
             lines.append("")
 
@@ -414,12 +448,12 @@ class CostTracker:
 
     def reset(self):
         """Reset tracker (for new indexing/conversation session)."""
-        self.entries.clear()
-        self.total_input_tokens = 0
-        self.total_output_tokens = 0
-        self.total_cost = 0.0
-        self.cost_by_provider.clear()
-        self.cost_by_operation.clear()
+        self._entries.clear()
+        self._total_input_tokens = 0
+        self._total_output_tokens = 0
+        self._total_cost = 0.0
+        self._cost_by_provider.clear()
+        self._cost_by_operation.clear()
 
         logger.info("Cost tracker reset")
 
