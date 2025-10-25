@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class MultiHopSearchInput(ToolInput):
     query: str = Field(..., description="Multi-hop query requiring graph traversal")
     max_hops: int = Field(2, description="Maximum hops in graph", ge=1, le=3)
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -207,7 +207,7 @@ class CompareDocumentsTool(BaseTool):
 
 class FindRelatedChunksInput(ToolInput):
     chunk_id: str = Field(..., description="Chunk ID to find related chunks for")
-    k: int = Field(6, description="Number of related chunks to return", ge=1, le=20)
+    k: int = Field(6, description="Number of related chunks to return", ge=1, le=10)
     same_document_only: bool = Field(
         False, description="Only find related chunks from same document"
     )
@@ -312,7 +312,7 @@ class TemporalSearchInput(ToolInput):
     query: str = Field(..., description="Search query")
     start_date: Optional[str] = Field(None, description="Start date (ISO format: YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="End date (ISO format: YYYY-MM-DD)")
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -416,7 +416,7 @@ class HybridSearchWithFiltersInput(ToolInput):
     query: str = Field(..., description="Search query")
     document_type: Optional[str] = Field(None, description="Filter by document type")
     section_type: Optional[str] = Field(None, description="Filter by section type")
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -504,7 +504,7 @@ class CrossReferenceSearchInput(ToolInput):
     reference_text: str = Field(
         ..., description="Reference text to search for (e.g., 'Article 5.2', 'Section 3')"
     )
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -779,7 +779,7 @@ class ChunkSimilaritySearchInput(ToolInput):
     cross_document: bool = Field(
         True, description="Search across all documents (True) or within same document (False)"
     )
-    k: int = Field(6, description="Number of similar chunks to return", ge=1, le=20)
+    k: int = Field(6, description="Number of similar chunks to return", ge=1, le=10)
 
 
 @register_tool
