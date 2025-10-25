@@ -186,16 +186,23 @@ class DocumentSearchTool(BaseTool):
         # Embed query
         query_embedding = self.embedder.embed_texts([query])
 
-        # Hybrid search with document filter
-        results = self.vector_store.hierarchical_search(
-            query_text=query,
+        # Perform manual hybrid search with explicit document filter
+        # NOTE: We can't use hierarchical_search(use_doc_filtering=True) because it
+        # auto-selects document from Layer 1, ignoring our document_id parameter.
+        # Instead, we search Layer 3 directly with explicit document_filter.
+        dense_results = self.vector_store.faiss_store.search_layer3(
             query_embedding=query_embedding,
-            k_layer3=k,
-            use_doc_filtering=True,
+            k=50,
+            document_filter=document_id
+        )
+        sparse_results = self.vector_store.bm25_store.search_layer3(
+            query=query,
+            k=50,
+            document_filter=document_id
         )
 
-        # Filter to specific document (hierarchical_search may return top doc)
-        chunks = [c for c in results["layer3"] if c.get("document_id") == document_id]
+        # Apply RRF fusion to combine dense + sparse results
+        chunks = self.vector_store._rrf_fusion(dense_results, sparse_results, k=k)
 
         if not chunks:
             logger.info(f"No results found in document '{document_id}' for query '{query}'")
@@ -253,10 +260,14 @@ class SectionSearchTool(BaseTool):
         # Embed query
         query_embedding = self.embedder.embed_texts([query])
 
-        # Search at layer 2 (sections)
-        # Note: HybridVectorStore doesn't expose layer 2 directly, so use layer 3 + filter
+        # Search Layer 3 across all documents (no document filtering)
+        # NOTE: We set use_doc_filtering=False to search across all documents,
+        # then filter by section_title afterwards
         results = self.vector_store.hierarchical_search(
-            query_text=query, query_embedding=query_embedding, k_layer3=k * 3
+            query_text=query,
+            query_embedding=query_embedding,
+            k_layer3=k * 3,  # Get more candidates for section filtering
+            use_doc_filtering=False  # Search all documents
         )
 
         # Filter by section title (case-insensitive partial match)
