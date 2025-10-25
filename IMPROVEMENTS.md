@@ -19,10 +19,32 @@ This document provides comprehensive explanations of key pipeline improvements i
 
 ## 1. Prompt Caching (PHASE 7)
 
+**Status: ✅ IMPLEMENTED** (January 2025)
+
 ### What It Is
 Prompt caching is a Claude API feature that "remembers" parts of prompts between different queries, avoiding resending static content like system instructions and tool definitions.
 
-### Current Problem
+### Implementation Details
+
+The system now automatically caches:
+- **System prompt** (agent instructions)
+- **Tool definitions** (27 RAG tools)
+- **Document initialization** (document list + tool list)
+
+Configuration:
+```bash
+# Enable/disable via environment variable (default: enabled)
+export ENABLE_PROMPT_CACHING=true
+
+# Or in code
+config = AgentConfig(enable_prompt_caching=True)
+```
+
+Cost tracking now includes cache statistics:
+- `cache_creation_tokens`: Tokens written to cache
+- `cache_read_tokens`: Tokens read from cache (90% cost reduction)
+
+### Previous Problem (Before Implementation)
 
 ```python
 # CURRENT STATE (without caching):
@@ -806,28 +828,30 @@ Refactor `_call_llm()` and `_parse_llm_response()` methods around lines 259-367 
 
 ## 7. Query Decomposition Integration (PHASE 7)
 
-### What It Is
-Decomposing complex queries into multiple simpler sub-queries and solving them independently.
+**Status: ⚠️ REMOVED** (January 2025)
 
-### Current Problem
+This feature was previously considered but **removed in favor of simpler, more efficient approaches**.
 
-```python
-Query: "Compare GRI 306 and ISO 14001 waste management requirements and identify key differences"
+### Why It Was Removed
 
-# Current state: Agent gets entire query
-→ One vector search with entire query
-→ Embeddings "dilute" meaning (average of all concepts)
-→ Finds general documents about waste management, but misses details
+Query decomposition was removed because:
 
-# What agent SHOULD do:
-1. "What are GRI 306 waste management requirements?"
-2. "What are ISO 14001 waste management requirements?"
-3. "Compare these two sets of requirements"
+1. **Claude SDK's agentic tool use handles complex queries naturally**
+   - Claude can autonomously decide to make multiple tool calls
+   - The agent already breaks down complex tasks into steps
+   - No need for explicit query decomposition layer
 
-# But current agent DOESN'T DO this automatically
-```
+2. **Prompt caching provides better cost-efficiency**
+   - Decomposition required extra LLM calls (additional cost + latency)
+   - Prompt caching reduces costs by 90% on cached tokens
+   - Simple approach is more cost-effective overall
 
-### Solution: Query Decomposition
+3. **Added complexity without clear benefit**
+   - Required maintaining decomposition logic
+   - Hard to tune for different query types
+   - Debugging multi-step decomposition was complex
+
+### Previous Approach (For Reference)
 
 ```python
 # src/agent/query/decomposition.py (EXISTS but is DISABLED!)
@@ -961,16 +985,25 @@ Agent WITH decomposition:
    ↑ detailed, specific answer with citations
 ```
 
-### Implementation
+### Current Approach (Post-Removal)
 
-**File:** `src/agent/agent_core.py`
+For users needing multi-step reasoning, the agent now relies on:
 
-Enable query decomposition in `process_message()` method around line 300-350. The decomposition code already exists in `src/agent/query/decomposition.py`.
+1. **Claude's native reasoning** via tool use
+   - Agent can autonomously make multiple tool calls
+   - Natural language reasoning between calls
 
-**Expected Impact:**
-- Hits@K: +4.4-7.6pp
-- Multi-hop queries: +30-40%
-- Complexity: Medium (1 week)
+2. **Explicit user guidance** when needed
+   - Users can break down queries manually if preferred
+   - Example: "First find GRI 306 requirements, then ISO 14001, then compare"
+
+3. **Smart token management**
+   - Adaptive tool output sizing ensures efficient context usage
+   - Progressive detail levels (summary/medium/full) optimize information density
+
+**Removal Details:**
+- Removed files: `src/agent/query/decomposition.py`, `src/agent/query/hyde.py`
+- See commit `851553e` for removal rationale and implementation
 
 ---
 

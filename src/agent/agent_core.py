@@ -67,6 +67,7 @@ class AgentCore:
             logger.debug(f"Model: {config.model}")
             logger.debug(f"Max tokens: {config.max_tokens}")
             logger.debug(f"Temperature: {config.temperature}")
+            logger.debug(f"Prompt caching: {config.enable_prompt_caching}")
 
         # Validate config
         config.validate()
@@ -87,7 +88,8 @@ class AgentCore:
 
         logger.info(
             f"AgentCore initialized: model={config.model}, "
-            f"tools={len(self.registry)}, streaming={config.cli_config.enable_streaming}"
+            f"tools={len(self.registry)}, streaming={config.cli_config.enable_streaming}, "
+            f"caching={config.enable_prompt_caching}"
         )
 
         if config.debug_mode:
@@ -240,16 +242,26 @@ class AgentCore:
             self._initialized_with_documents = True
             logger.debug(f"Initialized conversation with {count} documents and {len(self.registry)} tools")
 
+        except (FileNotFoundError, PermissionError) as e:
+            logger.warning(f"Document initialization failed - file access issue: {e}")
+            # Expected - vector store may be empty or permissions issue
+        except KeyError as e:
+            logger.error(f"Invalid metadata structure during initialization: {e}")
+            # This indicates a data corruption issue - log as error
         except Exception as e:
-            logger.warning(f"Could not initialize with documents: {e}")
-            # Don't fail - just continue without initialization
+            logger.error(f"Unexpected error initializing documents: {sanitize_error(e)}", exc_info=True)
+            # Log as error for unexpected issues, but don't crash - continue without initialization
 
     def reset_conversation(self):
-        """Reset conversation history."""
+        """Reset conversation history and reinitialize with documents."""
         self.conversation_history = []
         self.tool_call_history = []
         self._initialized_with_documents = False
         logger.info("Conversation reset")
+
+        # Reinitialize with documents and tools list
+        self.initialize_with_documents()
+        logger.info("Agent reinitialized with documents after reset")
 
     def get_conversation_stats(self) -> Dict[str, Any]:
         """Get conversation statistics."""
@@ -294,6 +306,101 @@ class AgentCore:
             }
             # Insert notice at beginning of trimmed history so Claude sees it
             self.conversation_history.insert(0, system_notice)
+
+    def _prepare_system_prompt_with_cache(self) -> List[Dict[str, Any]]:
+        """
+        Prepare system prompt with cache control for Anthropic prompt caching.
+
+        Returns system prompt as structured format:
+        [
+            {
+                "type": "text",
+                "text": "...",
+                "cache_control": {"type": "ephemeral"}  # If caching enabled
+            }
+        ]
+
+        Returns:
+            List of system prompt blocks
+        """
+        system_block = {
+            "type": "text",
+            "text": self.config.system_prompt
+        }
+
+        # Add cache control if enabled
+        if self.config.enable_prompt_caching:
+            system_block["cache_control"] = {"type": "ephemeral"}
+
+        return [system_block]
+
+    def _prepare_tools_with_cache(self, tools: List[Dict]) -> List[Dict]:
+        """
+        Add cache control to tools array (on last tool) for Anthropic prompt caching.
+
+        Caching strategy:
+        - Cache control on last tool in array
+        - Reduces API costs by 90% for tool definitions
+        - TTL: 5 minutes (Anthropic default)
+
+        Args:
+            tools: List of tool definitions
+
+        Returns:
+            Tools with cache control added (if enabled)
+        """
+        if not self.config.enable_prompt_caching or not tools:
+            return tools
+
+        # Deep copy to avoid modifying original
+        import copy
+        cached_tools = copy.deepcopy(tools)
+
+        # Add cache control to last tool
+        cached_tools[-1]["cache_control"] = {"type": "ephemeral"}
+
+        return cached_tools
+
+    def _add_cache_control_to_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Add cache control to specific messages for Anthropic prompt caching.
+
+        Caching strategy:
+        - Cache document initialization message (first 2 messages)
+        - Allows cached context across conversations
+
+        Args:
+            messages: Conversation history
+
+        Returns:
+            Messages with cache control added (if enabled)
+        """
+        if not self.config.enable_prompt_caching or len(messages) < 2:
+            return messages
+
+        # Deep copy to avoid modifying original
+        import copy
+        cached_messages = copy.deepcopy(messages)
+
+        # Add cache control to assistant's acknowledgment (2nd message after init)
+        # This caches the document list and tool list initialization
+        if len(cached_messages) >= 2 and cached_messages[1]["role"] == "assistant":
+            # Convert content to structured format if it's a string
+            if isinstance(cached_messages[1]["content"], str):
+                cached_messages[1]["content"] = [
+                    {
+                        "type": "text",
+                        "text": cached_messages[1]["content"],
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            elif isinstance(cached_messages[1]["content"], list):
+                # If already structured, add cache_control to last block
+                if cached_messages[1]["content"]:
+                    if isinstance(cached_messages[1]["content"][-1], dict):
+                        cached_messages[1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
+
+        return cached_messages
 
     def process_message(
         self, user_message: str, stream: bool = None
@@ -361,14 +468,19 @@ class AgentCore:
             # Import anthropic for error handling
             import anthropic
 
+            # Prepare cached system prompt, tools, and messages
+            system_prompt = self._prepare_system_prompt_with_cache()
+            cached_tools = self._prepare_tools_with_cache(tools)
+            cached_messages = self._add_cache_control_to_messages(self.conversation_history)
+
             while True:
                 with self.client.messages.stream(
                     model=self.config.model,
                     max_tokens=self.config.max_tokens,
                     temperature=self.config.temperature,
-                    system=self.config.system_prompt,
-                    messages=self.conversation_history,
-                    tools=tools,
+                    system=system_prompt,
+                    messages=cached_messages,
+                    tools=cached_tools,
                 ) as stream:
                     # Collect assistant message
                     assistant_message = {"role": "assistant", "content": []}
@@ -409,14 +521,25 @@ class AgentCore:
                     # Get final message
                     final_message = stream.get_final_message()
 
-                    # Track cost
+                    # Track cost (including cache statistics if available)
+                    cache_creation = getattr(final_message.usage, 'cache_creation_input_tokens', 0)
+                    cache_read = getattr(final_message.usage, 'cache_read_input_tokens', 0)
+
                     self.tracker.track_llm(
                         provider="anthropic",
                         model=self.config.model,
                         input_tokens=final_message.usage.input_tokens,
                         output_tokens=final_message.usage.output_tokens,
-                        operation="agent"
+                        operation="agent",
+                        cache_creation_tokens=cache_creation,
+                        cache_read_tokens=cache_read
                     )
+
+                    # Log cache hit info if debug mode
+                    if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
+                        logger.debug(
+                            f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
+                        )
 
                     # Note: tool_uses already collected during streaming (lines 224-237)
                     # No need to extract from final_message again - would cause duplicates!
@@ -510,86 +633,119 @@ class AgentCore:
         """
         full_response_text = ""
 
-        while True:
-            response = self.client.messages.create(
-                model=self.config.model,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-                system=self.config.system_prompt,
-                messages=self.conversation_history,
-                tools=tools,
-            )
+        # Prepare cached system prompt, tools, and messages
+        system_prompt = self._prepare_system_prompt_with_cache()
+        cached_tools = self._prepare_tools_with_cache(tools)
+        cached_messages = self._add_cache_control_to_messages(self.conversation_history)
 
-            # Track cost
-            self.tracker.track_llm(
-                provider="anthropic",
-                model=self.config.model,
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-                operation="agent"
-            )
+        try:
+            while True:
+                response = self.client.messages.create(
+                    model=self.config.model,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    system=system_prompt,
+                    messages=cached_messages,
+                    tools=cached_tools,
+                )
 
-            # Add assistant message to history
-            self.conversation_history.append({"role": "assistant", "content": response.content})
+                # Track cost (including cache statistics if available)
+                cache_creation = getattr(response.usage, 'cache_creation_input_tokens', 0)
+                cache_read = getattr(response.usage, 'cache_read_input_tokens', 0)
 
-            # Extract text
-            for block in response.content:
-                if block.type == "text":
-                    full_response_text += block.text
+                self.tracker.track_llm(
+                    provider="anthropic",
+                    model=self.config.model,
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens,
+                    operation="agent",
+                    cache_creation_tokens=cache_creation,
+                    cache_read_tokens=cache_read
+                )
 
-            # Check stop reason
-            if response.stop_reason == "end_turn":
-                break
+                # Log cache hit info if debug mode
+                if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
+                    logger.debug(
+                        f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
+                    )
 
-            elif response.stop_reason == "tool_use":
-                # Execute tools
-                tool_results = []
+                # Add assistant message to history
+                self.conversation_history.append({"role": "assistant", "content": response.content})
 
+                # Extract text
                 for block in response.content:
-                    if block.type == "tool_use":
-                        tool_name = block.name
-                        tool_input = block.input
+                    if block.type == "text":
+                        full_response_text += block.text
 
-                        logger.info(f"Executing tool: {tool_name}")
+                # Check stop reason
+                if response.stop_reason == "end_turn":
+                    break
 
-                        result = self.registry.execute_tool(tool_name, **tool_input)
+                elif response.stop_reason == "tool_use":
+                    # Execute tools
+                    tool_results = []
 
-                        # Check for tool failure and log error
-                        if not result.success:
-                            logger.error(
-                                f"Tool '{tool_name}' failed: {result.error}",
-                                extra={"tool_input": tool_input, "metadata": result.metadata}
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            tool_name = block.name
+                            tool_input = block.input
+
+                            logger.info(f"Executing tool: {tool_name}")
+
+                            result = self.registry.execute_tool(tool_name, **tool_input)
+
+                            # Check for tool failure and log error
+                            if not result.success:
+                                error_msg = f"⚠️  Tool '{tool_name}' failed: {result.error}"
+                                logger.error(
+                                    f"Tool '{tool_name}' failed: {result.error}",
+                                    extra={"tool_input": tool_input, "metadata": result.metadata}
+                                )
+                                # Show error to user in non-streaming mode
+                                full_response_text += f"\n[{error_msg}]\n"
+
+                            # Track in history
+                            self.tool_call_history.append(
+                                {
+                                    "tool_name": tool_name,
+                                    "input": tool_input,
+                                    "success": result.success,
+                                    "execution_time_ms": result.execution_time_ms,
+                                }
                             )
 
-                        # Track in history
-                        self.tool_call_history.append(
-                            {
-                                "tool_name": tool_name,
-                                "input": tool_input,
-                                "success": result.success,
-                                "execution_time_ms": result.execution_time_ms,
-                            }
-                        )
+                            # Format tool result
+                            tool_result_content = self._format_tool_result(result)
 
-                        # Format tool result
-                        tool_result_content = self._format_tool_result(result)
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": tool_result_content,
+                                }
+                            )
 
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": tool_result_content,
-                            }
-                        )
+                    # Add tool results to conversation
+                    self.conversation_history.append({"role": "user", "content": tool_results})
 
-                # Add tool results to conversation
-                self.conversation_history.append({"role": "user", "content": tool_results})
+                else:
+                    logger.warning(f"Unexpected stop reason: {response.stop_reason}")
+                    break
 
-            else:
-                logger.warning(f"Unexpected stop reason: {response.stop_reason}")
-                break
+            return full_response_text
 
-        return full_response_text
+        except anthropic.APITimeoutError as e:
+            logger.error(f"API timeout in non-streaming mode: {e}")
+            return "[⚠️  API timeout - response incomplete. Please try again.]"
+        except anthropic.RateLimitError as e:
+            logger.error(f"Rate limit hit: {e}")
+            return "[⚠️  Rate limit exceeded - please wait a moment and try again.]"
+        except anthropic.APIError as e:
+            logger.error(f"Claude API error: {sanitize_error(e)}")
+            return f"[❌ API Error: {sanitize_error(e)}]"
+        except Exception as e:
+            logger.error(f"Non-streaming processing failed: {sanitize_error(e)}", exc_info=True)
+            return f"[❌ Unexpected error: {type(e).__name__}: {sanitize_error(e)}]"
 
     def _format_tool_result(self, result: ToolResult) -> str:
         """

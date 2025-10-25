@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def load_prompt(prompt_name: str) -> str:
     """
-    Load a prompt from the prompts/ directory.
+    Load a prompt from the prompts/ directory (project root).
 
     Args:
         prompt_name: Name of the prompt file (without .txt extension)
@@ -23,13 +23,15 @@ def load_prompt(prompt_name: str) -> str:
     Raises:
         FileNotFoundError: If prompts directory or prompt file doesn't exist
     """
-    prompt_dir = Path(__file__).parent / "prompts"
+    # Navigate to project root (3 levels up: prompt_loader.py -> agent -> src -> project_root)
+    project_root = Path(__file__).parent.parent.parent
+    prompt_dir = project_root / "prompts"
 
     # Check if prompts directory exists
     if not prompt_dir.exists():
         raise FileNotFoundError(
             f"Prompts directory not found: {prompt_dir}\n"
-            f"Expected location: src/agent/prompts/"
+            f"Expected location: prompts/"
         )
 
     prompt_path = prompt_dir / f"{prompt_name}.txt"
@@ -37,7 +39,7 @@ def load_prompt(prompt_name: str) -> str:
     if not prompt_path.exists():
         raise FileNotFoundError(
             f"Prompt file not found: {prompt_path}\n"
-            f"Expected location: src/agent/prompts/{prompt_name}.txt"
+            f"Expected location: prompts/{prompt_name}.txt"
         )
 
     try:

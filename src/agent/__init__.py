@@ -4,14 +4,14 @@ Claude Agent SDK RAG CLI
 A pragmatic, production-ready agent for document retrieval and analysis.
 
 Architecture:
-- 17 RAG tools organized in 3 tiers (basic, advanced, analysis)
+- 27 RAG tools organized in 3 tiers (basic, advanced, analysis)
 - Hybrid search with BM25 + FAISS + RRF fusion
 - Knowledge graph integration
-- HyDE and query decomposition
-- Streaming responses via Claude SDK
+- Smart token management for adaptive tool output sizing
+- Streaming responses via Claude SDK with prompt caching
 
 Usage:
-    python run_agent.py --store output/hybrid_store
+    python -m src.agent.cli --vector-store vector_db
 """
 
 from .agent_core import AgentCore
