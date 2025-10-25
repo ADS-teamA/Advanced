@@ -109,6 +109,18 @@ nohup uv run python -m src.agent.cli > agent.log 2>&1 &
 
 **Tools:** 12 basic (fast) + 9 advanced (quality) + 6 analysis (deep)
 
+**CLI Commands:**
+- `/help` - Show available commands
+- `/stats` - Show tool execution statistics, conversation stats, and session costs
+- `/config` - Show current configuration
+- `/clear` - Clear conversation and reinitialize with documents
+- `/exit` - Exit the agent
+
+**Cost Tracking:** Session cost is displayed after each response. Example:
+```
+💰 Session cost: $0.0234 (12,450 tokens) | 📦 Cache: 8,500 tokens read (90% saved)
+```
+
 ### Testing
 
 ```bash
@@ -160,6 +172,7 @@ config = IndexingConfig.from_env(
 - `EMBEDDING_MODEL=text-embedding-3-large` (Windows) or `bge-m3` (macOS)
 - `SPEED_MODE=fast` (fast or eco)
 - `ENABLE_HYBRID_SEARCH=true`, `ENABLE_KNOWLEDGE_GRAPH=true`
+- `ENABLE_PROMPT_CACHING=true` (Anthropic only, 90% cost reduction on cached tokens)
 
 **Config hierarchy:** `IndexingConfig` → `ExtractionConfig`, `SummarizationConfig`, `ChunkingConfig`, `EmbeddingConfig`, `KnowledgeGraphConfig`
 

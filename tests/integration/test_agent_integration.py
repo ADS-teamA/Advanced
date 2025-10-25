@@ -128,9 +128,7 @@ def test_agent_imports():
         ("src.agent.tools.tier1_basic", "Tier 1 tools"),
         ("src.agent.tools.tier2_advanced", "Tier 2 tools"),
         ("src.agent.tools.tier3_analysis", "Tier 3 tools"),
-        ("src.agent.query.hyde", "HyDE module"),
-        ("src.agent.query.decomposition", "Query decomposition"),
-        ("src.agent.query.optimizer", "Query optimizer"),
+        ("src.agent.tools.token_manager", "Token manager module"),
         ("src.agent.validation", "Validation module"),
     ]
 
