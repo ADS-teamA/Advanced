@@ -15,6 +15,7 @@ from typing import Any, Dict, Generator, List, Optional
 import anthropic
 
 from .config import AgentConfig
+from .providers import create_provider, AnthropicProvider, OpenAIProvider
 from .tools.base import ToolResult
 from .tools.registry import get_registry
 
@@ -32,7 +33,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Configuration constants
-MAX_HISTORY_MESSAGES = 50  # Keep last 50 messages to prevent unbounded memory growth
+MAX_HISTORY_MESSAGES = 50  # Keep last 50 messages to maintain conversation context
 MAX_QUERY_LENGTH = 10000  # Maximum characters in a single query
 
 # ANSI color codes for terminal output
@@ -73,10 +74,26 @@ class AgentCore:
         # Validate config
         config.validate()
 
-        # Initialize Claude SDK client
+        # Initialize provider (Anthropic or OpenAI)
         if config.debug_mode:
-            logger.debug("Initializing Claude SDK client...")
-        self.client = anthropic.Anthropic(api_key=config.anthropic_api_key)
+            logger.debug("Initializing provider...")
+        self.provider = create_provider(
+            model=config.model,
+            anthropic_api_key=config.anthropic_api_key,
+            openai_api_key=config.openai_api_key,
+        )
+
+        # Log provider info
+        logger.info(
+            f"Provider initialized: {self.provider.get_provider_name()} / {self.provider.get_model_name()}"
+        )
+
+        # Check feature support and log warnings
+        if config.enable_prompt_caching and not self.provider.supports_feature("prompt_caching"):
+            logger.warning(
+                f"Prompt caching requested but not supported by {self.provider.get_model_name()}. "
+                f"Continuing without caching (costs will be higher)."
+            )
 
         # Get tool registry
         if config.debug_mode:
@@ -238,6 +255,113 @@ class AgentCore:
             "tools_used": list(set(t["tool_name"] for t in self.tool_call_history)),
         }
 
+    def _prune_tool_results(self, keep_last_n: int = 3):
+        """
+        Remove tool calls, intermediate messages, and results from old messages.
+        Keep only user questions and final assistant answers.
+
+        This prevents quadratic cost growth by removing the bulk of tokens
+        (tool results and intermediate reasoning) from older messages.
+
+        Strategy:
+        - Keep last N messages intact (with all tool calls/results)
+        - For older messages: Remove entire tool exchanges (assistant tool_use + user tool_result)
+        - Keep only substantial assistant responses (final answers with text > 50 chars)
+        - Preserve all user question text
+
+        Args:
+            keep_last_n: Number of recent messages to keep with full tool context
+        """
+        if len(self.conversation_history) <= keep_last_n:
+            return  # Nothing to prune
+
+        # Calculate cutoff index (messages before this are pruned)
+        cutoff_idx = len(self.conversation_history) - keep_last_n
+        tokens_saved_estimate = 0
+        removed_tool_use_ids = set()
+
+        # Pass 1: Identify and prune assistant messages with tools
+        # Remove tool_use blocks and track IDs for corresponding tool_result removal
+        for i in range(cutoff_idx):
+            msg = self.conversation_history[i]
+
+            # Skip non-list content (system notices)
+            if not isinstance(msg.get("content"), list):
+                continue
+
+            # Prune assistant messages
+            if msg["role"] == "assistant":
+                text_blocks = []
+                tool_blocks = []
+                total_text_length = 0
+
+                for block in msg["content"]:
+                    if block.get("type") == "text":
+                        text_blocks.append(block)
+                        total_text_length += len(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        tool_blocks.append(block)
+                        # Track removed tool_use ID
+                        removed_tool_use_ids.add(block.get("id"))
+
+                if tool_blocks:
+                    # Estimate tokens saved
+                    tokens_saved_estimate += len(tool_blocks) * 50
+
+                    # If this is an intermediate message (minimal text), remove text too
+                    if total_text_length < 50:  # Threshold for "substantial" text
+                        # Replace with minimal placeholder
+                        msg["content"] = [{"type": "text", "text": "[Intermediate reasoning removed]"}]
+                        tokens_saved_estimate += total_text_length // 4  # Estimate tokens
+                    else:
+                        # Keep substantial text, remove only tool_use blocks
+                        if not text_blocks:
+                            text_blocks = [{"type": "text", "text": "[Tool execution removed]"}]
+                        msg["content"] = text_blocks
+
+        # Pass 2: Remove corresponding tool_result blocks from ALL user messages
+        # (must scan entire history because tool_result may be after cutoff)
+        for i in range(len(self.conversation_history)):
+            msg = self.conversation_history[i]
+
+            # Skip non-list content
+            if not isinstance(msg.get("content"), list):
+                continue
+
+            # Prune user messages: remove tool_result blocks
+            if msg["role"] == "user":
+                text_blocks = []
+                tool_result_blocks = []
+
+                for block in msg["content"]:
+                    if block.get("type") == "text":
+                        text_blocks.append(block)
+                    elif block.get("type") == "tool_result":
+                        tool_use_id = block.get("tool_use_id")
+                        if tool_use_id in removed_tool_use_ids:
+                            # This tool_result corresponds to removed tool_use
+                            tool_result_blocks.append(block)
+                        else:
+                            # Keep tool_result (corresponding tool_use still exists)
+                            text_blocks.append(block)
+
+                if tool_result_blocks:
+                    # Estimate tokens saved (rough: 500 tokens per tool_result)
+                    tokens_saved_estimate += len(tool_result_blocks) * 500
+                    # If no text blocks remain after removing tool_results, add placeholder
+                    if not text_blocks:
+                        text_blocks = [{"type": "text", "text": "[Tool results removed]"}]
+                    msg["content"] = text_blocks
+
+        # Clear the removed_tool_use_ids set to prevent memory leak
+        removed_tool_use_ids.clear()
+
+        if tokens_saved_estimate > 0:
+            logger.info(
+                f"Tool pruning: Removed tool exchanges and intermediate messages from {cutoff_idx} messages "
+                f"(~{tokens_saved_estimate:,} tokens saved, keeping last {keep_last_n} messages intact)"
+            )
+
     def _trim_history(self):
         """
         Trim conversation history to prevent unbounded memory growth.
@@ -245,12 +369,12 @@ class AgentCore:
         IMPORTANT IMPLICATIONS:
         - User IS notified when history is trimmed (transparency)
         - Claude loses access to earlier conversation context
-        - May break multi-turn reasoning across >50 message exchanges
+        - May break multi-turn reasoning across >15 message exchanges
         - Tool results in trimmed messages are lost permanently
-        - Trimming happens BEFORE Claude API call (line 153)
+        - Trimming happens BEFORE Claude API call
 
         NOTES:
-        - Each "message" may contain multiple tool results (lines 270, 344)
+        - Each "message" may contain multiple tool results
         - Actual context size varies significantly per message
         - Keeps the last MAX_HISTORY_MESSAGES messages
         - Adds notification message to conversation explaining trimming
@@ -274,29 +398,29 @@ class AgentCore:
             # Insert notice at beginning of trimmed history so Claude sees it
             self.conversation_history.insert(0, system_notice)
 
-    def _prepare_system_prompt_with_cache(self) -> List[Dict[str, Any]]:
+    def _prepare_system_prompt_with_cache(self) -> List[Dict[str, Any]] | str:
         """
         Prepare system prompt with cache control for Anthropic prompt caching.
 
-        Returns system prompt as structured format:
-        [
-            {
-                "type": "text",
-                "text": "...",
-                "cache_control": {"type": "ephemeral"}  # If caching enabled
-            }
-        ]
+        For Anthropic: Returns structured format with cache_control
+        For OpenAI: Returns simple string
 
         Returns:
-            List of system prompt blocks
+            List of system prompt blocks (Anthropic) or string (OpenAI)
         """
-        system_block = {"type": "text", "text": self.config.system_prompt}
+        # Check if provider supports structured system prompts
+        if self.provider.supports_feature("structured_system"):
+            # Anthropic format
+            system_block = {"type": "text", "text": self.config.system_prompt}
 
-        # Add cache control if enabled
-        if self.config.enable_prompt_caching:
-            system_block["cache_control"] = {"type": "ephemeral"}
+            # Add cache control if enabled and supported
+            if self.config.enable_prompt_caching and self.provider.supports_feature("prompt_caching"):
+                system_block["cache_control"] = {"type": "ephemeral"}
 
-        return [system_block]
+            return [system_block]
+        else:
+            # OpenAI format (simple string)
+            return self.config.system_prompt
 
     def _prepare_tools_with_cache(self, tools: List[Dict]) -> List[Dict]:
         """
@@ -306,14 +430,19 @@ class AgentCore:
         - Cache control on last tool in array
         - Reduces API costs by 90% for tool definitions
         - TTL: 5 minutes (Anthropic default)
+        - Only applied if provider supports prompt_caching
 
         Args:
             tools: List of tool definitions
 
         Returns:
-            Tools with cache control added (if enabled)
+            Tools with cache control added (if enabled and supported)
         """
         if not self.config.enable_prompt_caching or not tools:
+            return tools
+
+        # Only add cache control if provider supports it
+        if not self.provider.supports_feature("prompt_caching"):
             return tools
 
         # Deep copy to avoid modifying original
@@ -405,6 +534,9 @@ class AgentCore:
         # Add user message to history
         self.conversation_history.append({"role": "user", "content": user_message})
 
+        # Prune tool results from old messages (keep only Q&A text)
+        self._prune_tool_results(keep_last_n=self.config.context_management_keep)
+
         # Trim history to prevent unbounded growth
         self._trim_history()
 
@@ -435,6 +567,8 @@ class AgentCore:
         try:
             # Import anthropic for error handling
             import anthropic
+            # Import openai for error handling
+            import openai
 
             # Prepare cached system prompt and tools (static)
             system_prompt = self._prepare_system_prompt_with_cache()
@@ -444,86 +578,231 @@ class AgentCore:
                 # Update cached messages with latest conversation history (includes tool results)
                 cached_messages = self._add_cache_control_to_messages(self.conversation_history)
 
-                with self.client.messages.stream(
-                    model=self.config.model,
-                    max_tokens=self.config.max_tokens,
-                    temperature=self.config.temperature,
-                    system=system_prompt,
-                    messages=cached_messages,
-                    tools=cached_tools,
-                ) as stream:
-                    # Collect assistant message
-                    assistant_message = {"role": "assistant", "content": []}
-                    tool_uses = []
+                # Use provider abstraction for streaming (with fallback for OpenAI verification issues)
+                try:
+                    stream = self.provider.stream_message(
+                        messages=cached_messages,
+                        tools=cached_tools,
+                        system=system_prompt,
+                        max_tokens=self.config.max_tokens,
+                        temperature=self.config.temperature,
+                    )
+                except openai.BadRequestError as e:
+                    # Check if this is the organization verification error for streaming
+                    # Use error code if available, otherwise fall back to message checking
+                    error_message = str(e)
+                    error_code = getattr(e, 'code', None)
 
-                    # Stream text and collect tool uses
-                    for event in stream:
-                        if event.type == "content_block_start":
-                            if event.content_block.type == "text":
-                                assistant_message["content"].append({"type": "text", "text": ""})
-
-                        elif event.type == "content_block_delta":
-                            if event.delta.type == "text_delta":
-                                # Stream text to user
-                                yield event.delta.text
-
-                                # Add to message content
-                                for block in assistant_message["content"]:
-                                    if block["type"] == "text":
-                                        block["text"] += event.delta.text
-                                        break
-
-                        elif event.type == "content_block_stop":
-                            if (
-                                hasattr(event, "content_block")
-                                and event.content_block.type == "tool_use"
-                            ):
-                                tool_uses.append(event.content_block)
-                                assistant_message["content"].append(
-                                    {
-                                        "type": "tool_use",
-                                        "id": event.content_block.id,
-                                        "name": event.content_block.name,
-                                        "input": event.content_block.input,
-                                    }
-                                )
-
-                    # Get final message
-                    final_message = stream.get_final_message()
-
-                    # Track cost (including cache statistics if available)
-                    cache_creation = getattr(final_message.usage, "cache_creation_input_tokens", 0)
-                    cache_read = getattr(final_message.usage, "cache_read_input_tokens", 0)
-
-                    self.tracker.track_llm(
-                        provider="anthropic",
-                        model=self.config.model,
-                        input_tokens=final_message.usage.input_tokens,
-                        output_tokens=final_message.usage.output_tokens,
-                        operation="agent",
-                        cache_creation_tokens=cache_creation,
-                        cache_read_tokens=cache_read,
+                    # Only fallback for known streaming verification errors
+                    is_verification_error = (
+                        error_code == "organization_not_verified" or
+                        ("organization" in error_message.lower() and "verified" in error_message.lower() and "stream" in error_message.lower())
                     )
 
-                    # Log cache hit info if debug mode
-                    if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
-                        logger.debug(
-                            f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
+                    if is_verification_error:
+                        logger.warning(
+                            f"OpenAI organization not verified for streaming. Falling back to non-streaming mode. "
+                            f"Error: {error_message[:200]}"
+                        )
+                        yield "[⚠️  Your OpenAI organization needs verification to use streaming. Using non-streaming mode.]\n\n"
+
+                        # Fallback to non-streaming for this request
+                        result = self._process_non_streaming(tools)
+                        yield result
+                        return
+                    else:
+                        # Log the actual error before re-raising
+                        logger.error(
+                            f"OpenAI API error during streaming initialization: {error_message[:200]}",
+                            exc_info=True
+                        )
+                        # Re-raise if it's a different error
+                        raise
+
+                # Handle provider-specific streaming (PRAGMATIC: type-check instead of abstraction)
+                if isinstance(self.provider, AnthropicProvider):
+                    # Anthropic streaming (native format)
+                    with stream as anthropic_stream:
+                        # Collect assistant message
+                        assistant_message = {"role": "assistant", "content": []}
+                        tool_uses = []
+
+                        # Stream text and collect tool uses
+                        for event in anthropic_stream:
+                            if event.type == "content_block_start":
+                                if event.content_block.type == "text":
+                                    assistant_message["content"].append({"type": "text", "text": ""})
+
+                            elif event.type == "content_block_delta":
+                                if event.delta.type == "text_delta":
+                                    # Stream text to user
+                                    yield event.delta.text
+
+                                    # Add to message content
+                                    for block in assistant_message["content"]:
+                                        if block["type"] == "text":
+                                            block["text"] += event.delta.text
+                                            break
+
+                            elif event.type == "content_block_stop":
+                                if (
+                                    hasattr(event, "content_block")
+                                    and event.content_block.type == "tool_use"
+                                ):
+                                    tool_uses.append(event.content_block)
+                                    assistant_message["content"].append(
+                                        {
+                                            "type": "tool_use",
+                                            "id": event.content_block.id,
+                                            "name": event.content_block.name,
+                                            "input": event.content_block.input,
+                                        }
+                                    )
+
+                        # Get final message
+                        final_message = anthropic_stream.get_final_message()
+
+                        # Track cost (including cache statistics if available)
+                        cache_creation = getattr(final_message.usage, "cache_creation_input_tokens", 0)
+                        cache_read = getattr(final_message.usage, "cache_read_input_tokens", 0)
+
+                        self.tracker.track_llm(
+                            provider="anthropic",
+                            model=self.config.model,
+                            input_tokens=final_message.usage.input_tokens,
+                            output_tokens=final_message.usage.output_tokens,
+                            operation="agent",
+                            cache_creation_tokens=cache_creation,
+                            cache_read_tokens=cache_read,
                         )
 
-                    # Note: tool_uses already collected during streaming (lines 224-237)
-                    # No need to extract from final_message again - would cause duplicates!
+                        # Log cache hit info if debug mode
+                        if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
+                            logger.debug(
+                                f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
+                            )
+
+                        # Add assistant message to history
+                        if assistant_message["content"]:
+                            self.conversation_history.append(assistant_message)
+
+                elif isinstance(self.provider, OpenAIProvider):
+                    # OpenAI streaming (different format)
+                    assistant_message = {"role": "assistant", "content": []}
+                    tool_uses = []
+                    full_text = ""
+                    tool_calls_buffer = {}
+
+                    # Track usage
+                    input_tokens = 0
+                    output_tokens = 0
+
+                    for chunk in stream:
+                        if not chunk.choices:
+                            continue
+
+                        delta = chunk.choices[0].delta
+
+                        # Stream text content
+                        if delta.content:
+                            yield delta.content
+                            full_text += delta.content
+
+                        # Collect tool calls
+                        if delta.tool_calls:
+                            for tool_call in delta.tool_calls:
+                                idx = tool_call.index
+                                if idx not in tool_calls_buffer:
+                                    tool_calls_buffer[idx] = {
+                                        "id": tool_call.id or "",
+                                        "name": "",
+                                        "arguments": "",
+                                    }
+
+                                if tool_call.function:
+                                    if tool_call.function.name:
+                                        tool_calls_buffer[idx]["name"] = tool_call.function.name
+                                    if tool_call.function.arguments:
+                                        tool_calls_buffer[idx]["arguments"] += tool_call.function.arguments
+
+                    # Build assistant message content
+                    if full_text:
+                        assistant_message["content"].append({"type": "text", "text": full_text})
+
+                    # Convert tool calls to Anthropic format
+                    for tool_call_data in tool_calls_buffer.values():
+                        if tool_call_data["name"]:
+                            import json
+
+                            # Parse tool arguments with error handling
+                            try:
+                                parsed_input = json.loads(tool_call_data["arguments"])
+                            except json.JSONDecodeError as e:
+                                logger.error(
+                                    f"Failed to parse tool arguments for {tool_call_data['name']}: {e}. "
+                                    f"Raw arguments: {tool_call_data['arguments'][:200]}"
+                                )
+                                # Use empty dict as fallback (tool will fail gracefully)
+                                parsed_input = {}
+                                # Notify user
+                                yield f"\n[⚠️  Warning: Malformed tool call from API - tool may fail]\n"
+
+                            tool_uses.append(
+                                type(
+                                    "ToolUse",
+                                    (),
+                                    {
+                                        "id": tool_call_data["id"],
+                                        "name": tool_call_data["name"],
+                                        "input": parsed_input,
+                                    },
+                                )()
+                            )
+                            assistant_message["content"].append(
+                                {
+                                    "type": "tool_use",
+                                    "id": tool_call_data["id"],
+                                    "name": tool_call_data["name"],
+                                    "input": parsed_input,
+                                }
+                            )
+
+                    # Estimate tokens (OpenAI doesn't provide usage in streaming)
+                    # Rough estimate: 4 chars per token
+                    input_tokens = sum(len(str(m)) for m in cached_messages) // 4
+                    output_tokens = (len(full_text) + sum(len(str(t)) for t in tool_uses)) // 4
+
+                    # Track cost
+                    self.tracker.track_llm(
+                        provider="openai",
+                        model=self.config.model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        operation="agent",
+                        cache_creation_tokens=0,  # OpenAI doesn't support caching
+                        cache_read_tokens=0,
+                    )
 
                     # Add assistant message to history
                     if assistant_message["content"]:
                         self.conversation_history.append(assistant_message)
 
+                    # Set final_message for compatibility
+                    final_message = type(
+                        "Message",
+                        (),
+                        {"stop_reason": "tool_calls" if tool_uses else "stop"},
+                    )()
+
                 # Check stop reason (outside of with block but inside while)
-                if final_message.stop_reason == "end_turn":
+                stop_reason = final_message.stop_reason
+
+                # Normalize stop reasons (OpenAI uses different names)
+                if stop_reason in ["end_turn", "stop", "length", "max_tokens"]:
                     # Done - no tool calls
                     break
 
-                elif final_message.stop_reason == "tool_use":
+                elif stop_reason in ["tool_use", "tool_calls"]:
                     # Execute tools
                     yield "\n\n"  # Newline before tool execution
 
@@ -639,30 +918,29 @@ class AgentCore:
                 # Update cached messages with latest conversation history (includes tool results)
                 cached_messages = self._add_cache_control_to_messages(self.conversation_history)
 
-                response = self.client.messages.create(
-                    model=self.config.model,
-                    max_tokens=self.config.max_tokens,
-                    temperature=self.config.temperature,
-                    system=system_prompt,
+                # Use provider abstraction
+                response = self.provider.create_message(
                     messages=cached_messages,
                     tools=cached_tools,
+                    system=system_prompt,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
                 )
 
-                # Track cost (including cache statistics if available)
-                cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0)
-                cache_read = getattr(response.usage, "cache_read_input_tokens", 0)
-
+                # Track cost (ProviderResponse has usage dict)
                 self.tracker.track_llm(
-                    provider="anthropic",
+                    provider=self.provider.get_provider_name(),
                     model=self.config.model,
-                    input_tokens=response.usage.input_tokens,
-                    output_tokens=response.usage.output_tokens,
+                    input_tokens=response.usage["input_tokens"],
+                    output_tokens=response.usage["output_tokens"],
                     operation="agent",
-                    cache_creation_tokens=cache_creation,
-                    cache_read_tokens=cache_read,
+                    cache_creation_tokens=response.usage.get("cache_creation_tokens", 0),
+                    cache_read_tokens=response.usage.get("cache_read_tokens", 0),
                 )
 
                 # Log cache hit info if debug mode
+                cache_read = response.usage.get("cache_read_tokens", 0)
+                cache_creation = response.usage.get("cache_creation_tokens", 0)
                 if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
                     logger.debug(
                         f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
@@ -673,21 +951,22 @@ class AgentCore:
 
                 # Extract text
                 for block in response.content:
-                    if block.type == "text":
-                        full_response_text += block.text
+                    if block.get("type") == "text":
+                        full_response_text += block["text"]
 
-                # Check stop reason
-                if response.stop_reason == "end_turn":
+                # Check stop reason (normalize across providers)
+                stop_reason = response.stop_reason
+                if stop_reason in ["end_turn", "stop", "length", "max_tokens"]:
                     break
 
-                elif response.stop_reason == "tool_use":
+                elif stop_reason in ["tool_use", "tool_calls"]:
                     # Execute tools
                     tool_results = []
 
                     for block in response.content:
-                        if block.type == "tool_use":
-                            tool_name = block.name
-                            tool_input = block.input
+                        if block.get("type") == "tool_use":
+                            tool_name = block["name"]
+                            tool_input = block["input"]
 
                             logger.info(f"Executing tool: {tool_name}")
 
@@ -748,7 +1027,7 @@ class AgentCore:
                             tool_results.append(
                                 {
                                     "type": "tool_result",
-                                    "tool_use_id": block.id,
+                                    "tool_use_id": block["id"],
                                     "content": tool_result_content,
                                 }
                             )
@@ -772,6 +1051,13 @@ class AgentCore:
             logger.error(f"Claude API error: {sanitize_error(e)}")
             return f"[❌ API Error: {sanitize_error(e)}]"
         except Exception as e:
+            # Catch both Anthropic and OpenAI errors
+            import openai
+
+            if isinstance(e, (openai.APITimeoutError, openai.RateLimitError, openai.APIError)):
+                logger.error(f"OpenAI API error: {sanitize_error(e)}")
+                return f"[❌ API Error: {sanitize_error(e)}]"
+
             logger.error(f"Non-streaming processing failed: {sanitize_error(e)}", exc_info=True)
             return f"[❌ Unexpected error: {type(e).__name__}: {sanitize_error(e)}]"
 

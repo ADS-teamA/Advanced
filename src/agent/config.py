@@ -161,7 +161,9 @@ class AgentConfig:
     """
 
     # === Core Settings ===
+    # API Keys (provider-specific)
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
+    openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
 
     # Model selection (user can override via CLI)
     model: str = field(
@@ -189,6 +191,21 @@ class AgentConfig:
         default_factory=lambda: os.getenv("ENABLE_PROMPT_CACHING", "true").lower() == "true"
     )
 
+    # === Context Management (Anthropic) ===
+    # Automatically prune old tool results to prevent quadratic cost growth
+    # Uses Anthropic's native Context Management API (server-side)
+    enable_context_management: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_CONTEXT_MANAGEMENT", "true").lower() == "true"
+    )
+    # Trigger threshold: Start pruning when input exceeds this token count
+    context_management_trigger: int = field(
+        default_factory=lambda: int(os.getenv("CONTEXT_MANAGEMENT_TRIGGER", "50000"))
+    )
+    # Keep last N tool uses (older ones are removed first)
+    context_management_keep: int = field(
+        default_factory=lambda: int(os.getenv("CONTEXT_MANAGEMENT_KEEP", "3"))
+    )
+
     # === Debug Mode ===
     debug_mode: bool = False
 
@@ -211,12 +228,21 @@ class AgentConfig:
         - Model name validity
         - Sub-config validation (automatically via __post_init__)
         """
-        # API key validation
-        if not self.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set. Set via environment variable or config.")
+        # API key validation - require at least one API key
+        if not self.anthropic_api_key and not self.openai_api_key:
+            raise ValueError(
+                "No API keys set. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.\n"
+                "Example:\n"
+                "  export ANTHROPIC_API_KEY=sk-ant-...\n"
+                "  export OPENAI_API_KEY=sk-..."
+            )
 
-        if not self.anthropic_api_key.startswith("sk-ant-"):
+        # Validate format if keys are present
+        if self.anthropic_api_key and not self.anthropic_api_key.startswith("sk-ant-"):
             raise ValueError("Anthropic API key has invalid format (should start with sk-ant-)")
+
+        if self.openai_api_key and not (self.openai_api_key.startswith("sk-") or self.openai_api_key.startswith("sk-proj-")):
+            raise ValueError("OpenAI API key has invalid format (should start with sk- or sk-proj-)")
 
         # Numeric range validation
         if self.max_tokens <= 0:
@@ -228,9 +254,18 @@ class AgentConfig:
         if not 0.0 <= self.temperature <= 1.0:
             raise ValueError(f"temperature must be in [0.0, 1.0], got {self.temperature}")
 
-        # Model name validation
-        if "claude" not in self.model.lower():
-            raise ValueError(f"Model name should contain 'claude': {self.model}")
+        # Model name validation - accept both Claude and GPT models
+        model_lower = self.model.lower()
+        is_valid_model = any(
+            keyword in model_lower
+            for keyword in ["claude", "haiku", "sonnet", "opus", "gpt-", "o1", "o3"]
+        )
+
+        if not is_valid_model:
+            raise ValueError(
+                f"Invalid model name: {self.model}\n"
+                f"Supported models: Claude (haiku/sonnet/opus), GPT-5 (gpt-5-mini/gpt-5-nano)"
+            )
 
         # Path validation
         if not self.vector_store_path.exists():
