@@ -31,10 +31,28 @@ class MultiHopSearchInput(ToolInput):
 
 @register_tool
 class MultiHopSearchTool(BaseTool):
-    """Multi-hop search using knowledge graph traversal."""
+    """Multi-hop search via knowledge graph."""
 
     name = "multi_hop_search"
-    description = "Search requiring multi-hop reasoning across documents using knowledge graph. Use for queries like 'find all documents related to X through Y'"
+    description = "Multi-hop graph search"
+    detailed_help = """
+    Search requiring multi-hop reasoning across documents using knowledge graph traversal.
+    Finds documents connected through intermediate entities/relationships.
+
+    **When to use:**
+    - Queries requiring transitive relationships
+    - "Find all X related to Y through Z"
+    - Complex document dependencies
+
+    **Best practices:**
+    - Start with max_hops=2 (sufficient for most queries)
+    - Use max_hops=3 only for complex multi-document reasoning
+    - If no results, try simple_search instead
+
+    **Method:** Graph traversal + embedding search + reranking
+    **Speed:** ~500-1000ms (slower than simple_search)
+    **Requires:** Knowledge graph enabled
+    """
     tier = 2
     input_schema = MultiHopSearchInput
     requires_kg = True
@@ -106,10 +124,27 @@ class CompareDocumentsInput(ToolInput):
 
 @register_tool
 class CompareDocumentsTool(BaseTool):
-    """Compare two documents to find similarities and differences."""
+    """Compare two documents."""
 
     name = "compare_documents"
-    description = "Compare two documents to find similarities, differences, or conflicts. Use for queries like 'compare contract X with regulation Y'"
+    description = "Compare two documents"
+    detailed_help = """
+    Compare two documents to find similarities, differences, and potential conflicts.
+    Uses semantic similarity to identify related sections across documents.
+
+    **When to use:**
+    - "Compare contract X with regulation Y"
+    - Find similarities/differences between documents
+    - Identify conflicts or overlaps
+
+    **Best practices:**
+    - Specify comparison_aspect for focused comparison (e.g., "requirements", "dates")
+    - Works best with documents of similar type/topic
+    - Returns top matching section pairs with similarity scores
+
+    **Method:** Retrieve all chunks from both docs, compare semantically
+    **Speed:** ~1-2s (retrieves full documents)
+    """
     tier = 2
     input_schema = CompareDocumentsInput
 
@@ -213,19 +248,27 @@ class ExplainSearchResultsInput(ToolInput):
 
 @register_tool
 class ExplainSearchResultsTool(BaseTool):
-    """
-    Debug and explain why chunks were retrieved.
-
-    Shows score breakdowns (BM25, Dense, RRF, Rerank) to understand
-    why specific chunks appeared in search results.
-
-    Uses: Score analysis from hybrid search
-    Speed: <100ms (metadata lookup only)
-    Use for: Understanding retrieval behavior and debugging
-    """
+    """Debug search results."""
 
     name = "explain_search_results"
-    description = "Explain why specific chunks were retrieved by showing score breakdowns (BM25, Dense, RRF). Use for debugging retrieval or understanding why certain results appeared."
+    description = "Explain search result scores"
+    detailed_help = """
+    Debug tool to understand why specific chunks were retrieved.
+    Shows score breakdowns: BM25, Dense, RRF, and Rerank scores.
+
+    **When to use:**
+    - Debugging unexpected search results
+    - Understanding why certain chunks appeared
+    - Investigating retrieval quality
+
+    **Best practices:**
+    - Use AFTER a search (requires chunk IDs from search results)
+    - Most useful for debugging, not regular queries
+    - Helps identify which retrieval method (BM25 vs Dense) found the chunk
+
+    **Method:** Score analysis from hybrid search metadata
+    **Speed:** <100ms (metadata lookup only)
+    """
     tier = 2
     input_schema = ExplainSearchResultsInput
 
@@ -336,19 +379,33 @@ class FilteredSearchInput(ToolInput):
 
 @register_tool
 class FilteredSearchTool(BaseTool):
-    """
-    Unified search with multiple filter types.
-
-    Combines document_search, section_search, hybrid_search_with_filters, and temporal_search
-    into a single tool with filter_type parameter.
-
-    Uses: Hybrid search with specified filtering
-    Speed: ~100-300ms depending on filter type
-    Use for: Focused search with any type of filter (document, section, metadata, temporal)
-    """
+    """Hybrid search with filters."""
 
     name = "filtered_search"
-    description = "Hybrid search with document, section, metadata, or temporal filters"
+    description = "Hybrid search with filters"
+    detailed_help = """
+    Hybrid search with various filter types: document, section, metadata, or temporal.
+
+    **Filter types:**
+    - 'document': Search within specific document (fastest)
+    - 'section': Search within specific section (requires document_id)
+    - 'metadata': Filter by document/section type
+    - 'temporal': Search within date range
+
+    **When to use:**
+    - Search within specific document or section
+    - Limit to documents of certain type
+    - Find content from specific time period
+
+    **Best practices:**
+    - Use 'document' filter for fastest results
+    - 'section' filter requires document_id parameter
+    - 'temporal' filters work with date-enabled documents only
+    - Combine filters when possible (e.g., document + temporal)
+
+    **Method:** Hybrid search + filter
+    **Speed:** ~100-300ms (depending on filter type)
+    """
     tier = 2
     input_schema = FilteredSearchInput
 
@@ -518,18 +575,31 @@ class SimilaritySearchInput(ToolInput):
 
 @register_tool
 class SimilaritySearchTool(BaseTool):
-    """
-    Unified similarity search tool.
-
-    Combines find_related_chunks and chunk_similarity_search into a single tool.
-
-    Uses: Chunk embedding for similarity search
-    Speed: 500-1000ms
-    Use for: Finding semantically related or similar chunks
-    """
+    """Find similar chunks."""
 
     name = "similarity_search"
-    description = "Find semantically similar or related chunks"
+    description = "Find similar chunks"
+    detailed_help = """
+    Find semantically similar or related chunks based on embedding similarity.
+
+    **Search modes:**
+    - 'related': Semantically related content
+    - 'similar': More content like this
+
+    **When to use:**
+    - Find content similar to a specific chunk
+    - Explore related information
+    - "Show me more like this"
+
+    **Best practices:**
+    - Requires chunk_id from previous search result
+    - Use k=5-10 for best results
+    - Set cross_document=false to search within same document only
+    - Good for discovering related content
+
+    **Method:** Dense embedding similarity (cosine)
+    **Speed:** ~200-500ms
+    """
     tier = 2
     input_schema = SimilaritySearchInput
 
@@ -670,18 +740,33 @@ class EntityToolInput(ToolInput):
 
 @register_tool
 class EntityTool(BaseTool):
-    """
-    Unified entity operations tool.
-
-    Combines entity_search, explain_entity, and get_entity_relationships.
-
-    Uses: Vector search + Knowledge graph (for explain/relationships)
-    Speed: 150ms-2s depending on operation
-    Use for: All entity-related operations
-    """
+    """Entity search and analysis."""
 
     name = "entity_tool"
-    description = "Search, explain, or get relationships for entities"
+    description = "Search/analyze entities"
+    detailed_help = """
+    Unified tool for entity operations: search, explain, and get relationships.
+
+    **Operations:**
+    - 'search': Find mentions of entity in documents
+    - 'explain': Get detailed entity information
+    - 'relationships': Get entity relationships from knowledge graph
+
+    **When to use:**
+    - Entity-focused queries (people, organizations, concepts)
+    - "Find all mentions of X"
+    - "How is X related to Y"
+
+    **Best practices:**
+    - Use 'search' for finding entity mentions
+    - Use 'explain' for entity metadata and context
+    - Use 'relationships' to explore connections (requires knowledge graph)
+    - Specify relationship_type to filter (e.g., "LOCATED_IN", "PART_OF")
+
+    **Method:** Vector search + Knowledge graph
+    **Speed:** ~100-500ms (search), ~500-2s (relationships)
+    **Requires:** Knowledge graph (for explain/relationships operations)
+    """
     tier = 2
     input_schema = EntityToolInput
 
@@ -938,18 +1023,34 @@ class ExpandContextInput(ToolInput):
 
 @register_tool
 class ExpandContextTool(BaseTool):
-    """
-    Unified context expansion tool.
-
-    Combines get_chunk_context and expand_search_context into a single tool.
-
-    Uses: Metadata + embeddings (for similarity mode)
-    Speed: 100ms-1s depending on mode
-    Use for: Expanding chunks with additional context
-    """
+    """Expand chunk context."""
 
     name = "expand_context"
-    description = "Expand chunks with adjacent, section, similarity, or hybrid context"
+    description = "Expand chunk context"
+    detailed_help = """
+    Expand chunks with additional surrounding or related context.
+
+    **Expansion modes:**
+    - 'adjacent': Chunks immediately before/after (linear context)
+    - 'section': All chunks from same section
+    - 'similarity': Semantically similar chunks
+    - 'hybrid': Combination of section + similarity
+
+    **When to use:**
+    - Need more context around a specific chunk
+    - Answer requires surrounding text
+    - Chunk alone is insufficient
+
+    **Best practices:**
+    - Use 'adjacent' for simple before/after context
+    - Use 'section' to see full section around chunk
+    - Use 'similarity' to find related content elsewhere
+    - Use 'hybrid' for comprehensive context
+    - Start with k=3, increase if needed
+
+    **Method:** Metadata lookup + embeddings (similarity mode)
+    **Speed:** ~100-500ms (depending on mode)
+    """
     tier = 2
     input_schema = ExpandContextInput
 

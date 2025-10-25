@@ -31,10 +31,29 @@ class TimelineViewInput(ToolInput):
 
 @register_tool
 class TimelineViewTool(BaseTool):
-    """Extract temporal information and create timeline."""
+    """Extract temporal timeline."""
 
     name = "timeline_view"
-    description = "Extract and organize temporal information into a timeline. Use for queries like 'show me the timeline of events' or 'when did things happen'"
+    description = "Extract temporal timeline"
+    detailed_help = """
+    Extract and organize temporal information into a chronological timeline.
+    Uses pattern matching and metadata to identify dates and events.
+
+    **When to use:**
+    - "Show me the timeline"
+    - "When did things happen"
+    - Chronological queries about events
+
+    **Best practices:**
+    - Works best with date-rich documents
+    - Specify document_id for faster, focused results
+    - Use query parameter to filter specific events
+    - Returns events sorted chronologically
+
+    **Method:** Search + date extraction + LLM parsing
+    **Speed:** ~1-3s (includes LLM processing)
+    **Cost:** Higher (uses LLM for date extraction)
+    """
     tier = 3
     input_schema = TimelineViewInput
 
@@ -114,10 +133,28 @@ class SummarizeSectionInput(ToolInput):
 
 @register_tool
 class SummarizeSectionTool(BaseTool):
-    """Summarize a specific document section."""
+    """Summarize document section."""
 
     name = "summarize_section"
-    description = "Summarize a specific section of a document. Use for queries like 'summarize section 3 of GRI 306'"
+    description = "Summarize document section"
+    detailed_help = """
+    Generate a high-quality summary of a specific document section using LLM.
+
+    **When to use:**
+    - "Summarize section X of document Y"
+    - Need concise overview of specific section
+    - Want LLM-generated summary (vs existing summary)
+
+    **Best practices:**
+    - Requires section_id (get from get_document_info with info_type='sections' first)
+    - More expensive than retrieval-based tools (uses LLM)
+    - Returns structured summary with key points
+    - Use only when existing summaries insufficient
+
+    **Method:** Retrieve section chunks + LLM summarization
+    **Speed:** ~2-5s (LLM generation)
+    **Cost:** Higher (LLM API call)
+    """
     tier = 3
     input_schema = SummarizeSectionInput
 
@@ -207,18 +244,34 @@ class GetStatsInput(ToolInput):
 
 @register_tool
 class GetStatsTool(BaseTool):
-    """
-    Unified statistics tool.
-
-    Combines get_statistics and get_index_statistics into a single tool.
-
-    Uses: Vector store + KG metadata
-    Speed: <100ms
-    Use for: All statistics and analytics queries
-    """
+    """Get corpus/index statistics."""
 
     name = "get_stats"
-    description = "Get corpus, index, document, or entity statistics"
+    description = "Get corpus/index stats"
+    detailed_help = """
+    Get statistics about corpus, index, documents, or entities.
+
+    **Stat scopes:**
+    - 'corpus': Overall document counts, sizes
+    - 'index': Comprehensive FAISS index stats (layers, dimensions, cache)
+    - 'document': Per-document statistics
+    - 'entity': Knowledge graph entity statistics
+
+    **When to use:**
+    - "How many documents?"
+    - "Corpus statistics"
+    - "Index information"
+    - System/debugging queries
+
+    **Best practices:**
+    - Use 'corpus' for quick document counts
+    - Use 'index' for detailed FAISS information
+    - Set include_cache_stats=true for embedding cache info
+    - Fast metadata aggregation (no search required)
+
+    **Method:** Metadata aggregation
+    **Speed:** <100ms (metadata lookup only)
+    """
     tier = 3
     input_schema = GetStatsInput
 
