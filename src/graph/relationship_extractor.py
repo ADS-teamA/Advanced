@@ -21,6 +21,7 @@ try:
 except ImportError:
     import sys
     import os
+
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from cost_tracker import get_global_tracker
 
@@ -67,6 +68,7 @@ class RelationshipExtractor:
         if self.config.llm_provider == "openai":
             try:
                 from openai import OpenAI
+
                 self.client = OpenAI(api_key=self.api_key)
             except ImportError:
                 raise ImportError("openai package not installed")
@@ -74,6 +76,7 @@ class RelationshipExtractor:
         elif self.config.llm_provider == "anthropic":
             try:
                 from anthropic import Anthropic
+
                 self.client = Anthropic(api_key=self.api_key)
             except ImportError:
                 raise ImportError("anthropic package not installed")
@@ -96,7 +99,9 @@ class RelationshipExtractor:
         Returns:
             List of extracted Relationship objects
         """
-        logger.info(f"Extracting relationships for {len(entities)} entities across {len(chunks)} chunks...")
+        logger.info(
+            f"Extracting relationships for {len(entities)} entities across {len(chunks)} chunks..."
+        )
 
         all_relationships = []
 
@@ -156,12 +161,14 @@ class RelationshipExtractor:
             chunk_tasks.append((chunk, chunk_ents))
 
         # Batch processing
-        batches = [chunk_tasks[i:i + self.config.batch_size] for i in range(0, len(chunk_tasks), self.config.batch_size)]
+        batches = [
+            chunk_tasks[i : i + self.config.batch_size]
+            for i in range(0, len(chunk_tasks), self.config.batch_size)
+        ]
 
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
             futures = {
-                executor.submit(self._extract_from_chunk_batch, batch): batch
-                for batch in batches
+                executor.submit(self._extract_from_chunk_batch, batch): batch for batch in batches
             }
 
             for future in as_completed(futures):
@@ -173,7 +180,9 @@ class RelationshipExtractor:
 
         return all_relationships
 
-    def _extract_from_chunk_batch(self, batch: List[Tuple[Dict[str, Any], List[Entity]]]) -> List[Relationship]:
+    def _extract_from_chunk_batch(
+        self, batch: List[Tuple[Dict[str, Any], List[Entity]]]
+    ) -> List[Relationship]:
         """Extract relationships from a batch of (chunk, entities) pairs."""
         batch_relationships = []
 
@@ -200,7 +209,9 @@ class RelationshipExtractor:
 
         return batch_relationships
 
-    def _extract_from_single_chunk(self, chunk: Dict[str, Any], entities: List[Entity]) -> List[Relationship]:
+    def _extract_from_single_chunk(
+        self, chunk: Dict[str, Any], entities: List[Entity]
+    ) -> List[Relationship]:
         """Extract relationships from a single chunk using LLM."""
         chunk_id = chunk.get("id", str(uuid.uuid4()))
         chunk_content = chunk.get("raw_content", chunk.get("content", ""))
@@ -296,8 +307,11 @@ class RelationshipExtractor:
                     response = self.client.chat.completions.create(
                         model=self.config.llm_model,
                         messages=[
-                            {"role": "system", "content": "You are an expert at extracting semantic relationships from legal documents. Always return valid JSON."},
-                            {"role": "user", "content": prompt}
+                            {
+                                "role": "system",
+                                "content": "You are an expert at extracting semantic relationships from legal documents. Always return valid JSON.",
+                            },
+                            {"role": "user", "content": prompt},
                         ],
                         temperature=self.config.temperature,
                         max_tokens=4000,
@@ -309,7 +323,7 @@ class RelationshipExtractor:
                         model=self.config.llm_model,
                         input_tokens=response.usage.prompt_tokens,
                         output_tokens=response.usage.completion_tokens,
-                        operation="kg_extraction"
+                        operation="kg_extraction",
                     )
 
                     return response.choices[0].message.content.strip()
@@ -319,9 +333,7 @@ class RelationshipExtractor:
                         model=self.config.llm_model,
                         max_tokens=4000,
                         temperature=self.config.temperature,
-                        messages=[
-                            {"role": "user", "content": prompt}
-                        ],
+                        messages=[{"role": "user", "content": prompt}],
                         system="You are an expert at extracting semantic relationships from legal documents. Always return valid JSON.",
                     )
 
@@ -331,7 +343,7 @@ class RelationshipExtractor:
                         model=self.config.llm_model,
                         input_tokens=response.usage.input_tokens,
                         output_tokens=response.usage.output_tokens,
-                        operation="kg_extraction"
+                        operation="kg_extraction",
                     )
 
                     return response.content[0].text.strip()
@@ -340,6 +352,7 @@ class RelationshipExtractor:
                 logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     import time
+
                     time.sleep(1.0 * (attempt + 1))
                 else:
                     raise
@@ -363,7 +376,7 @@ class RelationshipExtractor:
 
         try:
             # Extract JSON from response
-            json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_text, re.DOTALL)
+            json_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", response_text, re.DOTALL)
             if json_match:
                 json_text = json_match.group(1)
             else:
@@ -432,7 +445,7 @@ class RelationshipExtractor:
 
         # Truncate evidence if too long
         if len(evidence_text) > self.config.max_evidence_length:
-            evidence_text = evidence_text[:self.config.max_evidence_length] + "..."
+            evidence_text = evidence_text[: self.config.max_evidence_length] + "..."
 
         # Create relationship
         relationship = Relationship(

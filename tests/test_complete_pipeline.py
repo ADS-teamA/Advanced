@@ -24,15 +24,13 @@ from multi_layer_chunker import MultiLayerChunker
 def test_phase1_only(pdf_path: Path, output_dir: Path):
     """Test PHASE 1: Smart hierarchy extraction."""
 
-    print("="*80)
+    print("=" * 80)
     print("PHASE 1: Smart Hierarchy Extraction")
-    print("="*80)
+    print("=" * 80)
     print()
 
     config = ExtractionConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=False,
-        extract_tables=True
+        enable_smart_hierarchy=True, generate_summaries=False, extract_tables=True
     )
 
     extractor = DoclingExtractorV2(config)
@@ -51,9 +49,9 @@ def test_phase1_phase2(pdf_path: Path, output_dir: Path):
     """Test PHASE 1 + PHASE 2: Smart hierarchy + Summaries."""
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("PHASE 1 + 2: Smart Hierarchy + Generic Summaries")
-    print("="*80)
+    print("=" * 80)
     print()
 
     config = ExtractionConfig(
@@ -61,7 +59,7 @@ def test_phase1_phase2(pdf_path: Path, output_dir: Path):
         generate_summaries=True,
         summary_model="gpt-4o-mini",
         summary_max_chars=150,
-        extract_tables=True
+        extract_tables=True,
     )
 
     try:
@@ -70,7 +68,9 @@ def test_phase1_phase2(pdf_path: Path, output_dir: Path):
 
         print(f"✓ Document extracted with summaries")
         print(f"  Sections: {result.num_sections}")
-        print(f"  Document summary: {result.document_summary[:80] if result.document_summary else 'N/A'}...")
+        print(
+            f"  Document summary: {result.document_summary[:80] if result.document_summary else 'N/A'}..."
+        )
 
         # Count sections with summaries
         sections_with_summaries = sum(1 for s in result.sections if s.summary)
@@ -92,17 +92,13 @@ def test_phase3_chunking(result, output_dir: Path):
         return None
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("PHASE 3: Multi-Layer Chunking + SAC")
-    print("="*80)
+    print("=" * 80)
     print()
 
     # Create chunker
-    chunker = MultiLayerChunker(
-        chunk_size=500,
-        chunk_overlap=0,
-        enable_sac=True
-    )
+    chunker = MultiLayerChunker(chunk_size=500, chunk_overlap=0, enable_sac=True)
 
     # Chunk document
     chunks_dict = chunker.chunk_document(result)
@@ -115,7 +111,7 @@ def test_phase3_chunking(result, output_dir: Path):
     print(f"  Total chunks:       {stats['total_chunks']}")
     print()
 
-    if 'layer3_avg_size' in stats:
+    if "layer3_avg_size" in stats:
         print(f"Layer 3 statistics:")
         print(f"  Average chunk size: {stats['layer3_avg_size']:.0f} chars")
         print(f"  Min chunk size:     {stats['layer3_min_size']} chars")
@@ -131,14 +127,14 @@ def test_phase3_chunking(result, output_dir: Path):
         "metadata": {
             "document_id": result.document_id,
             "source_path": result.source_path,
-            "chunking_stats": stats
+            "chunking_stats": stats,
         },
         "layer1": [c.to_dict() for c in chunks_dict["layer1"]],
         "layer2": [c.to_dict() for c in chunks_dict["layer2"]],
-        "layer3": [c.to_dict() for c in chunks_dict["layer3"]]
+        "layer3": [c.to_dict() for c in chunks_dict["layer3"]],
     }
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(chunks_export, f, indent=2, ensure_ascii=False)
 
     print()
@@ -151,9 +147,9 @@ def demonstrate_sac(chunks_dict):
     """Demonstrate how SAC works."""
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("SAC (Summary-Augmented Chunking) DEMONSTRATION")
-    print("="*80)
+    print("=" * 80)
     print()
 
     if not chunks_dict or not chunks_dict["layer3"]:
@@ -181,7 +177,7 @@ def demonstrate_sac(chunks_dict):
 
     print("SAC Summary Prepended:")
     print("-" * 80)
-    sac_summary = chunk.content[:len(chunk.content) - len(chunk.raw_content)]
+    sac_summary = chunk.content[: len(chunk.content) - len(chunk.raw_content)]
     print(sac_summary)
     print()
 
@@ -195,9 +191,9 @@ def show_layer_hierarchy(chunks_dict):
     """Show hierarchical relationships between layers."""
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("LAYER HIERARCHY")
-    print("="*80)
+    print("=" * 80)
     print()
 
     if not chunks_dict:
@@ -241,9 +237,9 @@ def main():
 
     output_dir = Path("output/complete_pipeline_test")
 
-    print("="*80)
+    print("=" * 80)
     print("COMPLETE RAG PIPELINE TEST")
-    print("="*80)
+    print("=" * 80)
     print()
     print(f"Document: {pdf_path.name}")
     print(f"Output:   {output_dir}")
@@ -260,9 +256,9 @@ def main():
         show_layer_hierarchy(chunks)
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("✓ COMPLETE PIPELINE TEST FINISHED")
-    print("="*80)
+    print("=" * 80)
     print()
     print("Next steps:")
     print("  1. Review chunked output in JSON")

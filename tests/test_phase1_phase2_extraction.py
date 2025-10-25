@@ -22,15 +22,15 @@ from docling_extractor_v2 import DoclingExtractorV2
 def test_phase1_only(pdf_path: Path, output_dir: Path):
     """Test PHASE 1: Smart hierarchy extraction WITHOUT summaries."""
 
-    print("="*80)
+    print("=" * 80)
     print("TEST 1: PHASE 1 ONLY (Smart Hierarchy)")
-    print("="*80)
+    print("=" * 80)
     print()
 
     config = ExtractionConfig(
         enable_smart_hierarchy=True,
         generate_summaries=False,  # Disable PHASE 2
-        extract_tables=True
+        extract_tables=True,
     )
 
     extractor = DoclingExtractorV2(config)
@@ -50,7 +50,7 @@ def test_phase1_only(pdf_path: Path, output_dir: Path):
     output_path = output_dir / f"{pdf_path.stem}_phase1_only.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, indent=2, ensure_ascii=False)
 
     print(f"\n✓ Saved to: {output_path}")
@@ -69,9 +69,9 @@ def test_phase1_phase2(pdf_path: Path, output_dir: Path):
     """Test PHASE 1 + PHASE 2: Smart hierarchy + Generic summaries."""
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("TEST 2: PHASE 1 + PHASE 2 (Smart Hierarchy + Summaries)")
-    print("="*80)
+    print("=" * 80)
     print()
 
     config = ExtractionConfig(
@@ -80,7 +80,7 @@ def test_phase1_phase2(pdf_path: Path, output_dir: Path):
         summary_model="gpt-4o-mini",
         summary_max_chars=150,
         summary_style="generic",
-        extract_tables=True
+        extract_tables=True,
     )
 
     # NOTE: Requires OPENAI_API_KEY environment variable
@@ -100,12 +100,14 @@ def test_phase1_phase2(pdf_path: Path, output_dir: Path):
     print(f"  Hierarchy depth: {result.hierarchy_depth}")
     print(f"  Root sections: {result.num_roots}")
     print(f"  Tables: {result.num_tables}")
-    print(f"  Document summary: {result.document_summary[:80] if result.document_summary else 'N/A'}...")
+    print(
+        f"  Document summary: {result.document_summary[:80] if result.document_summary else 'N/A'}..."
+    )
 
     # Save to JSON
     output_path = output_dir / f"{pdf_path.stem}_phase1_phase2.json"
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, indent=2, ensure_ascii=False)
 
     print(f"\n✓ Saved to: {output_path}")
@@ -128,16 +130,20 @@ def compare_results(phase1_result, phase2_result):
         return
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("COMPARISON: PHASE 1 vs PHASE 1+2")
-    print("="*80)
+    print("=" * 80)
     print()
 
     print(f"{'Metric':<30} {'PHASE 1 Only':<20} {'PHASE 1+2':<20}")
     print("-" * 80)
     print(f"{'Sections':<30} {phase1_result.num_sections:<20} {phase2_result.num_sections:<20}")
-    print(f"{'Hierarchy depth':<30} {phase1_result.hierarchy_depth:<20} {phase2_result.hierarchy_depth:<20}")
-    print(f"{'Document summary':<30} {'No':<20} {'Yes' if phase2_result.document_summary else 'No':<20}")
+    print(
+        f"{'Hierarchy depth':<30} {phase1_result.hierarchy_depth:<20} {phase2_result.hierarchy_depth:<20}"
+    )
+    print(
+        f"{'Document summary':<30} {'No':<20} {'Yes' if phase2_result.document_summary else 'No':<20}"
+    )
 
     # Count sections with summaries
     sections_with_summaries = sum(1 for s in phase2_result.sections if s.summary)
@@ -163,9 +169,9 @@ def main():
     compare_results(phase1_result, phase2_result)
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("✓ ALL TESTS COMPLETED")
-    print("="*80)
+    print("=" * 80)
     print()
     print("Next steps:")
     print("  1. Review extracted hierarchy in JSON files")

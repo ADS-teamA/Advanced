@@ -22,19 +22,19 @@ from .indexing_pipeline import IndexingPipeline, IndexingConfig
 
 __all__ = [
     # Configuration
-    'ExtractionConfig',
-    'RAGConfig',
+    "ExtractionConfig",
+    "RAGConfig",
     # Extraction
-    'DoclingExtractorV2',
-    'SummaryGenerator',
+    "DoclingExtractorV2",
+    "SummaryGenerator",
     # Chunking
-    'MultiLayerChunker',
-    'Chunk',
-    'ChunkMetadata',
+    "MultiLayerChunker",
+    "Chunk",
+    "ChunkMetadata",
     # Embedding & Indexing
-    'EmbeddingGenerator',
-    'EmbeddingConfig',
-    'FAISSVectorStore',
-    'IndexingPipeline',
-    'IndexingConfig'
+    "EmbeddingGenerator",
+    "EmbeddingConfig",
+    "FAISSVectorStore",
+    "IndexingPipeline",
+    "IndexingConfig",
 ]

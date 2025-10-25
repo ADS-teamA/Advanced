@@ -24,6 +24,7 @@ try:
 except ImportError:
     import sys
     import os
+
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from cost_tracker import get_global_tracker
     from utils.security import sanitize_error
@@ -115,17 +116,17 @@ class AgentCore:
         text = html.unescape(text)
 
         # Remove markdown headers (## Header)
-        text = re.sub(r'#+\s+', '', text)
+        text = re.sub(r"#+\s+", "", text)
 
         # Remove markdown bold/italic (**text**, *text*)
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+        text = re.sub(r"\*([^*]+)\*", r"\1", text)
 
         # Replace multiple newlines with space
-        text = re.sub(r'\n+', ' ', text)
+        text = re.sub(r"\n+", " ", text)
 
         # Replace multiple spaces with single space
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # Strip leading/trailing whitespace
         text = text.strip()
@@ -134,10 +135,14 @@ class AgentCore:
 
     def initialize_with_documents(self):
         """
-        Initialize conversation by calling get_document_list and list_available_tools.
+        Initialize conversation by providing available documents.
 
-        Adds document list and tool list to conversation history so agent has context
-        about available documents and tools before first user query.
+        Adds document list to conversation history so agent knows what documents
+        are available for search. Tool definitions are provided separately via
+        the API 'tools' parameter and cached for efficiency.
+
+        Note: Tool list is NOT included here to avoid duplication - Claude receives
+        tool definitions directly via API parameter with prompt caching.
         """
         if self._initialized_with_documents:
             return  # Already initialized
@@ -163,7 +168,8 @@ class AgentCore:
                 logger.info("No documents available for initialization")
                 return
 
-            # Build document list message
+            # Build document list message (ONLY documents, NOT tools)
+            # Tools are provided via API 'tools' parameter and cached separately
             doc_list_text = f"Available documents in the system ({count}):\n\n"
             for doc in documents:
                 doc_id = doc.get("id", "Unknown")
@@ -175,72 +181,31 @@ class AgentCore:
                 # Truncate to first sentence or 150 chars
                 if len(summary) > 150:
                     # Try to cut at sentence boundary
-                    sentence_end = summary.find('. ', 0, 150)
+                    sentence_end = summary.find(". ", 0, 150)
                     if sentence_end > 50:  # Found reasonable sentence
-                        summary = summary[:sentence_end + 1]
+                        summary = summary[: sentence_end + 1]
                     else:
                         summary = summary[:150] + "..."
 
                 doc_list_text += f"- {doc_id}: {summary}\n"
 
-            # Get tool list tool
-            tool_list_tool = self.registry.get_tool("list_available_tools")
-            if not tool_list_tool:
-                logger.warning("list_available_tools tool not available for initialization")
-                # Continue without tools list
-                tool_list_text = ""
-            else:
-                # Execute tool list tool
-                tool_result = tool_list_tool.execute()
-
-                if not tool_result.success or not tool_result.data:
-                    logger.warning("Failed to get tool list for initialization")
-                    tool_list_text = ""
-                else:
-                    tools = tool_result.data.get("tools", [])
-                    tool_count = len(tools)
-
-                    # Build tool list message (summary only, not full details)
-                    tool_list_text = f"\n\nAvailable tools ({tool_count}):\n\n"
-
-                    # Group by tier
-                    tier1_tools = [t for t in tools if "Tier 1" in t.get("tier", "")]
-                    tier2_tools = [t for t in tools if "Tier 2" in t.get("tier", "")]
-                    tier3_tools = [t for t in tools if "Tier 3" in t.get("tier", "")]
-
-                    if tier1_tools:
-                        tool_list_text += "TIER 1 - Basic Retrieval (fast, <100ms):\n"
-                        for tool in tier1_tools:
-                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
-
-                    if tier2_tools:
-                        tool_list_text += "\nTIER 2 - Advanced Retrieval (500-1000ms):\n"
-                        for tool in tier2_tools:
-                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
-
-                    if tier3_tools:
-                        tool_list_text += "\nTIER 3 - Analysis & Insights (1-3s):\n"
-                        for tool in tier3_tools:
-                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
-
-            # Combine messages
-            init_message = doc_list_text + tool_list_text
-            init_message += "\n\n(This is system initialization - the user will now ask questions about these documents)"
+            # Add footer explaining initialization
+            init_message = doc_list_text
+            init_message += "\n(These are the documents available in the system. Use your tools to search and analyze them.)"
 
             # Add as first message in conversation history
-            self.conversation_history.append({
-                "role": "user",
-                "content": init_message
-            })
+            self.conversation_history.append({"role": "user", "content": init_message})
 
             # Add simple acknowledgment from assistant
-            self.conversation_history.append({
-                "role": "assistant",
-                "content": "I understand. I have access to these documents and will use the appropriate tools to search them and answer user questions."
-            })
+            self.conversation_history.append(
+                {
+                    "role": "assistant",
+                    "content": "I understand. I have access to these documents and will use the appropriate tools to search and analyze them.",
+                }
+            )
 
             self._initialized_with_documents = True
-            logger.debug(f"Initialized conversation with {count} documents and {len(self.registry)} tools")
+            logger.info(f"Initialized conversation with {count} documents")
 
         except (FileNotFoundError, PermissionError) as e:
             logger.warning(f"Document initialization failed - file access issue: {e}")
@@ -249,7 +214,9 @@ class AgentCore:
             logger.error(f"Invalid metadata structure during initialization: {e}")
             # This indicates a data corruption issue - log as error
         except Exception as e:
-            logger.error(f"Unexpected error initializing documents: {sanitize_error(e)}", exc_info=True)
+            logger.error(
+                f"Unexpected error initializing documents: {sanitize_error(e)}", exc_info=True
+            )
             # Log as error for unexpected issues, but don't crash - continue without initialization
 
     def reset_conversation(self):
@@ -302,7 +269,7 @@ class AgentCore:
             # Add a system message explaining what happened
             system_notice = {
                 "role": "assistant",
-                "content": f"[Note: Conversation history was trimmed. I can only access the last {MAX_HISTORY_MESSAGES} messages. Earlier context ({messages_removed} messages) is no longer available.]"
+                "content": f"[Note: Conversation history was trimmed. I can only access the last {MAX_HISTORY_MESSAGES} messages. Earlier context ({messages_removed} messages) is no longer available.]",
             }
             # Insert notice at beginning of trimmed history so Claude sees it
             self.conversation_history.insert(0, system_notice)
@@ -323,10 +290,7 @@ class AgentCore:
         Returns:
             List of system prompt blocks
         """
-        system_block = {
-            "type": "text",
-            "text": self.config.system_prompt
-        }
+        system_block = {"type": "text", "text": self.config.system_prompt}
 
         # Add cache control if enabled
         if self.config.enable_prompt_caching:
@@ -354,6 +318,7 @@ class AgentCore:
 
         # Deep copy to avoid modifying original
         import copy
+
         cached_tools = copy.deepcopy(tools)
 
         # Add cache control to last tool
@@ -361,7 +326,9 @@ class AgentCore:
 
         return cached_tools
 
-    def _add_cache_control_to_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _add_cache_control_to_messages(
+        self, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
         Add cache control to specific messages for Anthropic prompt caching.
 
@@ -380,6 +347,7 @@ class AgentCore:
 
         # Deep copy to avoid modifying original
         import copy
+
         cached_messages = copy.deepcopy(messages)
 
         # Add cache control to assistant's acknowledgment (2nd message after init)
@@ -391,7 +359,7 @@ class AgentCore:
                     {
                         "type": "text",
                         "text": cached_messages[1]["content"],
-                        "cache_control": {"type": "ephemeral"}
+                        "cache_control": {"type": "ephemeral"},
                     }
                 ]
             elif isinstance(cached_messages[1]["content"], list):
@@ -524,8 +492,8 @@ class AgentCore:
                     final_message = stream.get_final_message()
 
                     # Track cost (including cache statistics if available)
-                    cache_creation = getattr(final_message.usage, 'cache_creation_input_tokens', 0)
-                    cache_read = getattr(final_message.usage, 'cache_read_input_tokens', 0)
+                    cache_creation = getattr(final_message.usage, "cache_creation_input_tokens", 0)
+                    cache_read = getattr(final_message.usage, "cache_read_input_tokens", 0)
 
                     self.tracker.track_llm(
                         provider="anthropic",
@@ -534,7 +502,7 @@ class AgentCore:
                         output_tokens=final_message.usage.output_tokens,
                         operation="agent",
                         cache_creation_tokens=cache_creation,
-                        cache_read_tokens=cache_read
+                        cache_read_tokens=cache_read,
                     )
 
                     # Log cache hit info if debug mode
@@ -573,11 +541,36 @@ class AgentCore:
 
                         result = self.registry.execute_tool(tool_name, **tool_input)
 
+                        # Estimate cost of tool result (tokens added to context)
+                        # Tool results are sent back to Claude in the next API call as input tokens
+                        estimated_cost = 0.0
+                        if result.estimated_tokens > 0:
+                            # Get input cost per 1M tokens for current model
+                            try:
+                                from ..cost_tracker import PRICING
+
+                                model_pricing = PRICING.get("anthropic", {}).get(self.config.model)
+                                if model_pricing:
+                                    input_price_per_1m = model_pricing.get("input", 0.0)
+                                    estimated_cost = (
+                                        result.estimated_tokens / 1_000_000
+                                    ) * input_price_per_1m
+                            except (KeyError, ValueError, ImportError) as e:
+                                logger.error(
+                                    f"Failed to calculate tool result cost for {tool_name}: {e}"
+                                )
+
+                        # Log tool execution with cost estimate
+                        logger.info(
+                            f"Tool '{tool_name}' result: ~{result.estimated_tokens} tokens, "
+                            f"~${estimated_cost:.6f} cost estimate"
+                        )
+
                         # Check for tool failure and alert user
                         if not result.success:
                             logger.error(
                                 f"Tool '{tool_name}' failed: {result.error}",
-                                extra={"tool_input": tool_input, "metadata": result.metadata}
+                                extra={"tool_input": tool_input, "metadata": result.metadata},
                             )
                             # Alert user in streaming mode if show_tool_calls is enabled (in blue)
                             if self.config.cli_config.show_tool_calls:
@@ -590,6 +583,8 @@ class AgentCore:
                                 "input": tool_input,
                                 "success": result.success,
                                 "execution_time_ms": result.execution_time_ms,
+                                "estimated_tokens": result.estimated_tokens,
+                                "estimated_cost": estimated_cost,
                             }
                         )
 
@@ -654,8 +649,8 @@ class AgentCore:
                 )
 
                 # Track cost (including cache statistics if available)
-                cache_creation = getattr(response.usage, 'cache_creation_input_tokens', 0)
-                cache_read = getattr(response.usage, 'cache_read_input_tokens', 0)
+                cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0)
+                cache_read = getattr(response.usage, "cache_read_input_tokens", 0)
 
                 self.tracker.track_llm(
                     provider="anthropic",
@@ -664,7 +659,7 @@ class AgentCore:
                     output_tokens=response.usage.output_tokens,
                     operation="agent",
                     cache_creation_tokens=cache_creation,
-                    cache_read_tokens=cache_read
+                    cache_read_tokens=cache_read,
                 )
 
                 # Log cache hit info if debug mode
@@ -698,12 +693,39 @@ class AgentCore:
 
                             result = self.registry.execute_tool(tool_name, **tool_input)
 
+                            # Estimate cost of tool result (tokens added to context)
+                            # Tool results are sent back to Claude in the next API call as input tokens
+                            estimated_cost = 0.0
+                            if result.estimated_tokens > 0:
+                                # Get input cost per 1M tokens for current model
+                                try:
+                                    from ..cost_tracker import PRICING
+
+                                    model_pricing = PRICING.get("anthropic", {}).get(
+                                        self.config.model
+                                    )
+                                    if model_pricing:
+                                        input_price_per_1m = model_pricing.get("input", 0.0)
+                                        estimated_cost = (
+                                            result.estimated_tokens / 1_000_000
+                                        ) * input_price_per_1m
+                                except (KeyError, ValueError, ImportError) as e:
+                                    logger.error(
+                                        f"Failed to calculate tool result cost for {tool_name}: {e}"
+                                    )
+
+                            # Log tool execution with cost estimate
+                            logger.info(
+                                f"Tool '{tool_name}' result: ~{result.estimated_tokens} tokens, "
+                                f"~${estimated_cost:.6f} cost estimate"
+                            )
+
                             # Check for tool failure and log error
                             if not result.success:
                                 error_msg = f"⚠️  Tool '{tool_name}' failed: {result.error}"
                                 logger.error(
                                     f"Tool '{tool_name}' failed: {result.error}",
-                                    extra={"tool_input": tool_input, "metadata": result.metadata}
+                                    extra={"tool_input": tool_input, "metadata": result.metadata},
                                 )
                                 # Show error to user in non-streaming mode
                                 full_response_text += f"\n[{error_msg}]\n"
@@ -715,6 +737,8 @@ class AgentCore:
                                     "input": tool_input,
                                     "success": result.success,
                                     "execution_time_ms": result.execution_time_ms,
+                                    "estimated_tokens": result.estimated_tokens,
+                                    "estimated_cost": estimated_cost,
                                 }
                             )
 

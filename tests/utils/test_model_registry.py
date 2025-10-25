@@ -202,7 +202,9 @@ class TestModelRegistryIntegration:
         ]
 
         for model in local_models:
-            if model in [ModelRegistry.EMBEDDING_MODELS.get(k) for k in ModelRegistry.EMBEDDING_MODELS]:
+            if model in [
+                ModelRegistry.EMBEDDING_MODELS.get(k) for k in ModelRegistry.EMBEDDING_MODELS
+            ]:
                 assert ModelRegistry.is_local_embedding(model) is True
 
         # Cloud models

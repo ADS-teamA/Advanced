@@ -122,7 +122,7 @@ class ContextAssembler:
         include_metadata: bool = True,
         chunk_separator: str = "\n\n---\n\n",
         add_chunk_headers: bool = True,
-        max_chunk_length: Optional[int] = None
+        max_chunk_length: Optional[int] = None,
     ):
         """
         Initialize context assembler.
@@ -151,7 +151,7 @@ class ContextAssembler:
         chunks: List[Dict],
         max_chunks: Optional[int] = None,
         max_tokens: Optional[int] = None,
-        query: Optional[str] = None
+        query: Optional[str] = None,
     ) -> AssembledContext:
         """
         Assemble chunks into LLM-ready context.
@@ -168,11 +168,7 @@ class ContextAssembler:
         if not chunks:
             logger.warning("No chunks provided for assembly")
             return AssembledContext(
-                context="",
-                chunks_used=0,
-                total_length=0,
-                provenances=[],
-                metadata={}
+                context="", chunks_used=0, total_length=0, provenances=[], metadata={}
             )
 
         # Limit number of chunks
@@ -196,15 +192,11 @@ class ContextAssembler:
 
             # Truncate if needed
             if self.max_chunk_length and len(content) > self.max_chunk_length:
-                content = content[:self.max_chunk_length] + "..."
+                content = content[: self.max_chunk_length] + "..."
                 logger.debug(f"Truncated chunk {i} to {self.max_chunk_length} chars")
 
             # Format chunk with citation
-            formatted = self._format_chunk(
-                content=content,
-                provenance=provenance,
-                chunk_number=i
-            )
+            formatted = self._format_chunk(content=content, provenance=provenance, chunk_number=i)
 
             # Check token limit
             if max_tokens:
@@ -232,7 +224,7 @@ class ContextAssembler:
             "citation_format": self.citation_format.value,
             "chunks_requested": len(chunks),
             "chunks_included": len(assembled_parts),
-            "avg_chunk_length": total_length // len(assembled_parts) if assembled_parts else 0
+            "avg_chunk_length": total_length // len(assembled_parts) if assembled_parts else 0,
         }
 
         logger.info(
@@ -245,7 +237,7 @@ class ContextAssembler:
             chunks_used=len(assembled_parts),
             total_length=total_length,
             provenances=provenances,
-            metadata=metadata
+            metadata=metadata,
         )
 
     def _strip_sac_summary(self, chunk: Dict) -> str:
@@ -305,6 +297,7 @@ class ContextAssembler:
         if not document_name and document_id:
             # Remove path and extension: "data/docs/GRI_306.pdf" -> "GRI_306"
             import os
+
             document_name = os.path.splitext(os.path.basename(document_id))[0]
 
         # Extract section info
@@ -325,15 +318,10 @@ class ContextAssembler:
             section_title=section_title,
             section_id=section_id,
             page_number=page_number,
-            chunk_index=chunk_index
+            chunk_index=chunk_index,
         )
 
-    def _format_chunk(
-        self,
-        content: str,
-        provenance: ChunkProvenance,
-        chunk_number: int
-    ) -> str:
+    def _format_chunk(self, content: str, provenance: ChunkProvenance, chunk_number: int) -> str:
         """
         Format a single chunk with citations.
 
@@ -397,7 +385,7 @@ def assemble_context(
     chunks: List[Dict],
     max_chunks: int = 6,
     citation_format: str = "inline",
-    include_metadata: bool = True
+    include_metadata: bool = True,
 ) -> str:
     """
     Convenience function for quick context assembly.
@@ -415,12 +403,12 @@ def assemble_context(
         "inline": CitationFormat.INLINE,
         "simple": CitationFormat.SIMPLE,
         "detailed": CitationFormat.DETAILED,
-        "footnote": CitationFormat.FOOTNOTE
+        "footnote": CitationFormat.FOOTNOTE,
     }
 
     assembler = ContextAssembler(
         citation_format=format_map.get(citation_format, CitationFormat.INLINE),
-        include_metadata=include_metadata
+        include_metadata=include_metadata,
     )
 
     result = assembler.assemble(chunks, max_chunks=max_chunks)
@@ -442,7 +430,7 @@ if __name__ == "__main__":
             "page_number": 15,
             "raw_content": "Organizations shall report waste generated in metric tonnes.",
             "content": "This chunk discusses waste reporting.\n\nOrganizations shall report waste generated in metric tonnes.",
-            "rerank_score": 0.92
+            "rerank_score": 0.92,
         },
         {
             "chunk_id": "chunk_002",
@@ -451,8 +439,8 @@ if __name__ == "__main__":
             "section_title": "Disclosure 306-4",
             "page_number": 17,
             "raw_content": "Waste diverted from disposal shall be categorized by type.",
-            "rerank_score": 0.88
-        }
+            "rerank_score": 0.88,
+        },
     ]
 
     print("2. Assemble with INLINE citations:")

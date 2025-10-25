@@ -14,8 +14,7 @@ from src.indexing_pipeline import IndexingPipeline, IndexingConfig
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.skipif(
-    not Path("data/test_documents").exists(),
-    reason="Test documents directory not found"
+    not Path("data/test_documents").exists(), reason="Test documents directory not found"
 )
 def test_pipeline_with_hybrid_enabled():
     """Test complete pipeline with hybrid search enabled."""
@@ -26,17 +25,14 @@ def test_pipeline_with_hybrid_enabled():
         generate_summaries=True,
         chunk_size=500,
         enable_sac=True,
-
         # PHASE 4
         embedding_model="text-embedding-3-large",
         normalize_embeddings=True,
-
         # PHASE 5B: Enable hybrid search
         enable_hybrid_search=True,
         hybrid_fusion_k=60,
-
         # PHASE 5A: Disable KG for faster testing
-        enable_knowledge_graph=False
+        enable_knowledge_graph=False,
     )
 
     pipeline = IndexingPipeline(config)
@@ -49,10 +45,7 @@ def test_pipeline_with_hybrid_enabled():
     test_doc = test_docs[0]
 
     # Index document
-    result = pipeline.index_document(
-        document_path=test_doc,
-        save_intermediate=False
-    )
+    result = pipeline.index_document(document_path=test_doc, save_intermediate=False)
 
     # Verify hybrid store was created
     assert result is not None
@@ -79,8 +72,7 @@ def test_pipeline_with_hybrid_enabled():
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.skipif(
-    not Path("data/test_documents").exists(),
-    reason="Test documents directory not found"
+    not Path("data/test_documents").exists(), reason="Test documents directory not found"
 )
 def test_hybrid_search_end_to_end():
     """Test complete hybrid search workflow from indexing to retrieval."""
@@ -92,7 +84,7 @@ def test_hybrid_search_end_to_end():
         hybrid_fusion_k=60,
         chunk_size=500,
         enable_sac=True,
-        enable_knowledge_graph=False
+        enable_knowledge_graph=False,
     )
 
     pipeline = IndexingPipeline(config)
@@ -109,18 +101,14 @@ def test_hybrid_search_end_to_end():
     hybrid_store = result["vector_store"]
 
     # Create embedder for query
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        model="text-embedding-3-large"
-    ))
+    embedder = EmbeddingGenerator(EmbeddingConfig(model="text-embedding-3-large"))
 
     # Test hybrid search
     query_text = "safety requirements"
     query_embedding = embedder.embed_texts([query_text])
 
     results = hybrid_store.hierarchical_search(
-        query_text=query_text,
-        query_embedding=query_embedding,
-        k_layer3=6
+        query_text=query_text, query_embedding=query_embedding, k_layer3=6
     )
 
     # Verify results structure
@@ -150,7 +138,7 @@ def test_pipeline_dense_only_still_works():
         enable_hybrid_search=False,  # Disabled
         chunk_size=500,
         enable_sac=True,
-        enable_knowledge_graph=False
+        enable_knowledge_graph=False,
     )
 
     pipeline = IndexingPipeline(config)
@@ -176,16 +164,11 @@ def test_pipeline_dense_only_still_works():
     # Search should still work (dense-only)
     from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        model="text-embedding-3-large"
-    ))
+    embedder = EmbeddingGenerator(EmbeddingConfig(model="text-embedding-3-large"))
 
     query_embedding = embedder.embed_texts(["safety requirements"])
 
-    results = vector_store.hierarchical_search(
-        query_embedding=query_embedding,
-        k_layer3=6
-    )
+    results = vector_store.hierarchical_search(query_embedding=query_embedding, k_layer3=6)
 
     # Verify dense-only results
     assert "layer3" in results
@@ -210,27 +193,20 @@ def test_hybrid_vs_dense_comparison():
 
     # Index with dense-only
     config_dense = IndexingConfig(
-        enable_hybrid_search=False,
-        chunk_size=500,
-        enable_knowledge_graph=False
+        enable_hybrid_search=False, chunk_size=500, enable_knowledge_graph=False
     )
     pipeline_dense = IndexingPipeline(config_dense)
     result_dense = pipeline_dense.index_document(test_doc)
 
     # Index with hybrid
     config_hybrid = IndexingConfig(
-        enable_hybrid_search=True,
-        hybrid_fusion_k=60,
-        chunk_size=500,
-        enable_knowledge_graph=False
+        enable_hybrid_search=True, hybrid_fusion_k=60, chunk_size=500, enable_knowledge_graph=False
     )
     pipeline_hybrid = IndexingPipeline(config_hybrid)
     result_hybrid = pipeline_hybrid.index_document(test_doc)
 
     # Create embedder
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        model="text-embedding-3-large"
-    ))
+    embedder = EmbeddingGenerator(EmbeddingConfig(model="text-embedding-3-large"))
 
     # Search with same query
     query_text = "safety specification"
@@ -239,15 +215,12 @@ def test_hybrid_vs_dense_comparison():
 
     # Dense search
     results_dense = result_dense["vector_store"].hierarchical_search(
-        query_embedding=query_embedding_dense,
-        k_layer3=6
+        query_embedding=query_embedding_dense, k_layer3=6
     )
 
     # Hybrid search
     results_hybrid = result_hybrid["vector_store"].hierarchical_search(
-        query_text=query_text,
-        query_embedding=query_embedding_hybrid,
-        k_layer3=6
+        query_text=query_text, query_embedding=query_embedding_hybrid, k_layer3=6
     )
 
     # Both should return results
@@ -276,11 +249,7 @@ def test_hybrid_store_save_load_integration(tmp_path):
     test_doc = test_docs[0]
 
     # Configure pipeline with hybrid search
-    config = IndexingConfig(
-        enable_hybrid_search=True,
-        chunk_size=500,
-        enable_knowledge_graph=False
-    )
+    config = IndexingConfig(enable_hybrid_search=True, chunk_size=500, enable_knowledge_graph=False)
 
     pipeline = IndexingPipeline(config)
 
@@ -315,17 +284,13 @@ def test_hybrid_store_save_load_integration(tmp_path):
     # Verify search works on loaded store
     from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        model="text-embedding-3-large"
-    ))
+    embedder = EmbeddingGenerator(EmbeddingConfig(model="text-embedding-3-large"))
 
     query_text = "test query"
     query_embedding = embedder.embed_texts([query_text])
 
     results = loaded_store.hierarchical_search(
-        query_text=query_text,
-        query_embedding=query_embedding,
-        k_layer3=3
+        query_text=query_text, query_embedding=query_embedding, k_layer3=3
     )
 
     assert "layer3" in results
@@ -337,11 +302,7 @@ def test_error_handling_when_hybrid_fails():
     # This test would simulate hybrid search failure
     # In practice, the try/except in IndexingPipeline handles this
 
-    config = IndexingConfig(
-        enable_hybrid_search=True,
-        chunk_size=500,
-        enable_knowledge_graph=False
-    )
+    config = IndexingConfig(enable_hybrid_search=True, chunk_size=500, enable_knowledge_graph=False)
 
     # Pipeline should initialize without error
     pipeline = IndexingPipeline(config)

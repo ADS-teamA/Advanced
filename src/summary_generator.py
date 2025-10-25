@@ -47,11 +47,7 @@ class SummaryGenerator:
     Configuration is centralized in config.py.
     """
 
-    def __init__(
-        self,
-        config: Optional[SummarizationConfig] = None,
-        api_key: Optional[str] = None
-    ):
+    def __init__(self, config: Optional[SummarizationConfig] = None, api_key: Optional[str] = None):
         """
         Initialize summary generator.
 
@@ -110,9 +106,7 @@ class SummaryGenerator:
         logger.info("OpenAI client initialized")
 
     def generate_document_summary(
-        self,
-        document_text: str = None,
-        section_summaries: list[str] = None
+        self, document_text: str = None, section_summaries: list[str] = None
     ) -> str:
         """
         Generate generic document-level summary.
@@ -142,7 +136,9 @@ class SummaryGenerator:
             valid_summaries = [s for s in section_summaries if s and s.strip()]
 
             if valid_summaries:
-                logger.info(f"Using hierarchical summarization ({len(valid_summaries)} section summaries)")
+                logger.info(
+                    f"Using hierarchical summarization ({len(valid_summaries)} section summaries)"
+                )
                 return self._generate_from_section_summaries(valid_summaries)
 
         # Mode 2: Direct summarization (FALLBACK)
@@ -185,7 +181,7 @@ Summary (max {self.max_chars} characters):"""
             except Exception as e:
                 logger.error(f"Failed to generate document summary: {sanitize_error(e)}")
                 # Fallback: simple truncation
-                return document_text[:self.max_chars].strip() + "..."
+                return document_text[: self.max_chars].strip() + "..."
 
         # No input provided
         raise ValueError("Either document_text or section_summaries must be provided")
@@ -248,7 +244,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
                 else:
                     summary = self._generate_with_openai(prompt_strict)
 
-                summary = summary[:self.max_chars]  # Hard truncate
+                summary = summary[: self.max_chars]  # Hard truncate
 
             logger.debug(f"Generated hierarchical document summary: {len(summary)} chars")
             return summary
@@ -257,7 +253,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             logger.error(f"Failed to generate hierarchical summary: {sanitize_error(e)}")
             # Fallback: combine first chars of each section summary
             fallback = " ".join(section_summaries)
-            return fallback[:self.max_chars].strip() + "..."
+            return fallback[: self.max_chars].strip() + "..."
 
     def _generate_with_claude(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """
@@ -269,7 +265,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             model=self.model,
             max_tokens=max_tokens or self.max_tokens,
             temperature=self.temperature,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         # Track cost
@@ -278,7 +274,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             model=self.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
-            operation="summary"
+            operation="summary",
         )
 
         return response.content[0].text.strip()
@@ -292,19 +288,19 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
         # GPT-5 and O-series models use max_completion_tokens instead of max_tokens
         # GPT-5 models only support temperature=1.0 (default)
         tokens_param = max_tokens or self.max_tokens
-        if self.model.startswith(('gpt-5', 'o1', 'o3', 'o4')):
+        if self.model.startswith(("gpt-5", "o1", "o3", "o4")):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=1.0,  # GPT-5 only supports default temperature
-                max_completion_tokens=tokens_param
+                max_completion_tokens=tokens_param,
             )
         else:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
-                max_tokens=tokens_param
+                max_tokens=tokens_param,
             )
 
         # Track cost
@@ -313,7 +309,7 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             model=self.model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
-            operation="summary"
+            operation="summary",
         )
 
         return response.choices[0].message.content.strip()
@@ -342,17 +338,13 @@ Summary (STRICT LIMIT: {target_chars} characters):"""
             else:  # openai
                 summary = self._generate_with_openai(prompt)
 
-            return summary[:self.max_chars]  # Hard truncate if needed
+            return summary[: self.max_chars]  # Hard truncate if needed
 
         except Exception as e:
             logger.error(f"Failed to generate strict summary: {sanitize_error(e)}")
-            return document_text[:self.max_chars].strip() + "..."
+            return document_text[: self.max_chars].strip() + "..."
 
-    def generate_section_summary(
-        self,
-        section_text: str,
-        section_title: str = ""
-    ) -> str:
+    def generate_section_summary(self, section_text: str, section_title: str = "") -> str:
         """
         Generate generic section-level summary.
 
@@ -387,7 +379,7 @@ Summary (max {self.max_chars} characters):"""
 
             # Check length
             if len(summary) > self.max_chars + self.tolerance:
-                summary = summary[:self.max_chars]
+                summary = summary[: self.max_chars]
 
             logger.debug(f"Generated section summary: {len(summary)} chars")
             return summary
@@ -395,13 +387,12 @@ Summary (max {self.max_chars} characters):"""
         except Exception as e:
             logger.error(f"Failed to generate section summary: {sanitize_error(e)}")
             # Fallback
-            return section_text[:self.max_chars].strip() + "..."
+            return section_text[: self.max_chars].strip() + "..."
 
     # ===== OpenAI Batch API (centralized in utils.batch_api) =====
 
     def _generate_batch_summaries_with_openai_batch(
-        self,
-        filtered_texts: list[tuple[int, str, str]]  # [(index, text, title), ...]
+        self, filtered_texts: list[tuple[int, str, str]]  # [(index, text, title), ...]
     ) -> dict[int, str]:
         """
         Generate summaries using OpenAI Batch API (50% cheaper, async).
@@ -424,9 +415,7 @@ Summary (max {self.max_chars} characters):"""
 
         # Create batch API client
         batch_client = BatchAPIClient(
-            openai_client=self.client,
-            logger_instance=logger,
-            cost_tracker=self.tracker
+            openai_client=self.client, logger_instance=logger, cost_tracker=self.tracker
         )
 
         # Define request creation function
@@ -455,18 +444,18 @@ Summary (max {self.max_chars} characters):"""
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": self.max_tokens,
-                    "temperature": self.temperature
-                }
+                    "temperature": self.temperature,
+                },
             )
 
         # Define response parsing function
         def parse_response(response: dict) -> str:
             """Extract and validate summary from API response."""
-            summary = response['choices'][0]['message']['content'].strip()
+            summary = response["choices"][0]["message"]["content"].strip()
 
             # Enforce length limit
             if len(summary) > self.max_chars + self.tolerance:
-                summary = summary[:self.max_chars]
+                summary = summary[: self.max_chars]
 
             return summary
 
@@ -479,7 +468,7 @@ Summary (max {self.max_chars} characters):"""
                 poll_interval=self.batch_api_poll_interval,
                 timeout_hours=self.batch_api_timeout // 3600,
                 operation="summary",
-                model=self.model
+                model=self.model,
             )
 
             # Map results back to section indices
@@ -491,7 +480,7 @@ Summary (max {self.max_chars} characters):"""
                 else:
                     # Fallback: truncate text
                     logger.warning(f"No summary for section {section_idx}, using fallback")
-                    summaries_map[section_idx] = text[:self.max_chars].strip() + "..."
+                    summaries_map[section_idx] = text[: self.max_chars].strip() + "..."
 
             logger.info(f"✓ Batch API succeeded: {len(summaries_map)} summaries generated")
             return summaries_map
@@ -501,8 +490,7 @@ Summary (max {self.max_chars} characters):"""
             raise
 
     def _batch_summarize_with_prompt(
-        self,
-        sections: list[tuple[int, str, str]]  # [(index, text, title), ...]
+        self, sections: list[tuple[int, str, str]]  # [(index, text, title), ...]
     ) -> list[tuple[int, str]]:
         """
         Generate summaries for multiple sections in ONE API call using JSON output.
@@ -525,11 +513,7 @@ Summary (max {self.max_chars} characters):"""
         max_text_preview = 500  # chars per section
         sections_data = []
         for idx, text, title in sections:
-            sections_data.append({
-                "index": idx,
-                "title": title,
-                "content": text[:max_text_preview]
-            })
+            sections_data.append({"index": idx, "title": title, "content": text[:max_text_preview]})
 
         # Create JSON input
         sections_json = json.dumps(sections_data, ensure_ascii=False, indent=2)
@@ -557,23 +541,29 @@ Generate summaries (MUST be valid JSON):"""
         try:
             # Generate with LLM
             if self.provider == "claude":
-                response_text = self._generate_with_claude(prompt, max_tokens=self.max_tokens * len(sections))
+                response_text = self._generate_with_claude(
+                    prompt, max_tokens=self.max_tokens * len(sections)
+                )
             else:  # openai
-                response_text = self._generate_with_openai(prompt, max_tokens=self.max_tokens * len(sections))
+                response_text = self._generate_with_openai(
+                    prompt, max_tokens=self.max_tokens * len(sections)
+                )
 
             # Parse JSON response
             # Try to extract JSON from response (handle cases where LLM adds explanation)
             response_text = response_text.strip()
 
             # Find JSON array (starts with [ and ends with ])
-            start_idx = response_text.find('[')
-            end_idx = response_text.rfind(']')
+            start_idx = response_text.find("[")
+            end_idx = response_text.rfind("]")
 
             if start_idx == -1 or end_idx == -1 or start_idx >= end_idx:
-                logger.warning("No JSON array found in response, falling back to sequential processing")
+                logger.warning(
+                    "No JSON array found in response, falling back to sequential processing"
+                )
                 raise ValueError("Invalid JSON response")
 
-            json_text = response_text[start_idx:end_idx+1]
+            json_text = response_text[start_idx : end_idx + 1]
             summaries_json = json.loads(json_text)
 
             if not isinstance(summaries_json, list):
@@ -592,7 +582,7 @@ Generate summaries (MUST be valid JSON):"""
 
                 # Enforce length limit (hard truncate if needed)
                 if len(summary) > self.max_chars + self.tolerance:
-                    summary = summary[:self.max_chars]
+                    summary = summary[: self.max_chars]
 
                 results.append((idx, summary))
 
@@ -611,12 +601,13 @@ Generate summaries (MUST be valid JSON):"""
             logger.warning(f"JSON parsing failed: {e}, falling back to sequential processing")
             raise
         except Exception as e:
-            logger.warning(f"Batch summarization failed: {e}, falling back to sequential processing")
+            logger.warning(
+                f"Batch summarization failed: {e}, falling back to sequential processing"
+            )
             raise
 
     def generate_batch_summaries(
-        self,
-        texts: list[tuple[str, str]]  # [(text, title), ...]
+        self, texts: list[tuple[str, str]]  # [(text, title), ...]
     ) -> list[str]:
         """
         Generate summaries for multiple sections.
@@ -678,7 +669,7 @@ Generate summaries (MUST be valid JSON):"""
             # Split into batches
             batches = []
             for i in range(0, len(filtered_texts), self.batch_size):
-                batch = filtered_texts[i:i + self.batch_size]
+                batch = filtered_texts[i : i + self.batch_size]
                 batches.append(batch)
 
             # Process batches in parallel for maximum speed
@@ -694,9 +685,7 @@ Generate summaries (MUST be valid JSON):"""
                     return (True, batch_results, [])  # Success, results, no failures
                 except Exception as e:
                     # Fallback: Process this batch with parallel mode
-                    logger.warning(
-                        f"Batch {batch_idx} failed ({e}), falling back to parallel mode"
-                    )
+                    logger.warning(f"Batch {batch_idx} failed ({e}), falling back to parallel mode")
 
                     batch_results = []
                     batch_failures = []
@@ -706,8 +695,10 @@ Generate summaries (MUST be valid JSON):"""
                             summary = self.generate_section_summary(text, title)
                             return (idx, summary, True)
                         except Exception as e2:
-                            logger.error(f"Failed to generate summary for '{title}': {sanitize_error(e2)}")
-                            fallback = text[:self.max_chars].strip() + "..."
+                            logger.error(
+                                f"Failed to generate summary for '{title}': {sanitize_error(e2)}"
+                            )
+                            fallback = text[: self.max_chars].strip() + "..."
                             return (idx, fallback, False)
 
                     # Process failed batch sections in parallel
@@ -757,7 +748,7 @@ Generate summaries (MUST be valid JSON):"""
                     return (idx, summary, True)  # Success
                 except Exception as e:
                     logger.error(f"Failed to generate summary for '{title}': {sanitize_error(e)}")
-                    fallback = text[:self.max_chars].strip() + "..."
+                    fallback = text[: self.max_chars].strip() + "..."
                     return (idx, fallback, False)  # Failure
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:

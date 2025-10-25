@@ -42,8 +42,7 @@ def setup_logging(debug: bool = False):
 
     # Use colored formatter for console output
     formatter = ColoredFormatter(
-        '%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
     console_handler.setFormatter(formatter)
 
@@ -55,35 +54,25 @@ def setup_logging(debug: bool = False):
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="RAG Agent CLI - Interactive document assistant"
-    )
+    parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")
 
     parser.add_argument(
         "--vector-store",
         type=str,
         help="Path to vector store directory",
-        default="output/vector_store"
+        default="output/vector_store",
     )
 
     parser.add_argument(
         "--model",
         type=str,
         help="Claude model to use (default: claude-sonnet-4-5)",
-        default="claude-sonnet-4-5"
+        default="claude-sonnet-4-5",
     )
 
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug mode"
-    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
-    parser.add_argument(
-        "--no-streaming",
-        action="store_true",
-        help="Disable streaming responses"
-    )
+    parser.add_argument("--no-streaming", action="store_true", help="Disable streaming responses")
 
     return parser.parse_args()
 
@@ -99,16 +88,16 @@ if __name__ == "__main__":
         # Setup colored logging
         setup_logging(debug=args.debug)
 
-        logger.debug(f"Args parsed: vector_store={args.vector_store}, model={args.model}, debug={args.debug}")
+        logger.debug(
+            f"Args parsed: vector_store={args.vector_store}, model={args.model}, debug={args.debug}"
+        )
 
         # Create config from args
         config = AgentConfig(
             vector_store_path=Path(args.vector_store),
             model=args.model,
             debug_mode=args.debug,
-            cli_config=CLIConfig(
-                enable_streaming=not args.no_streaming
-            )
+            cli_config=CLIConfig(enable_streaming=not args.no_streaming),
         )
         logger.debug("Config created successfully")
 
@@ -122,5 +111,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

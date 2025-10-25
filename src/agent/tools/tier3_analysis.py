@@ -198,9 +198,11 @@ class GetStatsInput(ToolInput):
 
     stat_scope: str = Field(
         ...,
-        description="Statistics scope: 'corpus' (overall stats), 'index' (comprehensive index stats with embedding/cache info), 'document' (per-document stats), 'entity' (knowledge graph stats)"
+        description="Statistics scope: 'corpus' (overall stats), 'index' (comprehensive index stats with embedding/cache info), 'document' (per-document stats), 'entity' (knowledge graph stats)",
     )
-    include_cache_stats: bool = Field(False, description="Include embedding cache statistics (for 'index' scope)")
+    include_cache_stats: bool = Field(
+        False, description="Include embedding cache statistics (for 'index' scope)"
+    )
 
 
 @register_tool
@@ -248,6 +250,7 @@ class GetStatsTool(BaseTool):
                 # Get knowledge graph statistics
                 if self.knowledge_graph:
                     from collections import Counter
+
                     entity_types = Counter()
                     relationship_types = Counter()
 
@@ -279,7 +282,9 @@ class GetStatsTool(BaseTool):
 
             if stat_scope == "index":
                 # Additional index-specific information
-                stats["hybrid_search_enabled"] = stats.get("vector_store", {}).get("hybrid_enabled", False)
+                stats["hybrid_search_enabled"] = stats.get("vector_store", {}).get(
+                    "hybrid_enabled", False
+                )
 
                 # Embedding model information
                 if self.embedder:
@@ -302,7 +307,8 @@ class GetStatsTool(BaseTool):
                 # System configuration
                 stats["configuration"] = {
                     "reranking_enabled": hasattr(self, "reranker") and self.reranker is not None,
-                    "context_assembler_enabled": hasattr(self, "context_assembler") and self.context_assembler is not None,
+                    "context_assembler_enabled": hasattr(self, "context_assembler")
+                    and self.context_assembler is not None,
                 }
 
             if stat_scope not in ["corpus", "index", "document", "entity"]:
