@@ -414,8 +414,6 @@ class AgentCLI:
         print(f"  Max tokens: {self.config.max_tokens}")
         print(f"  Temperature: {self.config.temperature}")
         print(f"  Vector store: {self.config.vector_store_path}")
-        print(f"  HyDE: {self.config.enable_hyde}")
-        print(f"  Query decomposition: {self.config.enable_query_decomposition}")
         print(f"  Knowledge graph: {self.config.enable_knowledge_graph}")
         print(f"  Streaming: {self.config.cli_config.enable_streaming}")
         print(f"  Show citations: {self.config.cli_config.show_citations}")

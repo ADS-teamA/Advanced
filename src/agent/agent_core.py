@@ -242,9 +242,15 @@ class AgentCore:
             self._initialized_with_documents = True
             logger.debug(f"Initialized conversation with {count} documents and {len(self.registry)} tools")
 
+        except (FileNotFoundError, PermissionError) as e:
+            logger.warning(f"Document initialization failed - file access issue: {e}")
+            # Expected - vector store may be empty or permissions issue
+        except KeyError as e:
+            logger.error(f"Invalid metadata structure during initialization: {e}")
+            # This indicates a data corruption issue - log as error
         except Exception as e:
-            logger.warning(f"Could not initialize with documents: {e}")
-            # Don't fail - just continue without initialization
+            logger.error(f"Unexpected error initializing documents: {sanitize_error(e)}", exc_info=True)
+            # Log as error for unexpected issues, but don't crash - continue without initialization
 
     def reset_conversation(self):
         """Reset conversation history and reinitialize with documents."""
@@ -632,97 +638,114 @@ class AgentCore:
         cached_tools = self._prepare_tools_with_cache(tools)
         cached_messages = self._add_cache_control_to_messages(self.conversation_history)
 
-        while True:
-            response = self.client.messages.create(
-                model=self.config.model,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-                system=system_prompt,
-                messages=cached_messages,
-                tools=cached_tools,
-            )
-
-            # Track cost (including cache statistics if available)
-            cache_creation = getattr(response.usage, 'cache_creation_input_tokens', 0)
-            cache_read = getattr(response.usage, 'cache_read_input_tokens', 0)
-
-            self.tracker.track_llm(
-                provider="anthropic",
-                model=self.config.model,
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-                operation="agent",
-                cache_creation_tokens=cache_creation,
-                cache_read_tokens=cache_read
-            )
-
-            # Log cache hit info if debug mode
-            if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
-                logger.debug(
-                    f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
+        try:
+            while True:
+                response = self.client.messages.create(
+                    model=self.config.model,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    system=system_prompt,
+                    messages=cached_messages,
+                    tools=cached_tools,
                 )
 
-            # Add assistant message to history
-            self.conversation_history.append({"role": "assistant", "content": response.content})
+                # Track cost (including cache statistics if available)
+                cache_creation = getattr(response.usage, 'cache_creation_input_tokens', 0)
+                cache_read = getattr(response.usage, 'cache_read_input_tokens', 0)
 
-            # Extract text
-            for block in response.content:
-                if block.type == "text":
-                    full_response_text += block.text
+                self.tracker.track_llm(
+                    provider="anthropic",
+                    model=self.config.model,
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens,
+                    operation="agent",
+                    cache_creation_tokens=cache_creation,
+                    cache_read_tokens=cache_read
+                )
 
-            # Check stop reason
-            if response.stop_reason == "end_turn":
-                break
+                # Log cache hit info if debug mode
+                if self.config.debug_mode and (cache_creation > 0 or cache_read > 0):
+                    logger.debug(
+                        f"Cache usage: {cache_read} tokens read, {cache_creation} tokens created"
+                    )
 
-            elif response.stop_reason == "tool_use":
-                # Execute tools
-                tool_results = []
+                # Add assistant message to history
+                self.conversation_history.append({"role": "assistant", "content": response.content})
 
+                # Extract text
                 for block in response.content:
-                    if block.type == "tool_use":
-                        tool_name = block.name
-                        tool_input = block.input
+                    if block.type == "text":
+                        full_response_text += block.text
 
-                        logger.info(f"Executing tool: {tool_name}")
+                # Check stop reason
+                if response.stop_reason == "end_turn":
+                    break
 
-                        result = self.registry.execute_tool(tool_name, **tool_input)
+                elif response.stop_reason == "tool_use":
+                    # Execute tools
+                    tool_results = []
 
-                        # Check for tool failure and log error
-                        if not result.success:
-                            logger.error(
-                                f"Tool '{tool_name}' failed: {result.error}",
-                                extra={"tool_input": tool_input, "metadata": result.metadata}
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            tool_name = block.name
+                            tool_input = block.input
+
+                            logger.info(f"Executing tool: {tool_name}")
+
+                            result = self.registry.execute_tool(tool_name, **tool_input)
+
+                            # Check for tool failure and log error
+                            if not result.success:
+                                error_msg = f"⚠️  Tool '{tool_name}' failed: {result.error}"
+                                logger.error(
+                                    f"Tool '{tool_name}' failed: {result.error}",
+                                    extra={"tool_input": tool_input, "metadata": result.metadata}
+                                )
+                                # Show error to user in non-streaming mode
+                                full_response_text += f"\n[{error_msg}]\n"
+
+                            # Track in history
+                            self.tool_call_history.append(
+                                {
+                                    "tool_name": tool_name,
+                                    "input": tool_input,
+                                    "success": result.success,
+                                    "execution_time_ms": result.execution_time_ms,
+                                }
                             )
 
-                        # Track in history
-                        self.tool_call_history.append(
-                            {
-                                "tool_name": tool_name,
-                                "input": tool_input,
-                                "success": result.success,
-                                "execution_time_ms": result.execution_time_ms,
-                            }
-                        )
+                            # Format tool result
+                            tool_result_content = self._format_tool_result(result)
 
-                        # Format tool result
-                        tool_result_content = self._format_tool_result(result)
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": tool_result_content,
+                                }
+                            )
 
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": tool_result_content,
-                            }
-                        )
+                    # Add tool results to conversation
+                    self.conversation_history.append({"role": "user", "content": tool_results})
 
-                # Add tool results to conversation
-                self.conversation_history.append({"role": "user", "content": tool_results})
+                else:
+                    logger.warning(f"Unexpected stop reason: {response.stop_reason}")
+                    break
 
-            else:
-                logger.warning(f"Unexpected stop reason: {response.stop_reason}")
-                break
+            return full_response_text
 
-        return full_response_text
+        except anthropic.APITimeoutError as e:
+            logger.error(f"API timeout in non-streaming mode: {e}")
+            return "[⚠️  API timeout - response incomplete. Please try again.]"
+        except anthropic.RateLimitError as e:
+            logger.error(f"Rate limit hit: {e}")
+            return "[⚠️  Rate limit exceeded - please wait a moment and try again.]"
+        except anthropic.APIError as e:
+            logger.error(f"Claude API error: {sanitize_error(e)}")
+            return f"[❌ API Error: {sanitize_error(e)}]"
+        except Exception as e:
+            logger.error(f"Non-streaming processing failed: {sanitize_error(e)}", exc_info=True)
+            return f"[❌ Unexpected error: {type(e).__name__}: {sanitize_error(e)}]"
 
     def _format_tool_result(self, result: ToolResult) -> str:
         """

@@ -44,7 +44,7 @@ class SimpleSearchTool(BaseTool):
     requires_reranker = True
 
     def execute_impl(self, query: str, k: int = 6) -> ToolResult:
-        k = validate_k_parameter(k)
+        k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Embed query
         query_embedding = self.embedder.embed_texts([query])
@@ -117,7 +117,7 @@ class EntitySearchTool(BaseTool):
     input_schema = EntitySearchInput
 
     def execute_impl(self, entity_value: str, k: int = 6) -> ToolResult:
-        k = validate_k_parameter(k)
+        k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Create search query focused on entity
         query = f'"{entity_value}"'  # Quote for exact match emphasis
@@ -181,7 +181,7 @@ class DocumentSearchTool(BaseTool):
     input_schema = DocumentSearchInput
 
     def execute_impl(self, query: str, document_id: str, k: int = 6) -> ToolResult:
-        k = validate_k_parameter(k)
+        k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Embed query
         query_embedding = self.embedder.embed_texts([query])
@@ -248,7 +248,7 @@ class SectionSearchTool(BaseTool):
     input_schema = SectionSearchInput
 
     def execute_impl(self, query: str, section_title: str, k: int = 6) -> ToolResult:
-        k = validate_k_parameter(k)
+        k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Embed query
         query_embedding = self.embedder.embed_texts([query])
@@ -319,7 +319,7 @@ class KeywordSearchTool(BaseTool):
     input_schema = KeywordSearchInput
 
     def execute_impl(self, keywords: str, k: int = 6) -> ToolResult:
-        k = validate_k_parameter(k)
+        k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Use BM25 search directly (if available)
         if hasattr(self.vector_store, "bm25_store"):

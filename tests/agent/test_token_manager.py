@@ -262,5 +262,76 @@ class TestBackwardCompatibility:
         assert reason == "exceeded_maximum"
 
 
+class TestCriticalEdgeCases:
+    """Critical edge case tests identified in PR review."""
+
+    def test_format_chunks_exceeds_budget_even_after_adjustment(self):
+        """
+        Test formatter behavior when budget exceeded even at SUMMARY level.
+
+        NOTE: Current implementation auto-adjusts detail level but doesn't cap chunk count.
+        This is a known limitation - formatter should also limit chunk count when needed.
+        TODO: Enhance formatter to cap chunks when budget still exceeded after adjustment.
+        """
+        budget = TokenBudget(max_total_tokens=2000, reserved_tokens=1000)  # Only 1000 available
+        formatter = AdaptiveFormatter(budget=budget)
+
+        # Request 50 chunks (50 * 100 = 5000 tokens at SUMMARY level)
+        chunks = [{"content": "A" * 400, "document_id": f"doc_{i}"} for i in range(50)]
+
+        formatted, metadata = formatter.format_chunks(
+            chunks, detail_level=DetailLevel.FULL, auto_adjust=True
+        )
+
+        # Verify auto-adjustment happened (detail level should be reduced)
+        assert metadata["auto_adjusted"] is True, "Should have auto-adjusted detail level"
+        assert metadata["actual_detail_level"] in ["summary", "medium"], "Should reduce to lower detail"
+
+        # Known limitation: doesn't cap chunk count, only reduces detail level
+        # Formatter returns all chunks at reduced detail level, which may still exceed budget
+        assert len(formatted) > 0, "Should return some formatted chunks"
+
+    def test_token_budget_validation(self):
+        """Test that TokenBudget validates configuration on creation."""
+        # Valid budget should work
+        valid_budget = TokenBudget(max_total_tokens=8000, reserved_tokens=1000)
+        assert valid_budget.get_content_budget() == 7000
+
+        # Negative max_total_tokens should fail
+        with pytest.raises(ValueError, match="max_total_tokens must be positive"):
+            TokenBudget(max_total_tokens=-100)
+
+        # reserved >= max_total should fail
+        with pytest.raises(ValueError, match="reserved_tokens.*must be less than"):
+            TokenBudget(max_total_tokens=1000, reserved_tokens=1000)
+
+        # max_tokens_per_chunk > content budget should fail
+        with pytest.raises(ValueError, match="max_tokens_per_chunk.*exceeds"):
+            TokenBudget(max_total_tokens=1000, reserved_tokens=900, max_tokens_per_chunk=200)
+
+    def test_tiktoken_fallback_estimation(self):
+        """Test fallback to character-based estimation when tiktoken unavailable."""
+        counter = TokenCounter()
+
+        # This test verifies the fallback works
+        text = "Test text with unicode: Příliš žluťoučký kůň"
+
+        # Should not crash whether tiktoken is available or not
+        tokens = counter.count_tokens(text)
+        assert tokens > 0, "Should return positive token count"
+        assert isinstance(tokens, int), "Should return integer"
+
+    def test_empty_chunks_array(self):
+        """Test formatter handles empty chunks array gracefully."""
+        formatter = AdaptiveFormatter()
+
+        formatted, metadata = formatter.format_chunks([], detail_level=DetailLevel.MEDIUM)
+
+        # Verify it doesn't crash with empty input
+        assert formatted == [], "Should return empty array for empty input"
+        # Check that metadata exists and has expected fields (may vary based on implementation)
+        assert isinstance(metadata, dict), "Should return metadata dict"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

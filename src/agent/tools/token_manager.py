@@ -38,15 +38,44 @@ class DetailLevel(Enum):
 
 @dataclass
 class TokenBudget:
-    """Token budget configuration for tool outputs."""
+    """
+    Token budget configuration for tool outputs.
+
+    Default values are calibrated for Claude's context window:
+    - max_total_tokens=8000: ~4% of 200K context, leaves room for conversation history
+    - max_tokens_per_chunk=600: Allows 2-3 paragraphs of detailed content
+    - max_tokens_per_section=400: Sufficient for section metadata + summary
+    - reserved_tokens=1000: Safety buffer for JSON structure, citations, metadata
+    """
     max_total_tokens: int = 8000        # Max tokens for entire tool output
     max_tokens_per_chunk: int = 600     # Max per chunk (FULL detail)
     max_tokens_per_section: int = 400   # Max per section metadata
     reserved_tokens: int = 1000         # Reserved for metadata, citations, etc.
 
+    def __post_init__(self):
+        """Validate configuration consistency."""
+        if self.max_total_tokens <= 0:
+            raise ValueError(f"max_total_tokens must be positive, got {self.max_total_tokens}")
+        if self.max_tokens_per_chunk <= 0:
+            raise ValueError(f"max_tokens_per_chunk must be positive, got {self.max_tokens_per_chunk}")
+        if self.max_tokens_per_section <= 0:
+            raise ValueError(f"max_tokens_per_section must be positive, got {self.max_tokens_per_section}")
+        if self.reserved_tokens < 0:
+            raise ValueError(f"reserved_tokens must be non-negative, got {self.reserved_tokens}")
+        if self.reserved_tokens >= self.max_total_tokens:
+            raise ValueError(
+                f"reserved_tokens ({self.reserved_tokens}) must be less than "
+                f"max_total_tokens ({self.max_total_tokens})"
+            )
+        if self.max_tokens_per_chunk > self.get_content_budget():
+            raise ValueError(
+                f"max_tokens_per_chunk ({self.max_tokens_per_chunk}) exceeds available "
+                f"content budget ({self.get_content_budget()})"
+            )
+
     def get_content_budget(self) -> int:
-        """Get available tokens for actual content."""
-        return self.max_total_tokens - self.reserved_tokens
+        """Get available tokens for actual content (guaranteed non-negative after validation)."""
+        return max(0, self.max_total_tokens - self.reserved_tokens)
 
     def tokens_per_item(self, detail_level: DetailLevel) -> int:
         """Get token limit per item based on detail level."""
@@ -70,12 +99,14 @@ class TokenCounter:
         Initialize token counter.
 
         Args:
-            model: Model name for tokenizer (Claude uses cl100k_base encoding)
+            model: Model name for tokenizer. Uses cl100k_base encoding (GPT-4 tokenizer)
+                   which provides approximate token counts for Claude models.
+                   For exact Claude tokens, use Anthropic's tokenizer API.
         """
         self.model = model
 
         if TIKTOKEN_AVAILABLE:
-            # Claude uses same encoding as GPT-4
+            # Use cl100k_base (GPT-4 tokenizer) for approximate Claude token counts
             self.encoding = tiktoken.get_encoding("cl100k_base")
         else:
             self.encoding = None
