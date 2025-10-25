@@ -46,7 +46,7 @@ def test_phase1_jsonl(pdf_path: Path, output_dir: Path = None):
     config = ExtractionConfig(
         enable_smart_hierarchy=True,
         generate_summaries=False,  # PHASE 1 only, no summaries
-        extract_tables=True
+        extract_tables=True,
     )
 
     # Extract document
@@ -71,7 +71,7 @@ def test_phase1_jsonl(pdf_path: Path, output_dir: Path = None):
     output_file = output_dir / f"{pdf_path.stem}_{timestamp}.jsonl"
 
     # Write JSONL output (one section per line)
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         for section in result.sections:
             section_data = {
                 "document_id": result.document_id,
@@ -84,10 +84,10 @@ def test_phase1_jsonl(pdf_path: Path, output_dir: Path = None):
                 "content": section.content,
                 "content_length": len(section.content),
                 "parent_id": section.parent_id,
-                "children_ids": section.children_ids
+                "children_ids": section.children_ids,
             }
             # Write one JSON object per line
-            f.write(json.dumps(section_data, ensure_ascii=False) + '\n')
+            f.write(json.dumps(section_data, ensure_ascii=False) + "\n")
 
     print(f"✓ JSONL output saved: {output_file}")
     print(f"  Total lines: {result.num_sections}")
@@ -98,7 +98,7 @@ def test_phase1_jsonl(pdf_path: Path, output_dir: Path = None):
     print()
     for i, section in enumerate(result.sections[:15], 1):
         indent = "  " * section.depth
-        content_preview = section.content[:60].replace('\n', ' ') if section.content else ""
+        content_preview = section.content[:60].replace("\n", " ") if section.content else ""
         print(f"{i:3}. {indent}[L{section.level}, D{section.depth}] {section.title}")
         print(f"     {indent}Page: {section.page_number}, Chars: {len(section.content)}")
         if content_preview:
@@ -139,7 +139,9 @@ def main():
         print("Usage: python tests/test_phase1_jsonl.py <pdf_path>")
         print()
         print("Example:")
-        print('  python tests/test_phase1_jsonl.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"')
+        print(
+            '  python tests/test_phase1_jsonl.py "data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf"'
+        )
         print()
         sys.exit(1)
 

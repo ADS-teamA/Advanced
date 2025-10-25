@@ -27,9 +27,9 @@ from config import ExtractionConfig, SummarizationConfig, ChunkingConfig, Embedd
 def test_single_document():
     """Test PHASE 4 on a single document."""
 
-    print("="*80)
+    print("=" * 80)
     print("PHASE 4 TEST: Single Document Indexing")
-    print("="*80)
+    print("=" * 80)
     print()
 
     # Document path
@@ -53,30 +53,18 @@ def test_single_document():
     config = IndexingConfig(
         # PHASE 1: Extraction with nested config
         extraction_config=ExtractionConfig(
-            enable_smart_hierarchy=True,
-            ocr_language=["ces", "eng"]  # Tesseract language codes
+            enable_smart_hierarchy=True, ocr_language=["ces", "eng"]  # Tesseract language codes
         ),
-
         # PHASE 2: Summarization with nested config
-        summarization_config=SummarizationConfig(
-            model="gpt-4o-mini",
-            max_chars=150
-        ),
-
+        summarization_config=SummarizationConfig(model="gpt-4o-mini", max_chars=150),
         # PHASE 3: Chunking with nested config
         chunking_config=ChunkingConfig(
-            chunk_size=500,
-            chunk_overlap=0,
-            enable_contextual=True  # SAC
+            chunk_size=500, chunk_overlap=0, enable_contextual=True  # SAC
         ),
-
         # PHASE 4: Embedding with nested config
         embedding_config=EmbeddingConfig(
-            provider="openai",
-            model="text-embedding-3-large",
-            batch_size=100,
-            normalize=True
-        )
+            provider="openai", model="text-embedding-3-large", batch_size=100, normalize=True
+        ),
     )
 
     try:
@@ -87,16 +75,14 @@ def test_single_document():
         print()
 
         vector_store = pipeline.index_document(
-            pdf_path=pdf_path,
-            save_intermediate=True,
-            output_dir=output_dir
+            pdf_path=pdf_path, save_intermediate=True, output_dir=output_dir
         )
 
         # Display statistics
         print()
-        print("="*80)
+        print("=" * 80)
         print("VECTOR STORE STATISTICS")
-        print("="*80)
+        print("=" * 80)
         print()
 
         stats = vector_store.get_stats()
@@ -115,15 +101,15 @@ def test_single_document():
         print()
 
         # Test search
-        print("="*80)
+        print("=" * 80)
         print("TESTING RETRIEVAL")
-        print("="*80)
+        print("=" * 80)
         print()
 
         test_queries = [
             "waste management procedures",
             "environmental impact assessment",
-            "disposal methods"
+            "disposal methods",
         ]
 
         for query in test_queries:
@@ -138,13 +124,13 @@ def test_single_document():
                 query_embedding=query_embedding,
                 k_layer3=6,
                 use_doc_filtering=True,
-                similarity_threshold_offset=0.25
+                similarity_threshold_offset=0.25,
             )
 
             # Display results
             print(f"Layer 1 results: {len(results['layer1'])}")
-            if results['layer1']:
-                doc_result = results['layer1'][0]
+            if results["layer1"]:
+                doc_result = results["layer1"][0]
                 print(f"  Document: {doc_result['document_id']} (score: {doc_result['score']:.4f})")
 
             print(f"Layer 3 results: {len(results['layer3'])}")
@@ -155,9 +141,9 @@ def test_single_document():
                 print(f"     Path:  {result['section_path']}")
                 print()
 
-        print("="*80)
+        print("=" * 80)
         print("✓ PHASE 4 TEST COMPLETE")
-        print("="*80)
+        print("=" * 80)
         print()
 
         print("Next steps:")
@@ -189,6 +175,7 @@ def test_single_document():
     except Exception as e:
         print(f"✗ Error during indexing: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -197,9 +184,9 @@ def test_batch_documents():
     """Test PHASE 4 batch indexing (multiple documents)."""
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("PHASE 4 TEST: Batch Document Indexing")
-    print("="*80)
+    print("=" * 80)
     print()
 
     # Find all PDFs in data directory
@@ -225,21 +212,11 @@ def test_batch_documents():
     # Initialize pipeline
     config = IndexingConfig(
         extraction_config=ExtractionConfig(
-            enable_smart_hierarchy=True,
-            ocr_language=["ces", "eng"]
+            enable_smart_hierarchy=True, ocr_language=["ces", "eng"]
         ),
-        summarization_config=SummarizationConfig(
-            model="gpt-4o-mini",
-            max_chars=150
-        ),
-        chunking_config=ChunkingConfig(
-            chunk_size=500,
-            enable_contextual=True  # SAC
-        ),
-        embedding_config=EmbeddingConfig(
-            provider="openai",
-            model="text-embedding-3-large"
-        )
+        summarization_config=SummarizationConfig(model="gpt-4o-mini", max_chars=150),
+        chunking_config=ChunkingConfig(chunk_size=500, enable_contextual=True),  # SAC
+        embedding_config=EmbeddingConfig(provider="openai", model="text-embedding-3-large"),
     )
 
     try:
@@ -247,16 +224,14 @@ def test_batch_documents():
 
         # Batch index
         vector_store = pipeline.index_batch(
-            pdf_paths=pdf_paths,
-            output_dir=output_dir,
-            save_per_document=True
+            pdf_paths=pdf_paths, output_dir=output_dir, save_per_document=True
         )
 
         # Display stats
         print()
-        print("="*80)
+        print("=" * 80)
         print("BATCH INDEXING COMPLETE")
-        print("="*80)
+        print("=" * 80)
         print()
 
         stats = vector_store.get_stats()
@@ -270,6 +245,7 @@ def test_batch_documents():
     except Exception as e:
         print(f"✗ Batch indexing error: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -278,9 +254,9 @@ def test_alternative_embedding_model():
     """Test with alternative embedding model (BGE-M3 for multilingual)."""
 
     print()
-    print("="*80)
+    print("=" * 80)
     print("PHASE 4 TEST: Alternative Embedding Model (BGE-M3)")
-    print("="*80)
+    print("=" * 80)
     print()
 
     pdf_path = Path("data/regulace/GRI/GRI 306_ Effluents and Waste 2016.pdf")
@@ -294,20 +270,17 @@ def test_alternative_embedding_model():
     # Configure with BGE-M3 (open-source, multilingual)
     config = IndexingConfig(
         extraction_config=ExtractionConfig(
-            enable_smart_hierarchy=True,
-            ocr_language=["ces", "eng"]
+            enable_smart_hierarchy=True, ocr_language=["ces", "eng"]
         ),
         summarization_config=SummarizationConfig(
             enabled=False  # Skip summaries to avoid API dependency
         ),
         chunking_config=ChunkingConfig(
-            chunk_size=500,
-            enable_contextual=False  # SAC requires summaries
+            chunk_size=500, enable_contextual=False  # SAC requires summaries
         ),
         embedding_config=EmbeddingConfig(
-            provider="huggingface",
-            model="bge-m3"  # Open-source alternative
-        )
+            provider="huggingface", model="bge-m3"  # Open-source alternative
+        ),
     )
 
     try:
@@ -318,9 +291,7 @@ def test_alternative_embedding_model():
         pipeline = IndexingPipeline(config)
 
         vector_store = pipeline.index_document(
-            pdf_path=pdf_path,
-            save_intermediate=True,
-            output_dir=output_dir
+            pdf_path=pdf_path, save_intermediate=True, output_dir=output_dir
         )
 
         stats = vector_store.get_stats()
@@ -349,7 +320,7 @@ def main():
         "--mode",
         choices=["single", "batch", "bge"],
         default="single",
-        help="Test mode: single document, batch, or BGE-M3 model"
+        help="Test mode: single document, batch, or BGE-M3 model",
     )
 
     args = parser.parse_args()

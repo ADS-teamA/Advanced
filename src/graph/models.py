@@ -17,48 +17,48 @@ import json
 class EntityType(Enum):
     """Types of entities extracted from legal documents."""
 
-    STANDARD = "standard"              # GRI 306, GRI 303, ISO 14001
-    ORGANIZATION = "organization"      # GSSB, Global Reporting Initiative
-    DATE = "date"                      # 2018-07-01, 1 July 2018
-    CLAUSE = "clause"                  # Disclosure 306-3, Section 8.2
-    TOPIC = "topic"                    # waste, effluents, spills, water
-    PERSON = "person"                  # Optional: authors, signatories
-    LOCATION = "location"              # Optional: jurisdictions
-    REGULATION = "regulation"          # GDPR, CCPA, etc.
-    CONTRACT = "contract"              # Specific contracts (NDAs, MSAs)
+    STANDARD = "standard"  # GRI 306, GRI 303, ISO 14001
+    ORGANIZATION = "organization"  # GSSB, Global Reporting Initiative
+    DATE = "date"  # 2018-07-01, 1 July 2018
+    CLAUSE = "clause"  # Disclosure 306-3, Section 8.2
+    TOPIC = "topic"  # waste, effluents, spills, water
+    PERSON = "person"  # Optional: authors, signatories
+    LOCATION = "location"  # Optional: jurisdictions
+    REGULATION = "regulation"  # GDPR, CCPA, etc.
+    CONTRACT = "contract"  # Specific contracts (NDAs, MSAs)
 
 
 class RelationshipType(Enum):
     """Types of relationships between entities."""
 
     # Document relationships
-    SUPERSEDED_BY = "superseded_by"    # Old standard → New standard
-    SUPERSEDES = "supersedes"          # New standard → Old standard
-    REFERENCES = "references"          # Document A → Document B
-    REFERENCED_BY = "referenced_by"    # Document B → Document A
+    SUPERSEDED_BY = "superseded_by"  # Old standard → New standard
+    SUPERSEDES = "supersedes"  # New standard → Old standard
+    REFERENCES = "references"  # Document A → Document B
+    REFERENCED_BY = "referenced_by"  # Document B → Document A
 
     # Organizational relationships
-    ISSUED_BY = "issued_by"           # Standard → Organization
-    DEVELOPED_BY = "developed_by"     # Standard → Organization
-    PUBLISHED_BY = "published_by"     # Document → Organization
+    ISSUED_BY = "issued_by"  # Standard → Organization
+    DEVELOPED_BY = "developed_by"  # Standard → Organization
+    PUBLISHED_BY = "published_by"  # Document → Organization
 
     # Temporal relationships
     EFFECTIVE_DATE = "effective_date"  # Standard → Date
-    EXPIRY_DATE = "expiry_date"       # Contract → Date
-    SIGNED_ON = "signed_on"           # Contract → Date
+    EXPIRY_DATE = "expiry_date"  # Contract → Date
+    SIGNED_ON = "signed_on"  # Contract → Date
 
     # Content relationships
-    COVERS_TOPIC = "covers_topic"     # Standard → Topic
+    COVERS_TOPIC = "covers_topic"  # Standard → Topic
     CONTAINS_CLAUSE = "contains_clause"  # Contract → Clause
-    APPLIES_TO = "applies_to"         # Regulation → Location
+    APPLIES_TO = "applies_to"  # Regulation → Location
 
     # Structural relationships (hierarchy)
-    PART_OF = "part_of"               # Section → Document
-    CONTAINS = "contains"             # Document → Section
+    PART_OF = "part_of"  # Section → Document
+    CONTAINS = "contains"  # Document → Section
 
     # Provenance (entity → chunk)
-    MENTIONED_IN = "mentioned_in"     # Entity → Chunk
-    DEFINED_IN = "defined_in"         # Entity → Chunk (first occurrence)
+    MENTIONED_IN = "mentioned_in"  # Entity → Chunk
+    DEFINED_IN = "defined_in"  # Entity → Chunk (first occurrence)
 
 
 @dataclass
@@ -70,15 +70,15 @@ class Entity:
     Each entity has a unique ID, type, and normalized value.
     """
 
-    id: str                           # Unique identifier (auto-generated)
-    type: EntityType                  # Entity type
-    value: str                        # Original text (e.g., "GRI 306: Effluents and Waste 2016")
-    normalized_value: str             # Normalized form (e.g., "GRI 306")
-    confidence: float                 # Extraction confidence (0-1)
+    id: str  # Unique identifier (auto-generated)
+    type: EntityType  # Entity type
+    value: str  # Original text (e.g., "GRI 306: Effluents and Waste 2016")
+    normalized_value: str  # Normalized form (e.g., "GRI 306")
+    confidence: float  # Extraction confidence (0-1)
 
     # Provenance: where this entity was found
     source_chunk_ids: List[str] = field(default_factory=list)  # All chunks mentioning this entity
-    first_mention_chunk_id: Optional[str] = None               # First chunk where entity appears
+    first_mention_chunk_id: Optional[str] = None  # First chunk where entity appears
 
     # Context from source document
     document_id: Optional[str] = None
@@ -88,7 +88,7 @@ class Entity:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     # Extraction metadata
-    extraction_method: str = "llm"    # "llm", "regex", "spacy"
+    extraction_method: str = "llm"  # "llm", "regex", "spacy"
     extracted_at: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -105,7 +105,7 @@ class Entity:
             "section_path": self.section_path,
             "metadata": self.metadata,
             "extraction_method": self.extraction_method,
-            "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None
+            "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None,
         }
 
     @classmethod
@@ -137,21 +137,21 @@ class Relationship:
     Each relationship has a source entity, target entity, and type.
     """
 
-    id: str                           # Unique identifier (auto-generated)
-    type: RelationshipType            # Relationship type
-    source_entity_id: str             # Source entity ID
-    target_entity_id: str             # Target entity ID
-    confidence: float                 # Extraction confidence (0-1)
+    id: str  # Unique identifier (auto-generated)
+    type: RelationshipType  # Relationship type
+    source_entity_id: str  # Source entity ID
+    target_entity_id: str  # Target entity ID
+    confidence: float  # Extraction confidence (0-1)
 
     # Provenance: where this relationship was extracted
-    source_chunk_id: str              # Chunk where relationship was found
-    evidence_text: str                # Supporting text snippet
+    source_chunk_id: str  # Chunk where relationship was found
+    evidence_text: str  # Supporting text snippet
 
     # Relationship-specific properties
     properties: Dict[str, Any] = field(default_factory=dict)
 
     # Extraction metadata
-    extraction_method: str = "llm"    # "llm", "pattern", "heuristic"
+    extraction_method: str = "llm"  # "llm", "pattern", "heuristic"
     extracted_at: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -166,7 +166,7 @@ class Relationship:
             "evidence_text": self.evidence_text,
             "properties": self.properties,
             "extraction_method": self.extraction_method,
-            "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None
+            "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None,
         }
 
     @classmethod
@@ -210,7 +210,9 @@ class KnowledgeGraph:
                 return entity
         return None
 
-    def get_entity_by_value(self, normalized_value: str, entity_type: EntityType) -> Optional[Entity]:
+    def get_entity_by_value(
+        self, normalized_value: str, entity_type: EntityType
+    ) -> Optional[Entity]:
         """Get entity by normalized value and type."""
         for entity in self.entities:
             if entity.normalized_value == normalized_value and entity.type == entity_type:
@@ -220,7 +222,8 @@ class KnowledgeGraph:
     def get_relationships_for_entity(self, entity_id: str) -> List[Relationship]:
         """Get all relationships involving an entity (as source or target)."""
         return [
-            rel for rel in self.relationships
+            rel
+            for rel in self.relationships
             if rel.source_entity_id == entity_id or rel.target_entity_id == entity_id
         ]
 
@@ -240,11 +243,19 @@ class KnowledgeGraph:
 
         relationship_type_counts = {}
         for rel in self.relationships:
-            relationship_type_counts[rel.type.value] = relationship_type_counts.get(rel.type.value, 0) + 1
+            relationship_type_counts[rel.type.value] = (
+                relationship_type_counts.get(rel.type.value, 0) + 1
+            )
 
         # Average confidence
-        avg_entity_confidence = sum(e.confidence for e in self.entities) / len(self.entities) if self.entities else 0
-        avg_rel_confidence = sum(r.confidence for r in self.relationships) / len(self.relationships) if self.relationships else 0
+        avg_entity_confidence = (
+            sum(e.confidence for e in self.entities) / len(self.entities) if self.entities else 0
+        )
+        avg_rel_confidence = (
+            sum(r.confidence for r in self.relationships) / len(self.relationships)
+            if self.relationships
+            else 0
+        )
 
         self.stats = {
             "total_entities": len(self.entities),
@@ -266,7 +277,7 @@ class KnowledgeGraph:
             "source_chunks_file": self.source_chunks_file,
             "stats": self.stats,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "extraction_config": self.extraction_config
+            "extraction_config": self.extraction_config,
         }
 
     @classmethod
@@ -286,17 +297,17 @@ class KnowledgeGraph:
             source_chunks_file=data.get("source_chunks_file"),
             stats=data.get("stats", {}),
             created_at=created_at,
-            extraction_config=data.get("extraction_config", {})
+            extraction_config=data.get("extraction_config", {}),
         )
 
     def save_json(self, output_path: str):
         """Save knowledge graph to JSON file."""
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
 
     @classmethod
     def load_json(cls, input_path: str) -> "KnowledgeGraph":
         """Load knowledge graph from JSON file."""
-        with open(input_path, 'r', encoding='utf-8') as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)

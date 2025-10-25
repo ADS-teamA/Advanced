@@ -23,31 +23,31 @@ def sample_candidates():
             "chunk_id": "chunk_1",
             "content": "The waste disposal requirements specify proper handling of hazardous materials.",
             "rrf_score": 0.031,
-            "document_id": "doc_1"
+            "document_id": "doc_1",
         },
         {
             "chunk_id": "chunk_2",
             "content": "Safety equipment must be worn at all times in the facility.",
             "rrf_score": 0.029,
-            "document_id": "doc_1"
+            "document_id": "doc_1",
         },
         {
             "chunk_id": "chunk_3",
             "content": "Proper waste disposal procedures include segregation, labeling, and secure storage.",
             "rrf_score": 0.028,
-            "document_id": "doc_1"
+            "document_id": "doc_1",
         },
         {
             "chunk_id": "chunk_4",
             "content": "The company provides training on environmental regulations.",
             "rrf_score": 0.025,
-            "document_id": "doc_1"
+            "document_id": "doc_1",
         },
         {
             "chunk_id": "chunk_5",
             "content": "Equipment maintenance schedules are updated quarterly.",
             "rrf_score": 0.022,
-            "document_id": "doc_1"
+            "document_id": "doc_1",
         },
     ]
 
@@ -55,7 +55,7 @@ def sample_candidates():
 @pytest.fixture
 def mock_cross_encoder():
     """Mock CrossEncoder for testing without loading actual model."""
-    with patch('src.reranker.CrossEncoder') as mock:
+    with patch("src.reranker.CrossEncoder") as mock:
         # Mock predict to return fake scores
         mock_instance = Mock()
         mock_instance.predict.return_value = np.array([0.85, 0.40, 0.92, 0.55, 0.20])
@@ -152,10 +152,7 @@ def test_reranking_with_statistics(mock_cross_encoder, sample_candidates):
 
     query = "waste disposal requirements"
     reranked, stats = reranker.rerank(
-        query=query,
-        candidates=sample_candidates,
-        top_k=3,
-        return_stats=True
+        query=query, candidates=sample_candidates, top_k=3, return_stats=True
     )
 
     # Check stats
@@ -174,10 +171,7 @@ def test_rank_changes_calculation(mock_cross_encoder, sample_candidates):
 
     query = "waste disposal requirements"
     _, stats = reranker.rerank(
-        query=query,
-        candidates=sample_candidates,
-        top_k=3,
-        return_stats=True
+        query=query, candidates=sample_candidates, top_k=3, return_stats=True
     )
 
     # With mock scores [0.85, 0.40, 0.92, 0.55, 0.20]:
@@ -196,10 +190,7 @@ def test_reranking_with_threshold(mock_cross_encoder, sample_candidates):
 
     query = "waste disposal requirements"
     reranked = reranker.rerank_with_threshold(
-        query=query,
-        candidates=sample_candidates,
-        min_score=0.5,  # Only keep scores >= 0.5
-        top_k=5
+        query=query, candidates=sample_candidates, min_score=0.5, top_k=5  # Only keep scores >= 0.5
     )
 
     # With mock scores [0.85, 0.40, 0.92, 0.55, 0.20]
@@ -213,10 +204,7 @@ def test_batch_size_configuration(mock_cross_encoder):
     """Test custom batch size."""
     from src.reranker import CrossEncoderReranker
 
-    reranker = CrossEncoderReranker(
-        model_name="ms-marco-mini",
-        batch_size=16
-    )
+    reranker = CrossEncoderReranker(model_name="ms-marco-mini", batch_size=16)
 
     assert reranker.batch_size == 16
 
@@ -230,11 +218,7 @@ def test_stats_aggregation(mock_cross_encoder, sample_candidates):
 
     # Perform multiple reranks
     for i in range(3):
-        reranker.rerank(
-            query=f"query {i}",
-            candidates=sample_candidates,
-            top_k=2
-        )
+        reranker.rerank(query=f"query {i}", candidates=sample_candidates, top_k=2)
 
     stats = reranker.get_stats()
 
@@ -268,7 +252,7 @@ def test_reranking_with_missing_content(mock_cross_encoder):
 
     candidates = [
         {"chunk_id": "chunk_1"},  # Missing 'content'
-        {"chunk_id": "chunk_2", "content": "Valid content"}
+        {"chunk_id": "chunk_2", "content": "Valid content"},
     ]
 
     # Should not crash
@@ -282,7 +266,7 @@ def test_cross_encoder_prediction_failure(sample_candidates):
     """Test fallback when cross-encoder prediction fails."""
     from src.reranker import CrossEncoderReranker
 
-    with patch('src.reranker.CrossEncoder') as mock:
+    with patch("src.reranker.CrossEncoder") as mock:
         mock_instance = Mock()
         mock_instance.predict.side_effect = Exception("Model inference failed")
         mock.return_value = mock_instance
@@ -290,11 +274,7 @@ def test_cross_encoder_prediction_failure(sample_candidates):
         reranker = CrossEncoderReranker(model_name="ms-marco-mini")
 
         # Should fallback to returning original candidates
-        reranked = reranker.rerank(
-            query="test",
-            candidates=sample_candidates,
-            top_k=3
-        )
+        reranked = reranker.rerank(query="test", candidates=sample_candidates, top_k=3)
 
         # Should return top 3 from original
         assert len(reranked) == 3
@@ -307,10 +287,7 @@ def test_convenience_function(mock_cross_encoder, sample_candidates):
     from src.reranker import rerank_results
 
     reranked = rerank_results(
-        query="waste disposal",
-        candidates=sample_candidates,
-        top_k=2,
-        model_name="fast"
+        query="waste disposal", candidates=sample_candidates, top_k=2, model_name="fast"
     )
 
     assert len(reranked) == 2

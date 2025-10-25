@@ -30,7 +30,7 @@ def load_prompt(prompt_name: str) -> str:
         FileNotFoundError: If prompt file doesn't exist
     """
     # Add .txt extension if not present
-    if not prompt_name.endswith('.txt'):
+    if not prompt_name.endswith(".txt"):
         prompt_name = f"{prompt_name}.txt"
 
     prompt_path = PROMPTS_DIR / prompt_name
@@ -43,7 +43,7 @@ def load_prompt(prompt_name: str) -> str:
         )
 
     try:
-        with open(prompt_path, 'r', encoding='utf-8') as f:
+        with open(prompt_path, "r", encoding="utf-8") as f:
             prompt = f.read()
 
         logger.debug(f"Loaded prompt: {prompt_name} ({len(prompt)} chars)")

@@ -10,6 +10,7 @@ Provides lightweight abstraction for all RAG tools with:
 
 import json
 import logging
+import math
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -38,12 +39,14 @@ def estimate_tokens_from_result(result_data: Any) -> int:
         json_str = json.dumps(result_data, ensure_ascii=False, default=str)
 
         # Estimate tokens: ~4 chars per token (approximation)
-        # This is conservative - actual ratio is 3-4 for English, 4-6 for code/JSON
-        estimated_tokens = len(json_str) // 4
+        # Actual ratio varies: 3-4 for English, 4-6 for code/JSON
+        # Using ceil for conservative estimate (rounds up)
+        estimated_tokens = math.ceil(len(json_str) / 4.0)
 
         return max(estimated_tokens, 1)  # Minimum 1 token
-    except Exception as e:
-        logger.warning(f"Failed to estimate tokens from result: {e}")
+    except (TypeError, ValueError) as e:
+        # Only catch serialization errors, not programming bugs
+        logger.error(f"Failed to estimate tokens from result: {e}")
         return 0
 
 
@@ -234,7 +237,7 @@ class BaseTool(ABC):
             logger.error(
                 f"Tool '{self.name}' implementation error: {e}",
                 exc_info=True,
-                extra={"kwargs": kwargs}
+                extra={"kwargs": kwargs},
             )
 
             return ToolResult(
@@ -276,7 +279,7 @@ class BaseTool(ABC):
             logger.error(
                 f"Tool '{self.name}' unexpected error: {type(e).__name__}: {e}",
                 exc_info=True,
-                extra={"kwargs": kwargs}
+                extra={"kwargs": kwargs},
             )
 
             return ToolResult(

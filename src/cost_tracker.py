@@ -55,26 +55,22 @@ PRICING = {
         "haiku": {"input": 1.00, "output": 5.00},
         "claude-haiku-3-5": {"input": 0.80, "output": 4.00},
         "claude-haiku-3": {"input": 0.25, "output": 1.25},
-
         # Sonnet models
         "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
         "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
         "sonnet": {"input": 3.00, "output": 15.00},
         "claude-sonnet-4": {"input": 3.00, "output": 15.00},
         "claude-sonnet-3-5": {"input": 3.00, "output": 15.00},
-
         # Opus models
         "claude-opus-4": {"input": 15.00, "output": 75.00},
         "claude-opus-4-1": {"input": 15.00, "output": 75.00},
         "opus": {"input": 15.00, "output": 75.00},
     },
-
     # OpenAI models (per 1M tokens)
     "openai": {
         # GPT-4o models
         "gpt-4o": {"input": 2.50, "output": 10.00},
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-
         # GPT-5 models
         "gpt-5": {"input": 1.25, "output": 10.00},
         "gpt-5-mini": {"input": 0.50, "output": 2.00},  # Estimated
@@ -82,7 +78,6 @@ PRICING = {
         "gpt-5-pro": {"input": 5.00, "output": 20.00},  # Estimated
         "gpt-5-codex": {"input": 1.50, "output": 12.00},  # Estimated
         "gpt-5-chat": {"input": 1.25, "output": 10.00},  # Estimated
-
         # O-series reasoning models
         "o1": {"input": 15.00, "output": 60.00},
         "o1-mini": {"input": 3.00, "output": 12.00},
@@ -90,13 +85,11 @@ PRICING = {
         "o3-mini": {"input": 3.00, "output": 12.00},
         "o3-pro": {"input": 30.00, "output": 120.00},  # Estimated
         "o4-mini": {"input": 3.00, "output": 12.00},
-
         # Embeddings (per 1M tokens)
         "text-embedding-3-large": {"input": 0.13, "output": 0.0},
         "text-embedding-3-small": {"input": 0.02, "output": 0.0},
         "text-embedding-ada-002": {"input": 0.10, "output": 0.0},
     },
-
     # Voyage AI embeddings (per 1M tokens)
     "voyage": {
         "voyage-3-large": {"input": 0.12, "output": 0.0},  # Estimated
@@ -107,7 +100,6 @@ PRICING = {
         "voyage-multilingual-2": {"input": 0.12, "output": 0.0},  # Estimated
         "kanon-2": {"input": 0.12, "output": 0.0},  # Estimated
     },
-
     # Local models (free)
     "huggingface": {
         "bge-m3": {"input": 0.0, "output": 0.0},
@@ -170,6 +162,9 @@ class CostTracker:
         # Per-message tracking (for CLI display)
         self._last_reported_cost: float = 0.0
         self._last_reported_tokens: int = 0
+        self._last_reported_input_tokens: int = 0
+        self._last_reported_output_tokens: int = 0
+        self._last_reported_cache_read_tokens: int = 0
 
         # Private breakdowns
         self._cost_by_provider: Dict[str, float] = {}
@@ -214,7 +209,7 @@ class CostTracker:
         output_tokens: int,
         operation: str = "llm",
         cache_creation_tokens: int = 0,
-        cache_read_tokens: int = 0
+        cache_read_tokens: int = 0,
     ) -> float:
         """
         Track LLM usage and calculate cost.
@@ -250,7 +245,7 @@ class CostTracker:
             cost=cost,
             operation=operation,
             cache_creation_tokens=cache_creation_tokens,
-            cache_read_tokens=cache_read_tokens
+            cache_read_tokens=cache_read_tokens,
         )
         self._entries.append(entry)
 
@@ -283,11 +278,7 @@ class CostTracker:
         return cost
 
     def track_embedding(
-        self,
-        provider: str,
-        model: str,
-        tokens: int,
-        operation: str = "embedding"
+        self, provider: str, model: str, tokens: int, operation: str = "embedding"
     ) -> float:
         """
         Track embedding usage and calculate cost.
@@ -312,7 +303,7 @@ class CostTracker:
             input_tokens=tokens,
             output_tokens=0,
             cost=cost,
-            operation=operation
+            operation=operation,
         )
         self._entries.append(entry)
 
@@ -325,8 +316,7 @@ class CostTracker:
         self._cost_by_operation[operation] = self._cost_by_operation.get(operation, 0.0) + cost
 
         logger.debug(
-            f"Embedding usage tracked: {provider}/{model} - "
-            f"{tokens} tokens - ${cost:.6f}"
+            f"Embedding usage tracked: {provider}/{model} - " f"{tokens} tokens - ${cost:.6f}"
         )
 
         return cost
@@ -337,19 +327,21 @@ class CostTracker:
         model: str,
         input_tokens: int,
         output_tokens: int,
-        cache_read_tokens: int = 0
+        cache_read_tokens: int = 0,
     ) -> float:
         """
         Calculate cost for LLM usage, including cache discount.
 
-        Cache reads are billed at 10% of the regular input price.
+        Cache reads are billed at 10% of the regular input price (Anthropic prompt caching).
+        Note: Cache calculation applies to all calls, even though only Anthropic supports it.
+        Non-Anthropic providers should pass cache_read_tokens=0.
 
         Args:
             provider: Provider name
             model: Model name
             input_tokens: Regular input tokens (100% price)
             output_tokens: Output tokens (100% price)
-            cache_read_tokens: Cache hit tokens (10% price)
+            cache_read_tokens: Cache hit tokens (10% price, Anthropic only)
 
         Returns:
             Total cost in USD
@@ -373,21 +365,13 @@ class CostTracker:
 
         return input_cost + output_cost + cache_cost
 
-    def _calculate_embedding_cost(
-        self,
-        provider: str,
-        model: str,
-        tokens: int
-    ) -> float:
+    def _calculate_embedding_cost(self, provider: str, model: str, tokens: int) -> float:
         """Calculate cost for embedding usage."""
         # Get pricing for this model
         pricing = PRICING.get(provider, {}).get(model)
 
         if not pricing:
-            logger.warning(
-                f"No pricing data for {provider}/{model}. "
-                f"Cost calculation skipped."
-            )
+            logger.warning(f"No pricing data for {provider}/{model}. " f"Cost calculation skipped.")
             return 0.0
 
         # Calculate cost (prices are per 1M tokens)
@@ -404,21 +388,35 @@ class CostTracker:
         This is the true number of tokens processed by the API,
         not the billed amount (which is discounted for cache hits).
 
+        Use this for: Display purposes, bandwidth estimation
+        Use get_billed_tokens() for: Budget tracking, cost projection
+
         Returns:
             Total tokens: input + output + cache_read
         """
-        return self.total_input_tokens + self.total_output_tokens + self._total_cache_read_tokens
+        total = self.total_input_tokens + self.total_output_tokens + self._total_cache_read_tokens
+        if total < 0:
+            logger.error(f"Invalid negative token count detected: {total}")
+            return 0
+        return total
 
     def get_billed_tokens(self) -> int:
         """
         Get equivalent billed tokens (cache reads count as 10% of regular tokens).
+
+        Use this for: Budget tracking, cost projection
+        Use get_total_tokens() for: Display purposes, bandwidth estimation
 
         Returns:
             Billed token equivalent
         """
         # Cache reads are billed at 10% of regular price
         cache_billed_equivalent = int(self._total_cache_read_tokens * 0.1)
-        return self.total_input_tokens + self.total_output_tokens + cache_billed_equivalent
+        total = self.total_input_tokens + self.total_output_tokens + cache_billed_equivalent
+        if total < 0:
+            logger.error(f"Invalid negative billed token count detected: {total}")
+            return 0
+        return total
 
     def get_cache_stats(self) -> Dict[str, int]:
         """
@@ -434,46 +432,62 @@ class CostTracker:
             cache_read += entry.cache_read_tokens
             cache_creation += entry.cache_creation_tokens
 
-        return {
-            "cache_read_tokens": cache_read,
-            "cache_creation_tokens": cache_creation
-        }
+        return {"cache_read_tokens": cache_read, "cache_creation_tokens": cache_creation}
 
     def get_session_cost_summary(self) -> str:
         """
-        Get brief cost summary for current session (Variant C: per-message + session).
+        Get brief cost summary for current session with detailed per-message breakdown.
+
+        IMPORTANT: This method has side effects - it updates internal tracking state
+        (_last_reported_cost and _last_reported_tokens) to enable per-message deltas.
+        Calling this multiple times between messages will show zero for "This message".
 
         Format:
-            💰 This message: $0.0501 (46,532 tokens) | Session total: $0.0617 (71,446 tokens)
-            📦 Cache: 10,658 tokens read (90% saved)
+            💰 This message: $0.0015
+              Input: 227 tokens
+              Output: 200 tokens
+              Cache read: 4,956 tokens (~90% cost savings)
+
+            Session total: $0.0029 (5,660 tokens)
 
         Returns:
             Multi-line cost summary string
         """
-        # Calculate per-message stats
-        message_cost = self.get_total_cost() - self._last_reported_cost
-        message_tokens = self.get_total_tokens() - self._last_reported_tokens
+        # Calculate per-message token deltas
+        msg_input = self._total_input_tokens - self._last_reported_input_tokens
+        msg_output = self._total_output_tokens - self._last_reported_output_tokens
+        msg_cache_read = self._total_cache_read_tokens - self._last_reported_cache_read_tokens
+
+        # Calculate per-message cost (prevent negative values)
+        message_cost = max(0.0, self.get_total_cost() - self._last_reported_cost)
 
         # Calculate session totals
         session_cost = self.get_total_cost()
         session_tokens = self.get_total_tokens()
 
-        # Calculate per-message cache reads
-        cache_stats = self.get_cache_stats()
-        total_cache_read = cache_stats["cache_read_tokens"]
+        # Build summary
+        lines = []
+        lines.append(f"💰 This message: ${message_cost:.4f}")
 
-        # Build summary line
-        summary = f"💰 This message: ${message_cost:.4f} ({message_tokens:,} tokens) | Session total: ${session_cost:.4f} ({session_tokens:,} tokens)"
+        # Show token breakdown (only non-zero categories)
+        if msg_input > 0:
+            lines.append(f"  Input: {msg_input:,} tokens")
+        if msg_output > 0:
+            lines.append(f"  Output: {msg_output:,} tokens")
+        if msg_cache_read > 0:
+            lines.append(f"  Cache read: {msg_cache_read:,} tokens (~90% cost savings)")
 
-        # Add cache info if caching was used in this session
-        if total_cache_read > 0:
-            summary += f"\n📦 Cache: {total_cache_read:,} tokens read (90% saved)"
+        # Session total
+        lines.append(f"\nSession total: ${session_cost:.4f} ({session_tokens:,} tokens)")
 
         # Update last reported state for next message
         self._last_reported_cost = session_cost
         self._last_reported_tokens = session_tokens
+        self._last_reported_input_tokens = self._total_input_tokens
+        self._last_reported_output_tokens = self._total_output_tokens
+        self._last_reported_cache_read_tokens = self._total_cache_read_tokens
 
-        return summary
+        return "\n".join(lines)
 
     def get_summary(self) -> str:
         """
@@ -522,6 +536,9 @@ class CostTracker:
         self._total_cache_creation_tokens = 0
         self._last_reported_cost = 0.0
         self._last_reported_tokens = 0
+        self._last_reported_input_tokens = 0
+        self._last_reported_output_tokens = 0
+        self._last_reported_cache_read_tokens = 0
         self._cost_by_provider.clear()
         self._cost_by_operation.clear()
 
