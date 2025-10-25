@@ -492,7 +492,7 @@ class GetDocumentSectionsTool(BaseTool):
     """
 
     name = "get_document_sections"
-    description = "Get a list of all sections in a document by document ID. WARNING: Returns max 50 sections to prevent token overflow. Use section_search for specific sections."
+    description = "Get a list of all sections in a document by document ID. Dynamically adjusts section count based on token budget (typically 10-100 sections)."
     tier = 1
     input_schema = GetDocumentSectionsInput
 
@@ -528,33 +528,69 @@ class GetDocumentSectionsTool(BaseTool):
         # Sort sections by section_id (preserves document order)
         sections.sort(key=lambda x: x.get("section_id", ""))
 
-        # Limit to first 50 sections to prevent token overflow
-        total_count = len(sections)
-        max_sections = 50
-        truncated = total_count > max_sections
-        sections = sections[:max_sections]
+        # NEW: Use adaptive formatter for dynamic section limits
+        try:
+            from .token_manager import get_adaptive_formatter
 
-        logger.info(
-            f"Document '{document_id}': {total_count} sections total, "
-            f"returning {len(sections)}{' (truncated)' if truncated else ''}"
-        )
+            formatter = get_adaptive_formatter()
+            formatted_sections, format_metadata = formatter.format_sections_with_budget(
+                sections, include_summary=False
+            )
 
-        return ToolResult(
-            success=True,
-            data={
-                "document_id": document_id,
-                "sections": sections,
-                "count": len(sections),
-                "total_sections": total_count,
-                "truncated": truncated,
-            },
-            metadata={
-                "document_id": document_id,
-                "section_count": len(sections),
-                "total_sections": total_count,
-                "truncated": truncated,
-            },
-        )
+            logger.info(
+                f"Document '{document_id}': {format_metadata['total_sections']} sections total, "
+                f"returning {format_metadata['returned_sections']} "
+                f"(max_allowed={format_metadata['max_sections_allowed']}, "
+                f"truncated={format_metadata['truncated']})"
+            )
+
+            return ToolResult(
+                success=True,
+                data={
+                    "document_id": document_id,
+                    "sections": formatted_sections,
+                    "count": format_metadata["returned_sections"],
+                    "total_sections": format_metadata["total_sections"],
+                    "truncated": format_metadata["truncated"],
+                    "max_sections_allowed": format_metadata["max_sections_allowed"],
+                },
+                metadata={
+                    "document_id": document_id,
+                    "section_count": format_metadata["returned_sections"],
+                    "total_sections": format_metadata["total_sections"],
+                    "truncated": format_metadata["truncated"],
+                    "token_budget_used": format_metadata["total_tokens"],
+                },
+            )
+
+        except ImportError:
+            # Fallback to legacy hardcoded limit
+            total_count = len(sections)
+            max_sections = 50
+            truncated = total_count > max_sections
+            sections = sections[:max_sections]
+
+            logger.warning(
+                "token_manager not available, using legacy 50-section limit. "
+                f"Document '{document_id}': {total_count} sections total, returning {len(sections)}"
+            )
+
+            return ToolResult(
+                success=True,
+                data={
+                    "document_id": document_id,
+                    "sections": sections,
+                    "count": len(sections),
+                    "total_sections": total_count,
+                    "truncated": truncated,
+                },
+                metadata={
+                    "document_id": document_id,
+                    "section_count": len(sections),
+                    "total_sections": total_count,
+                    "truncated": truncated,
+                },
+            )
 
 
 # === Tool 9: Get Section Details ===
