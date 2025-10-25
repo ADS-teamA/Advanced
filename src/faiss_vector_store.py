@@ -256,6 +256,21 @@ class FAISSVectorStore:
         if query_embedding.ndim == 1:
             query_embedding = query_embedding.reshape(1, -1)
 
+        if query_embedding.ndim != 2:
+            raise ValueError(
+                f"Query embedding must be 1D or 2D array, got shape {query_embedding.shape}"
+            )
+
+        if query_embedding.shape[1] != self.dimensions:
+            msg = (
+                f"Query embedding dimension {query_embedding.shape[1]} does not match "
+                f"FAISS index dimension {self.dimensions}. "
+                "Rebuild the vector store with the current embedding model or switch "
+                "the embedder back to the model used when this store was created."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
+
         # Document filtering for DRM prevention
         if document_filter:
             # Get indices for this document
