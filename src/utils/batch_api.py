@@ -55,7 +55,7 @@ class BatchRequest:
             "custom_id": self.custom_id,
             "method": self.method,
             "url": self.url,
-            "body": self.body
+            "body": self.body,
         }
 
 
@@ -77,10 +77,7 @@ class BatchAPIClient:
     """
 
     def __init__(
-        self,
-        openai_client,
-        logger_instance: Optional[logging.Logger] = None,
-        cost_tracker=None
+        self, openai_client, logger_instance: Optional[logging.Logger] = None, cost_tracker=None
     ):
         """
         Initialize Batch API client.
@@ -102,7 +99,7 @@ class BatchAPIClient:
         poll_interval: int = 5,
         timeout_hours: int = 12,
         operation: str = "batch",
-        model: str = "gpt-4o-mini"
+        model: str = "gpt-4o-mini",
     ) -> Dict[str, Any]:
         """
         Process items using OpenAI Batch API.
@@ -147,25 +144,18 @@ class BatchAPIClient:
 
         # Step 3: Poll for completion
         completed_batch = self._poll_batch(
-            batch_id,
-            poll_interval=poll_interval,
-            timeout_seconds=timeout_hours * 3600
+            batch_id, poll_interval=poll_interval, timeout_seconds=timeout_hours * 3600
         )
 
         # Step 4: Parse results
         results = self._parse_batch_results(
-            completed_batch,
-            parse_response_fn,
-            operation=operation,
-            model=model
+            completed_batch, parse_response_fn, operation=operation, model=model
         )
 
         return results
 
     def _create_batch_requests(
-        self,
-        items: List[Any],
-        create_request_fn: Callable[[Any, int], BatchRequest]
+        self, items: List[Any], create_request_fn: Callable[[Any, int], BatchRequest]
     ) -> List[BatchRequest]:
         """
         Create batch requests from items.
@@ -208,29 +198,23 @@ class BatchAPIClient:
 
         # Create temporary JSONL file
         with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.jsonl',
-            delete=False,
-            encoding='utf-8'
+            mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
         ) as f:
             temp_path = f.name
             for request in requests:
-                f.write(json.dumps(request.to_dict()) + '\n')
+                f.write(json.dumps(request.to_dict()) + "\n")
 
         try:
             # Upload file
             self.logger.debug(f"Uploading batch file: {temp_path}")
-            with open(temp_path, 'rb') as f:
-                batch_file = self.client.files.create(
-                    file=f,
-                    purpose='batch'
-                )
+            with open(temp_path, "rb") as f:
+                batch_file = self.client.files.create(file=f, purpose="batch")
 
             # Create batch
             batch = self.client.batches.create(
                 input_file_id=batch_file.id,
                 endpoint="/v1/chat/completions",
-                completion_window="24h"
+                completion_window="24h",
             )
 
             self.logger.info(f"✓ Batch submitted: {batch.id}")
@@ -248,10 +232,7 @@ class BatchAPIClient:
                 logger.warning(f"Failed to delete temp file {temp_path}: {type(e).__name__}")
 
     def _poll_batch(
-        self,
-        batch_id: str,
-        poll_interval: int = 5,
-        timeout_seconds: int = 43200  # 12 hours
+        self, batch_id: str, poll_interval: int = 5, timeout_seconds: int = 43200  # 12 hours
     ):
         """
         Poll batch until completion.
@@ -309,7 +290,7 @@ class BatchAPIClient:
                 return batch
 
             elif batch.status == "failed":
-                error_msg = getattr(batch, 'errors', 'Unknown error')
+                error_msg = getattr(batch, "errors", "Unknown error")
                 raise Exception(f"Batch {batch_id} failed: {error_msg}")
 
             elif batch.status == "expired":
@@ -326,7 +307,7 @@ class BatchAPIClient:
         batch,
         parse_response_fn: Callable[[Dict[str, Any]], Any],
         operation: str = "batch",
-        model: str = "gpt-4o-mini"
+        model: str = "gpt-4o-mini",
     ) -> Dict[str, Any]:
         """
         Parse batch results.
@@ -348,48 +329,52 @@ class BatchAPIClient:
             raise Exception("Batch has no output file")
 
         file_content = self.client.files.content(output_file_id)
-        content_str = file_content.read().decode('utf-8')
+        content_str = file_content.read().decode("utf-8")
 
         # Parse JSONL
         results = {}
         total_input_tokens = 0
         total_output_tokens = 0
 
-        for line_num, line in enumerate(content_str.strip().split('\n'), 1):
+        for line_num, line in enumerate(content_str.strip().split("\n"), 1):
             try:
                 response = json.loads(line)
 
                 # Extract custom_id
-                custom_id = response.get('custom_id')
+                custom_id = response.get("custom_id")
                 if not custom_id:
                     self.logger.warning(f"Line {line_num}: Missing custom_id, skipping")
                     continue
 
                 # Check for errors
-                if response.get('error'):
-                    error_msg = response['error']
-                    self.logger.error(f"Request {custom_id} failed: {sanitize_error(str(error_msg))}")
+                if response.get("error"):
+                    error_msg = response["error"]
+                    self.logger.error(
+                        f"Request {custom_id} failed: {sanitize_error(str(error_msg))}"
+                    )
                     results[custom_id] = None
                     continue
 
                 # Parse response
-                response_body = response.get('response', {}).get('body', {})
+                response_body = response.get("response", {}).get("body", {})
                 if not response_body:
                     self.logger.warning(f"Request {custom_id}: Empty response body")
                     results[custom_id] = None
                     continue
 
                 # Track tokens
-                usage = response_body.get('usage', {})
-                total_input_tokens += usage.get('prompt_tokens', 0)
-                total_output_tokens += usage.get('completion_tokens', 0)
+                usage = response_body.get("usage", {})
+                total_input_tokens += usage.get("prompt_tokens", 0)
+                total_output_tokens += usage.get("completion_tokens", 0)
 
                 # Parse result using custom function
                 try:
                     parsed_result = parse_response_fn(response_body)
                     results[custom_id] = parsed_result
                 except Exception as e:
-                    self.logger.error(f"Failed to parse response for {custom_id}: {sanitize_error(e)}")
+                    self.logger.error(
+                        f"Failed to parse response for {custom_id}: {sanitize_error(e)}"
+                    )
                     results[custom_id] = None
 
             except json.JSONDecodeError as e:
@@ -404,7 +389,7 @@ class BatchAPIClient:
                     model=model,
                     input_tokens=total_input_tokens,
                     output_tokens=total_output_tokens,
-                    operation=operation
+                    operation=operation,
                 )
             except Exception as e:
                 self.logger.warning(f"Failed to track costs: {sanitize_error(e)}")
@@ -424,7 +409,8 @@ if __name__ == "__main__":
     # This is a demonstration - requires actual OpenAI client
     print("Note: This example requires OPENAI_API_KEY to run")
     print("\nExample usage:")
-    print("""
+    print(
+        """
     from src.utils import BatchAPIClient, APIClientFactory
 
     # Create clients
@@ -457,4 +443,5 @@ if __name__ == "__main__":
     # Use results
     for custom_id, summary in results.items():
         print(f"{custom_id}: {summary}")
-    """)
+    """
+    )

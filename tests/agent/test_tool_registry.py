@@ -33,9 +33,7 @@ class MockBasicTool(BaseTool):
     requires_reranker = False
 
     def execute_impl(self, query: str) -> ToolResult:
-        return ToolResult(
-            success=True, data={"result": f"Processed: {query}"}, citations=[]
-        )
+        return ToolResult(success=True, data={"result": f"Processed: {query}"}, citations=[])
 
 
 class MockKGTool(BaseTool):
@@ -49,9 +47,7 @@ class MockKGTool(BaseTool):
     requires_reranker = False
 
     def execute_impl(self, query: str) -> ToolResult:
-        return ToolResult(
-            success=True, data={"result": f"KG processed: {query}"}, citations=[]
-        )
+        return ToolResult(success=True, data={"result": f"KG processed: {query}"}, citations=[])
 
 
 class MockRerankerTool(BaseTool):
@@ -65,9 +61,7 @@ class MockRerankerTool(BaseTool):
     requires_reranker = True
 
     def execute_impl(self, query: str) -> ToolResult:
-        return ToolResult(
-            success=True, data={"result": f"Reranked: {query}"}, citations=[]
-        )
+        return ToolResult(success=True, data={"result": f"Reranked: {query}"}, citations=[])
 
 
 @pytest.fixture
@@ -149,9 +143,7 @@ class TestToolInitialization:
         assert "mock_kg_tool" in registry._tools
         assert "mock_kg_tool" not in registry._unavailable_tools
 
-    def test_reranker_tool_without_reranker_still_initialized(
-        self, registry, mock_dependencies
-    ):
+    def test_reranker_tool_without_reranker_still_initialized(self, registry, mock_dependencies):
         """Test that reranker tools are initialized even without reranker (just logs warning)."""
         registry.register_tool_class(MockRerankerTool)
 

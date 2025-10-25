@@ -45,7 +45,7 @@ def valid_config(tmp_vector_store):
         model="claude-sonnet-4-5-20250929",
         debug_mode=False,
         enable_knowledge_graph=False,
-        cli_config=CLIConfig(enable_streaming=True)
+        cli_config=CLIConfig(enable_streaming=True),
     )
 
 
@@ -57,7 +57,7 @@ def minimal_config():
         vector_store_path=Path("/fake/path"),  # Will be mocked in tests
         model="claude-sonnet-4-5-20250929",
         enable_knowledge_graph=False,
-        tool_config=ToolConfig(enable_reranking=False)
+        tool_config=ToolConfig(enable_reranking=False),
     )
 
 
@@ -78,7 +78,7 @@ class TestCLIInitialization:
             vector_store_path=tmp_vector_store,
             model="claude-haiku-4-5",
             temperature=0.7,
-            max_tokens=2048
+            max_tokens=2048,
         )
 
         cli = AgentCLI(config)
@@ -123,8 +123,8 @@ class TestCLIInitializationErrors:
         error_msg = str(exc_info.value)
         assert "Vector store loading failed" in error_msg or "not found" in error_msg.lower()
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
     def test_cli_initialization_with_embedder_api_key_error(
         self, mock_embedder_class, mock_vector_store_class, valid_config
     ):
@@ -147,8 +147,8 @@ class TestCLIInitializationErrors:
         # Should provide actionable fix
         assert "openai_api_key" in error_msg.lower() or "embedding_model" in error_msg.lower()
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
     def test_cli_initialization_with_generic_embedder_error(
         self, mock_embedder_class, mock_vector_store_class, valid_config
     ):
@@ -174,14 +174,19 @@ class TestCLIInitializationErrors:
 class TestCLIGracefulDegradation:
     """Test graceful degradation when optional components fail."""
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
-    @patch('src.agent.cli.CrossEncoderReranker')
-    @patch('src.agent.cli.get_registry')
-    @patch('src.agent.cli.AgentCore')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
+    @patch("src.agent.cli.CrossEncoderReranker")
+    @patch("src.agent.cli.get_registry")
+    @patch("src.agent.cli.AgentCore")
     def test_cli_degradation_when_reranker_fails(
-        self, mock_agent_core, mock_registry, mock_reranker_class,
-        mock_embedder_class, mock_vector_store_class, valid_config
+        self,
+        mock_agent_core,
+        mock_registry,
+        mock_reranker_class,
+        mock_embedder_class,
+        mock_vector_store_class,
+        valid_config,
     ):
         """Test CLI continues when reranker fails to load."""
         # Setup mocks
@@ -213,14 +218,19 @@ class TestCLIGracefulDegradation:
         # Reranking should be disabled after failure
         assert valid_config.tool_config.enable_reranking is False
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
-    @patch('src.agent.cli.get_registry')
-    @patch('src.agent.cli.AgentCore')
-    @patch('src.graph.models.KnowledgeGraph.load_json')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
+    @patch("src.agent.cli.get_registry")
+    @patch("src.agent.cli.AgentCore")
+    @patch("src.graph.models.KnowledgeGraph.load_json")
     def test_cli_degradation_when_kg_missing(
-        self, mock_kg_load, mock_agent_core, mock_registry,
-        mock_embedder_class, mock_vector_store_class, tmp_vector_store
+        self,
+        mock_kg_load,
+        mock_agent_core,
+        mock_registry,
+        mock_embedder_class,
+        mock_vector_store_class,
+        tmp_vector_store,
     ):
         """Test CLI continues when knowledge graph is missing."""
         # Setup mocks
@@ -244,7 +254,7 @@ class TestCLIGracefulDegradation:
             anthropic_api_key="sk-ant-test123",
             vector_store_path=tmp_vector_store,
             enable_knowledge_graph=True,
-            knowledge_graph_path=Path("/nonexistent/kg.json")
+            knowledge_graph_path=Path("/nonexistent/kg.json"),
         )
 
         cli = AgentCLI(config)
@@ -255,15 +265,22 @@ class TestCLIGracefulDegradation:
         # KG should be disabled after failure
         assert config.enable_knowledge_graph is False
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
-    @patch('src.agent.cli.CrossEncoderReranker')
-    @patch('src.agent.cli.get_registry')
-    @patch('src.agent.cli.AgentCore')
-    @patch('src.graph.models.KnowledgeGraph.load_json')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
+    @patch("src.agent.cli.CrossEncoderReranker")
+    @patch("src.agent.cli.get_registry")
+    @patch("src.agent.cli.AgentCore")
+    @patch("src.graph.models.KnowledgeGraph.load_json")
     def test_cli_initialization_success_all_components(
-        self, mock_kg_load, mock_agent_core, mock_registry, mock_reranker_class,
-        mock_embedder_class, mock_vector_store_class, tmp_vector_store, capsys
+        self,
+        mock_kg_load,
+        mock_agent_core,
+        mock_registry,
+        mock_reranker_class,
+        mock_embedder_class,
+        mock_vector_store_class,
+        tmp_vector_store,
+        capsys,
     ):
         """Test successful initialization with all components."""
         # Setup mocks
@@ -297,10 +314,7 @@ class TestCLIGracefulDegradation:
             vector_store_path=tmp_vector_store,
             enable_knowledge_graph=True,
             knowledge_graph_path=kg_path,
-            tool_config=ToolConfig(
-                enable_reranking=True,
-                lazy_load_reranker=False
-            )
+            tool_config=ToolConfig(enable_reranking=True, lazy_load_reranker=False),
         )
 
         cli = AgentCLI(config)
@@ -320,51 +334,49 @@ class TestCLIGracefulDegradation:
 class TestPlatformDetection:
     """Test platform-specific model selection."""
 
-    @patch.dict('os.environ', {}, clear=True)
-    @patch('platform.system')
-    def test_cli_platform_detection_apple_silicon(
-        self, mock_platform_system
-    ):
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("platform.system")
+    def test_cli_platform_detection_apple_silicon(self, mock_platform_system):
         """Test Apple Silicon detection uses bge-m3."""
         mock_platform_system.return_value = "Darwin"
 
         # Mock torch with MPS support
-        with patch('torch.backends.mps.is_available', return_value=True):
+        with patch("torch.backends.mps.is_available", return_value=True):
             from src.agent.config import _detect_optimal_embedding_model
+
             model = _detect_optimal_embedding_model()
 
         assert model == "bge-m3"
 
-    @patch.dict('os.environ', {}, clear=True)
-    @patch('platform.system')
-    def test_cli_platform_detection_linux_gpu(
-        self, mock_platform_system
-    ):
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("platform.system")
+    def test_cli_platform_detection_linux_gpu(self, mock_platform_system):
         """Test Linux with GPU uses bge-m3."""
         mock_platform_system.return_value = "Linux"
 
         # Mock torch with CUDA support
-        with patch('torch.cuda.is_available', return_value=True):
+        with patch("torch.cuda.is_available", return_value=True):
             from src.agent.config import _detect_optimal_embedding_model
+
             model = _detect_optimal_embedding_model()
 
         assert model == "bge-m3"
 
-    @patch('platform.system')
-    @patch.dict('os.environ', {}, clear=True)
+    @patch("platform.system")
+    @patch.dict("os.environ", {}, clear=True)
     def test_cli_platform_detection_windows(self, mock_platform_system):
         """Test Windows uses cloud embeddings."""
         mock_platform_system.return_value = "Windows"
 
         # Mock torch to not have GPU
-        with patch('torch.cuda.is_available', return_value=False):
+        with patch("torch.cuda.is_available", return_value=False):
             from src.agent.config import _detect_optimal_embedding_model
 
             model = _detect_optimal_embedding_model()
 
             assert model == "text-embedding-3-large"
 
-    @patch.dict('os.environ', {'EMBEDDING_MODEL': 'custom-model'})
+    @patch.dict("os.environ", {"EMBEDDING_MODEL": "custom-model"})
     def test_cli_platform_detection_env_override(self):
         """Test environment variable overrides platform detection."""
         from src.agent.config import _detect_optimal_embedding_model
@@ -395,8 +407,8 @@ class TestErrorMessageQuality:
         assert "python run_pipeline.py" in error_msg  # Actionable fix
         assert "data/" in error_msg  # Example usage
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
     def test_cli_embedder_error_suggests_alternatives(
         self, mock_embedder_class, mock_vector_store_class, valid_config
     ):
@@ -423,13 +435,18 @@ class TestErrorMessageQuality:
 class TestSessionStatistics:
     """Test session statistics tracking."""
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
-    @patch('src.agent.cli.get_registry')
-    @patch('src.agent.cli.AgentCore')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
+    @patch("src.agent.cli.get_registry")
+    @patch("src.agent.cli.AgentCore")
     def test_cli_session_stats_accuracy(
-        self, mock_agent_core, mock_registry,
-        mock_embedder_class, mock_vector_store_class, valid_config, capsys
+        self,
+        mock_agent_core,
+        mock_registry,
+        mock_embedder_class,
+        mock_vector_store_class,
+        valid_config,
+        capsys,
     ):
         """Test that session statistics are accurate."""
         # Setup mocks
@@ -443,33 +460,25 @@ class TestSessionStatistics:
         mock_registry_instance = MagicMock()
         mock_registry_instance.__len__.return_value = 26
         mock_registry_instance.get_stats.return_value = {
-            'total_tools': 26,
-            'total_calls': 42,
-            'total_errors': 2,
-            'success_rate': 95.2,
-            'total_time_ms': 1500.0,
-            'avg_time_ms': 35.7,
-            'tools': [
-                {
-                    'name': 'simple_search',
-                    'execution_count': 20,
-                    'avg_time_ms': 50.0
-                },
-                {
-                    'name': 'get_document_list',
-                    'execution_count': 10,
-                    'avg_time_ms': 10.0
-                }
-            ]
+            "total_tools": 26,
+            "total_calls": 42,
+            "total_errors": 2,
+            "success_rate": 95.2,
+            "total_time_ms": 1500.0,
+            "avg_time_ms": 35.7,
+            "tools": [
+                {"name": "simple_search", "execution_count": 20, "avg_time_ms": 50.0},
+                {"name": "get_document_list", "execution_count": 10, "avg_time_ms": 10.0},
+            ],
         }
         mock_registry.return_value = mock_registry_instance
 
         # Mock agent with conversation stats
         mock_agent = MagicMock()
         mock_agent.get_conversation_stats.return_value = {
-            'message_count': 10,
-            'tool_calls': 15,
-            'tools_used': ['simple_search', 'get_document_list']
+            "message_count": 10,
+            "tool_calls": 15,
+            "tools_used": ["simple_search", "get_document_list"],
         }
         mock_agent_core.return_value = mock_agent
 
@@ -524,13 +533,18 @@ class TestCLIConfiguration:
         assert "invalid format" in error_msg.lower()
         assert "sk-ant-" in error_msg
 
-    @patch('src.agent.cli.HybridVectorStore')
-    @patch('src.agent.cli.EmbeddingGenerator')
-    @patch('src.agent.cli.get_registry')
-    @patch('src.agent.cli.AgentCore')
+    @patch("src.agent.cli.HybridVectorStore")
+    @patch("src.agent.cli.EmbeddingGenerator")
+    @patch("src.agent.cli.get_registry")
+    @patch("src.agent.cli.AgentCore")
     def test_cli_shows_config_correctly(
-        self, mock_agent_core, mock_registry,
-        mock_embedder_class, mock_vector_store_class, valid_config, capsys
+        self,
+        mock_agent_core,
+        mock_registry,
+        mock_embedder_class,
+        mock_vector_store_class,
+        valid_config,
+        capsys,
     ):
         """Test that _show_config displays all settings."""
         # Setup mocks
@@ -565,7 +579,7 @@ class TestCLIConfiguration:
 class TestCLIStartupValidation:
     """Test CLI startup validation."""
 
-    @patch('src.agent.validation.AgentValidator')
+    @patch("src.agent.validation.AgentValidator")
     def test_cli_startup_validation_fails_stops_initialization(
         self, mock_validator_class, valid_config
     ):
@@ -585,10 +599,8 @@ class TestCLIStartupValidation:
         mock_validator.validate_all.assert_called_once()
         mock_validator.print_summary.assert_called_once()
 
-    @patch('src.agent.validation.AgentValidator')
-    def test_cli_startup_validation_success_continues(
-        self, mock_validator_class, valid_config
-    ):
+    @patch("src.agent.validation.AgentValidator")
+    def test_cli_startup_validation_success_continues(self, mock_validator_class, valid_config):
         """Test that successful validation allows initialization."""
         # Mock validator to pass
         mock_validator = MagicMock()

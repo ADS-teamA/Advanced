@@ -69,8 +69,10 @@ class RerankingStats:
             "final_results": self.final_results,
             "rerank_time_ms": round(self.rerank_time_ms, 2),
             "rank_changes": self.rank_changes,
-            "score_correlation": round(self.score_correlation, 3) if self.score_correlation else None,
-            "model_name": self.model_name
+            "score_correlation": (
+                round(self.score_correlation, 3) if self.score_correlation else None
+            ),
+            "model_name": self.model_name,
         }
 
 
@@ -91,7 +93,7 @@ class CrossEncoderReranker:
         model_name: str = "bge-reranker-large",  # SOTA accuracy (was: ms-marco-mini)
         device: str = "cpu",
         max_length: int = 512,
-        batch_size: int = 32
+        batch_size: int = 32,
     ):
         """
         Initialize cross-encoder reranker.
@@ -112,11 +114,7 @@ class CrossEncoderReranker:
 
         # Load model
         try:
-            self.model = CrossEncoder(
-                self.model_name,
-                device=device,
-                max_length=max_length
-            )
+            self.model = CrossEncoder(self.model_name, device=device, max_length=max_length)
             logger.info(f"✓ Cross-encoder loaded: {self.model_name}")
         except Exception as e:
             logger.error(f"Failed to load cross-encoder: {e}")
@@ -127,11 +125,7 @@ class CrossEncoderReranker:
         self.total_time_ms = 0.0
 
     def rerank(
-        self,
-        query: str,
-        candidates: List[Dict],
-        top_k: int = 6,
-        return_stats: bool = False
+        self, query: str, candidates: List[Dict], top_k: int = 6, return_stats: bool = False
     ) -> List[Dict] | Tuple[List[Dict], RerankingStats]:
         """
         Rerank candidates using cross-encoder.
@@ -155,7 +149,7 @@ class CrossEncoderReranker:
                     final_results=0,
                     rerank_time_ms=0.0,
                     rank_changes=0,
-                    model_name=self.model_name
+                    model_name=self.model_name,
                 )
                 return [], stats
             return []
@@ -173,17 +167,16 @@ class CrossEncoderReranker:
         for candidate in candidates:
             content = candidate.get("content", "")
             if not content:
-                logger.warning(f"Candidate missing 'content': {candidate.get('chunk_id', 'unknown')}")
+                logger.warning(
+                    f"Candidate missing 'content': {candidate.get('chunk_id', 'unknown')}"
+                )
                 content = ""
             pairs.append([query, content])
 
         # Score all pairs with cross-encoder
         try:
             scores = self.model.predict(
-                pairs,
-                batch_size=self.batch_size,
-                show_progress_bar=False,
-                convert_to_numpy=True
+                pairs, batch_size=self.batch_size, show_progress_bar=False, convert_to_numpy=True
             )
         except Exception as e:
             logger.error(f"Cross-encoder prediction failed: {e}")
@@ -195,7 +188,7 @@ class CrossEncoderReranker:
                     rerank_time_ms=0.0,
                     rank_changes=0,
                     score_correlation=1.0,
-                    model_name=self.model_name
+                    model_name=self.model_name,
                 )
                 return candidates[:top_k], stats
             return candidates[:top_k]
@@ -207,11 +200,7 @@ class CrossEncoderReranker:
             candidate["original_score"] = candidate.get("rrf_score", candidate.get("score", 0.0))
 
         # Sort by rerank score and take top-k
-        reranked = sorted(
-            candidates,
-            key=lambda x: x["rerank_score"],
-            reverse=True
-        )[:top_k]
+        reranked = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)[:top_k]
 
         # Calculate statistics
         elapsed_ms = (time.time() - start_time) * 1000
@@ -240,18 +229,14 @@ class CrossEncoderReranker:
                 rerank_time_ms=elapsed_ms,
                 rank_changes=rank_changes,
                 score_correlation=correlation,
-                model_name=self.model_name
+                model_name=self.model_name,
             )
             return reranked, stats
 
         return reranked
 
     def rerank_with_threshold(
-        self,
-        query: str,
-        candidates: List[Dict],
-        min_score: float = 0.0,
-        top_k: int = 6
+        self, query: str, candidates: List[Dict], min_score: float = 0.0, top_k: int = 6
     ) -> List[Dict]:
         """
         Rerank with minimum score threshold.
@@ -271,8 +256,7 @@ class CrossEncoderReranker:
         filtered = [c for c in reranked if c["rerank_score"] >= min_score]
 
         logger.info(
-            f"Threshold filtering: {len(reranked)} → {len(filtered)} "
-            f"(min_score={min_score})"
+            f"Threshold filtering: {len(reranked)} → {len(filtered)} " f"(min_score={min_score})"
         )
 
         return filtered[:top_k]
@@ -288,7 +272,7 @@ class CrossEncoderReranker:
             "total_time_ms": round(self.total_time_ms, 2),
             "avg_time_ms": round(avg_time_ms, 2),
             "batch_size": self.batch_size,
-            "max_length": self.max_length
+            "max_length": self.max_length,
         }
 
     def reset_stats(self):
@@ -304,7 +288,7 @@ def rerank_results(
     candidates: List[Dict],
     top_k: int = 6,
     model_name: str = "default",
-    device: str = "cpu"
+    device: str = "cpu",
 ) -> List[Dict]:
     """
     Convenience function for one-shot reranking.
@@ -334,22 +318,22 @@ if __name__ == "__main__":
         {
             "chunk_id": "chunk_1",
             "content": "The waste disposal requirements specify proper handling of hazardous materials.",
-            "rrf_score": 0.031
+            "rrf_score": 0.031,
         },
         {
             "chunk_id": "chunk_2",
             "content": "Safety equipment must be worn at all times in the facility.",
-            "rrf_score": 0.029
+            "rrf_score": 0.029,
         },
         {
             "chunk_id": "chunk_3",
             "content": "Proper waste disposal procedures include segregation, labeling, and secure storage.",
-            "rrf_score": 0.028
+            "rrf_score": 0.028,
         },
         {
             "chunk_id": "chunk_4",
             "content": "The company provides training on environmental regulations.",
-            "rrf_score": 0.025
+            "rrf_score": 0.025,
         },
     ]
 
@@ -368,10 +352,7 @@ if __name__ == "__main__":
 
     # Rerank with statistics
     reranked, stats = reranker.rerank(
-        query=query,
-        candidates=candidates,
-        top_k=3,
-        return_stats=True
+        query=query, candidates=candidates, top_k=3, return_stats=True
     )
 
     print("3. Results:")

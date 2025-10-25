@@ -65,9 +65,7 @@ class TestAPIKeyExposure:
         validator._check_api_keys()
 
         # Find the Anthropic key result
-        anthropic_result = next(
-            (r for r in validator.results if "ANTHROPIC" in r.name), None
-        )
+        anthropic_result = next((r for r in validator.results if "ANTHROPIC" in r.name), None)
 
         assert anthropic_result is not None
         assert anthropic_result.passed is True
@@ -85,9 +83,7 @@ class TestAPIKeyExposure:
         validator = AgentValidator(mock_config, debug=False)
         validator._check_api_keys()
 
-        anthropic_result = next(
-            (r for r in validator.results if "ANTHROPIC" in r.name), None
-        )
+        anthropic_result = next((r for r in validator.results if "ANTHROPIC" in r.name), None)
 
         assert anthropic_result is not None
         assert anthropic_result.passed is False
@@ -103,9 +99,7 @@ class TestAPIKeyExposure:
         validator = AgentValidator(mock_config, debug=False)
         validator._check_api_keys()
 
-        openai_result = next(
-            (r for r in validator.results if "OPENAI" in r.name), None
-        )
+        openai_result = next((r for r in validator.results if "OPENAI" in r.name), None)
 
         assert openai_result is not None
 
@@ -173,9 +167,7 @@ class TestVectorStoreValidation:
         validator._check_vector_store()
 
         # Should have a critical failure
-        vs_result = next(
-            (r for r in validator.results if "Vector Store" in r.name), None
-        )
+        vs_result = next((r for r in validator.results if "Vector Store" in r.name), None)
 
         assert vs_result is not None
         assert vs_result.passed is False
@@ -192,9 +184,7 @@ class TestKnowledgeGraphValidation:
         validator = AgentValidator(mock_config, debug=False)
         validator._check_knowledge_graph()
 
-        kg_result = next(
-            (r for r in validator.results if "Knowledge Graph" in r.name), None
-        )
+        kg_result = next((r for r in validator.results if "Knowledge Graph" in r.name), None)
 
         assert kg_result is not None
         assert kg_result.passed is True
@@ -207,9 +197,7 @@ class TestKnowledgeGraphValidation:
         validator = AgentValidator(mock_config, debug=False)
         validator._check_knowledge_graph()
 
-        kg_result = next(
-            (r for r in validator.results if "Knowledge Graph" in r.name), None
-        )
+        kg_result = next((r for r in validator.results if "Knowledge Graph" in r.name), None)
 
         assert kg_result is not None
         assert kg_result.passed is False
@@ -250,6 +238,8 @@ class TestValidationSummary:
         validator._check_api_keys()
 
         # Manually check for critical failures
-        critical_failures = [r for r in validator.results if not r.passed and "[CRITICAL]" in r.name]
+        critical_failures = [
+            r for r in validator.results if not r.passed and "[CRITICAL]" in r.name
+        ]
 
         assert len(critical_failures) > 0

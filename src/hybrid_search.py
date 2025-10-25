@@ -49,8 +49,7 @@ try:
     from rank_bm25 import BM25Okapi
 except ImportError:
     raise ImportError(
-        "rank-bm25 required for hybrid search. "
-        "Install with: pip install rank-bm25"
+        "rank-bm25 required for hybrid search. " "Install with: pip install rank-bm25"
     )
 
 # Import utilities
@@ -112,7 +111,7 @@ class BM25Index:
                 "section_path": chunk.metadata.section_path,
                 "page_number": chunk.metadata.page_number,
                 "layer": chunk.metadata.layer,
-                "content": chunk.raw_content  # Store without context for generation
+                "content": chunk.raw_content,  # Store without context for generation
             }
             self.metadata.append(meta)
 
@@ -144,12 +143,7 @@ class BM25Index:
         """
         return text.lower().split()
 
-    def search(
-        self,
-        query: str,
-        k: int = 50,
-        document_filter: Optional[str] = None
-    ) -> List[Dict]:
+    def search(self, query: str, k: int = 50, document_filter: Optional[str] = None) -> List[Dict]:
         """
         Search BM25 index.
 
@@ -218,11 +212,7 @@ class BM25Index:
         self.metadata.extend(other.metadata)
 
         # Update doc_id_map with offset indices using centralized utility
-        PersistenceManager.update_doc_id_indices(
-            self.doc_id_map,
-            other.doc_id_map,
-            base_idx
-        )
+        PersistenceManager.update_doc_id_indices(self.doc_id_map, other.doc_id_map, base_idx)
 
         # Rebuild BM25 index with merged corpus
         self.bm25 = BM25Okapi(self.tokenized_corpus)
@@ -240,10 +230,7 @@ class BM25Index:
         path = Path(path)
 
         # Config (JSON - human-readable)
-        config = {
-            "corpus_count": len(self.corpus),
-            "format_version": "1.0"
-        }
+        config = {"corpus_count": len(self.corpus), "format_version": "1.0"}
         config_path = path.parent / f"{path.stem}_config.json"
         PersistenceManager.save_json(config_path, config)
 
@@ -252,7 +239,7 @@ class BM25Index:
             "corpus": self.corpus,
             "chunk_ids": self.chunk_ids,
             "metadata": self.metadata,
-            "doc_id_map": self.doc_id_map
+            "doc_id_map": self.doc_id_map,
         }
         arrays_path = path.parent / f"{path.stem}_arrays.pkl"
         PersistenceManager.save_pickle(arrays_path, arrays)
@@ -296,8 +283,7 @@ class BM25Index:
         else:
             # Old format - single pickle file
             logger.warning(
-                f"Loading BM25 index (old format): {path}. "
-                "Consider re-saving in new format."
+                f"Loading BM25 index (old format): {path}. " "Consider re-saving in new format."
             )
 
             data = PersistenceManager.load_pickle(path)
@@ -360,19 +346,13 @@ class BM25Store:
         return self.index_layer1.search(query, k)
 
     def search_layer2(
-        self,
-        query: str,
-        k: int = 3,
-        document_filter: Optional[str] = None
+        self, query: str, k: int = 3, document_filter: Optional[str] = None
     ) -> List[Dict]:
         """Search Layer 2 (Section level)."""
         return self.index_layer2.search(query, k, document_filter)
 
     def search_layer3(
-        self,
-        query: str,
-        k: int = 50,
-        document_filter: Optional[str] = None
+        self, query: str, k: int = 50, document_filter: Optional[str] = None
     ) -> List[Dict]:
         """Search Layer 3 (Chunk level - PRIMARY)."""
         return self.index_layer3.search(query, k, document_filter)
@@ -454,12 +434,7 @@ class HybridVectorStore:
     - Retrieve k_dense=50, k_sparse=50, fuse to top_k
     """
 
-    def __init__(
-        self,
-        faiss_store,  # FAISSVectorStore
-        bm25_store: BM25Store,
-        fusion_k: int = 60
-    ):
+    def __init__(self, faiss_store, bm25_store: BM25Store, fusion_k: int = 60):  # FAISSVectorStore
         """
         Initialize hybrid vector store.
 
@@ -484,7 +459,7 @@ class HybridVectorStore:
         query_embedding: np.ndarray,
         k_layer3: int = 6,
         use_doc_filtering: bool = True,
-        similarity_threshold_offset: float = 0.25
+        similarity_threshold_offset: float = 0.25,
     ) -> Dict[str, List[Dict]]:
         """
         Hierarchical hybrid search across all layers with RRF fusion.
@@ -524,14 +499,10 @@ class HybridVectorStore:
         # Step 2: Layer 3 (PRIMARY - Chunk level) - Hybrid
         # Retrieve more candidates for RRF (k=50 each, fuse to top k_layer3)
         dense_l3 = self.faiss_store.search_layer3(
-            query_embedding=query_embedding,
-            k=50,
-            document_filter=document_filter
+            query_embedding=query_embedding, k=50, document_filter=document_filter
         )
         sparse_l3 = self.bm25_store.search_layer3(
-            query=query_text,
-            k=50,
-            document_filter=document_filter
+            query=query_text, k=50, document_filter=document_filter
         )
         fused_l3 = self._rrf_fusion(dense_l3, sparse_l3, k=k_layer3)
 
@@ -549,14 +520,10 @@ class HybridVectorStore:
 
         # Step 3: Optional Layer 2 (Section context) - Hybrid
         dense_l2 = self.faiss_store.search_layer2(
-            query_embedding=query_embedding,
-            k=10,
-            document_filter=document_filter
+            query_embedding=query_embedding, k=10, document_filter=document_filter
         )
         sparse_l2 = self.bm25_store.search_layer2(
-            query=query_text,
-            k=10,
-            document_filter=document_filter
+            query=query_text, k=10, document_filter=document_filter
         )
         fused_l2 = self._rrf_fusion(dense_l2, sparse_l2, k=3)
         results["layer2"] = fused_l2
@@ -597,10 +564,7 @@ class HybridVectorStore:
         logger.info("Hybrid vector store merge complete")
 
     def _rrf_fusion(
-        self,
-        dense_results: List[Dict],
-        sparse_results: List[Dict],
-        k: int
+        self, dense_results: List[Dict], sparse_results: List[Dict], k: int
     ) -> List[Dict]:
         """
         Reciprocal Rank Fusion (RRF).
@@ -640,11 +604,7 @@ class HybridVectorStore:
             sparse_scores[chunk_id] = result.get("score", 0.0)
 
         # Sort by RRF score
-        sorted_ids = sorted(
-            rrf_scores.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
+        sorted_ids = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
         # Build final results (top k) with all scores preserved
         results = []
@@ -682,10 +642,7 @@ class HybridVectorStore:
         self.bm25_store.save(output_dir)
 
         # Save config (JSON - human-readable)
-        config = {
-            "fusion_k": self.fusion_k,
-            "format_version": "1.0"
-        }
+        config = {"fusion_k": self.fusion_k, "format_version": "1.0"}
         PersistenceManager.save_json(output_dir / "hybrid_config.json", config)
 
         logger.info("Hybrid store saved")
@@ -729,8 +686,7 @@ class HybridVectorStore:
         elif pkl_config_path.exists():
             # Old format (pickle)
             logger.warning(
-                "Loading hybrid config (old format). "
-                "Consider re-saving in new format."
+                "Loading hybrid config (old format). " "Consider re-saving in new format."
             )
             config = PersistenceManager.load_pickle(pkl_config_path)
         else:
@@ -741,11 +697,7 @@ class HybridVectorStore:
 
         logger.info("Hybrid store loaded")
 
-        return cls(
-            faiss_store=faiss_store,
-            bm25_store=bm25_store,
-            fusion_k=config["fusion_k"]
-        )
+        return cls(faiss_store=faiss_store, bm25_store=bm25_store, fusion_k=config["fusion_k"])
 
     def get_stats(self) -> Dict:
         """

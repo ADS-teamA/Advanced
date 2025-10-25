@@ -107,9 +107,7 @@ class TestAdaptiveFormatter:
             }
         ]
 
-        formatted, metadata = formatter.format_chunks(
-            chunks, detail_level=DetailLevel.MEDIUM
-        )
+        formatted, metadata = formatter.format_chunks(chunks, detail_level=DetailLevel.MEDIUM)
 
         assert len(formatted) == 1
         assert formatted[0]["document_id"] == "test_doc"
@@ -173,9 +171,7 @@ class TestAdaptiveFormatter:
             for i in range(150)  # Many sections
         ]
 
-        formatted, metadata = formatter.format_sections_with_budget(
-            sections, include_summary=True
-        )
+        formatted, metadata = formatter.format_sections_with_budget(sections, include_summary=True)
 
         # Should limit sections based on budget
         assert metadata["returned_sections"] <= metadata["total_sections"]
@@ -285,7 +281,10 @@ class TestCriticalEdgeCases:
 
         # Verify auto-adjustment happened
         assert metadata["auto_adjusted"] is True, "Should have auto-adjusted detail level"
-        assert metadata["actual_detail_level"] in ["medium", "summary"], "Should reduce detail level"
+        assert metadata["actual_detail_level"] in [
+            "medium",
+            "summary",
+        ], "Should reduce detail level"
 
         # Verify chunks were capped to fit budget
         assert metadata["chunks_capped"] is True, "Should have capped chunks"

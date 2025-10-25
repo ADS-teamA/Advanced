@@ -137,6 +137,7 @@ class IndexingConfig:
         if self.enable_knowledge_graph and self.kg_config is None:
             try:
                 from src.graph.config import KnowledgeGraphConfig
+
                 self.kg_config = KnowledgeGraphConfig.from_env()
             except ImportError:
                 logger.warning("Knowledge Graph enabled but graph module not available")
@@ -169,7 +170,7 @@ class IndexingConfig:
             embedding_config=EmbeddingConfig.from_env(),
             enable_knowledge_graph=os.getenv("ENABLE_KNOWLEDGE_GRAPH", "true").lower() == "true",
             enable_hybrid_search=os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true",
-            **overrides
+            **overrides,
         )
 
         return config
@@ -256,8 +257,13 @@ class IndexingPipeline:
             logger.warning("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
             self.kg_pipeline = None
             return
-        elif kg_config.entity_extraction.llm_provider == "anthropic" and not kg_config.anthropic_api_key:
-            logger.warning("Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable.")
+        elif (
+            kg_config.entity_extraction.llm_provider == "anthropic"
+            and not kg_config.anthropic_api_key
+        ):
+            logger.warning(
+                "Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable."
+            )
             self.kg_pipeline = None
             return
 
@@ -273,7 +279,7 @@ class IndexingPipeline:
         self,
         document_path: Path,
         save_intermediate: bool = False,
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
     ) -> Dict:
         """
         Index a single document.
@@ -312,9 +318,9 @@ class IndexingPipeline:
                 f"Supported formats: {', '.join(supported_formats)}"
             )
 
-        logger.info("="*80)
+        logger.info("=" * 80)
         logger.info(f"Indexing document: {document_path.name}")
-        logger.info("="*80)
+        logger.info("=" * 80)
 
         # Reset cost tracker for this document
         reset_global_tracker()
@@ -323,8 +329,7 @@ class IndexingPipeline:
         logger.info("PHASE 1+2: Extraction + Summaries")
         result = self.extractor.extract(document_path)
         logger.info(
-            f"✓ Extracted: {result.num_sections} sections, "
-            f"depth={result.hierarchy_depth}"
+            f"✓ Extracted: {result.num_sections} sections, " f"depth={result.hierarchy_depth}"
         )
 
         # PHASE 3: Multi-layer chunking + SAC
@@ -342,7 +347,7 @@ class IndexingPipeline:
         embeddings = {
             "layer1": self.embedder.embed_chunks(chunks["layer1"], layer=1),
             "layer2": self.embedder.embed_chunks(chunks["layer2"], layer=2),
-            "layer3": self.embedder.embed_chunks(chunks["layer3"], layer=3)
+            "layer3": self.embedder.embed_chunks(chunks["layer3"], layer=3),
         }
         logger.info(
             f"✓ Embedded: {self.embedder.dimensions}D vectors, "
@@ -381,7 +386,7 @@ class IndexingPipeline:
                 hybrid_store = HybridVectorStore(
                     faiss_store=vector_store,
                     bm25_store=bm25_store,
-                    fusion_k=self.config.hybrid_fusion_k
+                    fusion_k=self.config.hybrid_fusion_k,
                 )
 
                 # Replace vector_store with hybrid_store for return
@@ -394,6 +399,7 @@ class IndexingPipeline:
                 logger.error(f"✗ Hybrid Search failed: {e}")
                 logger.warning("Continuing with dense-only retrieval...")
                 import traceback
+
                 logger.debug(traceback.format_exc())
 
         # PHASE 5A: Knowledge Graph (optional)
@@ -413,15 +419,14 @@ class IndexingPipeline:
                             "document_id": chunk.metadata.document_id,
                             "section_path": chunk.metadata.section_path,
                             "section_title": chunk.metadata.section_title,
-                        }
+                        },
                     }
                     for chunk in chunks["layer3"]
                 ]
 
                 # Build knowledge graph
                 knowledge_graph = self.kg_pipeline.build_from_chunks(
-                    chunks=kg_chunks,
-                    document_id=result.document_id
+                    chunks=kg_chunks, document_id=result.document_id
                 )
 
                 logger.info(
@@ -443,10 +448,7 @@ class IndexingPipeline:
         # Save intermediate results
         if save_intermediate and output_dir:
             self._save_intermediate(
-                output_dir=output_dir,
-                result=result,
-                chunks=chunks,
-                chunking_stats=chunking_stats
+                output_dir=output_dir, result=result, chunks=chunks, chunking_stats=chunking_stats
             )
 
         # Display cost summary
@@ -454,9 +456,9 @@ class IndexingPipeline:
         if tracker.get_total_cost() > 0:
             logger.info("\n" + tracker.get_summary())
 
-        logger.info("="*80)
+        logger.info("=" * 80)
         logger.info(f"✓ Indexing complete: {document_path.name}")
-        logger.info("="*80)
+        logger.info("=" * 80)
 
         # Prepare result
         result_dict = {
@@ -471,9 +473,11 @@ class IndexingPipeline:
                 "kg_enabled": self.config.enable_knowledge_graph,
                 "kg_entities": len(knowledge_graph.entities) if knowledge_graph else 0,
                 "kg_relationships": len(knowledge_graph.relationships) if knowledge_graph else 0,
-                "kg_construction_failed": self.config.enable_knowledge_graph and knowledge_graph is None and kg_error is not None,
+                "kg_construction_failed": self.config.enable_knowledge_graph
+                and knowledge_graph is None
+                and kg_error is not None,
                 "kg_error": kg_error if kg_error else None,
-            }
+            },
         }
 
         if save_intermediate:
@@ -482,10 +486,7 @@ class IndexingPipeline:
         return result_dict
 
     def index_batch(
-        self,
-        document_paths: list,
-        output_dir: Path,
-        save_per_document: bool = False
+        self, document_paths: list, output_dir: Path, save_per_document: bool = False
     ) -> Dict:
         """
         Index multiple documents into a single vector store.
@@ -522,7 +523,7 @@ class IndexingPipeline:
                 result = self.index_document(
                     document_path=document_path,
                     save_intermediate=False,
-                    output_dir=output_dir if save_per_document else None
+                    output_dir=output_dir if save_per_document else None,
                 )
 
                 # Extract components
@@ -562,6 +563,7 @@ class IndexingPipeline:
             try:
                 # Merge all KGs
                 from graph import KnowledgeGraph
+
                 combined_kg = KnowledgeGraph(
                     entities=[e for kg in knowledge_graphs for e in kg.entities],
                     relationships=[r for kg in knowledge_graphs for r in kg.relationships],
@@ -591,16 +593,10 @@ class IndexingPipeline:
                 "kg_enabled": self.config.enable_knowledge_graph,
                 "total_entities": sum(len(kg.entities) for kg in knowledge_graphs),
                 "total_relationships": sum(len(kg.relationships) for kg in knowledge_graphs),
-            }
+            },
         }
 
-    def _save_intermediate(
-        self,
-        output_dir: Path,
-        result,
-        chunks: Dict,
-        chunking_stats: Dict
-    ):
+    def _save_intermediate(self, output_dir: Path, result, chunks: Dict, chunking_stats: Dict):
         """Save intermediate results from all phases (PHASE 1, 2, 3)."""
         import json
 
@@ -624,12 +620,12 @@ class IndexingPipeline:
                     "depth": s.depth,
                     "path": s.path,
                     "page_number": s.page_number,
-                    "content_length": len(s.content)
+                    "content_length": len(s.content),
                 }
                 for s in result.sections
-            ]
+            ],
         }
-        with open(phase1_path, 'w', encoding='utf-8') as f:
+        with open(phase1_path, "w", encoding="utf-8") as f:
             json.dump(phase1_export, f, indent=2, ensure_ascii=False)
         logger.info(f"✓ Saved PHASE 1: {phase1_path}")
 
@@ -639,15 +635,11 @@ class IndexingPipeline:
             "document_id": result.document_id,
             "document_summary": result.document_summary,
             "section_summaries": [
-                {
-                    "section_id": s.section_id,
-                    "title": s.title,
-                    "summary": s.summary
-                }
+                {"section_id": s.section_id, "title": s.title, "summary": s.summary}
                 for s in result.sections
-            ]
+            ],
         }
-        with open(phase2_path, 'w', encoding='utf-8') as f:
+        with open(phase2_path, "w", encoding="utf-8") as f:
             json.dump(phase2_export, f, indent=2, ensure_ascii=False)
         logger.info(f"✓ Saved PHASE 2: {phase2_path}")
 
@@ -659,9 +651,9 @@ class IndexingPipeline:
             "chunking_stats": chunking_stats,
             "layer1": [c.to_dict() for c in chunks["layer1"]],
             "layer2": [c.to_dict() for c in chunks["layer2"]],
-            "layer3": [c.to_dict() for c in chunks["layer3"]]
+            "layer3": [c.to_dict() for c in chunks["layer3"]],
         }
-        with open(phase3_path, 'w', encoding='utf-8') as f:
+        with open(phase3_path, "w", encoding="utf-8") as f:
             json.dump(phase3_export, f, indent=2, ensure_ascii=False)
         logger.info(f"✓ Saved PHASE 3: {phase3_path}")
 
@@ -675,15 +667,12 @@ if __name__ == "__main__":
         enable_smart_hierarchy=True,
         generate_summaries=True,
         summary_model="gpt-4o-mini",
-
         # PHASE 3
         chunk_size=500,
         enable_sac=True,
-
         # PHASE 4
         embedding_model="text-embedding-3-large",
         normalize_embeddings=True,
-
         # PHASE 5A: Knowledge Graph (enabled by default)
         # enable_knowledge_graph=True,  # ✅ No need to set - default is True
         kg_llm_provider="openai",
@@ -697,7 +686,7 @@ if __name__ == "__main__":
     result = pipeline.index_document(
         document_path=Path("data/document.pdf"),
         save_intermediate=True,
-        output_dir=Path("output/indexing")
+        output_dir=Path("output/indexing"),
     )
 
     # Extract components

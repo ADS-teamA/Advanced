@@ -37,7 +37,7 @@ except ImportError:
 
 # Re-export for backward compatibility (will be removed in v2.0)
 # This allows existing code importing from embedding_generator to continue working
-__all__ = ['EmbeddingGenerator', 'EmbeddingConfig']
+__all__ = ["EmbeddingGenerator", "EmbeddingConfig"]
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ class EmbeddingGenerator:
         model_map = {
             "bge-m3": "BAAI/bge-m3",
             "bge-m3": "BAAI/bge-m3",
-            "bge-large": "BAAI/bge-large-en-v1.5"
+            "bge-large": "BAAI/bge-large-en-v1.5",
         }
 
         hf_model_name = model_map.get(self.model_name, self.model_name)
@@ -252,7 +252,10 @@ class EmbeddingGenerator:
                 self._cache_misses += 1
                 logger.debug(f"Cache MISS: {len(texts)} texts")
             except Exception as e:
-                logger.error(f"Cache lookup failed, falling back to embedding: {sanitize_error(e)}", exc_info=True)
+                logger.error(
+                    f"Cache lookup failed, falling back to embedding: {sanitize_error(e)}",
+                    exc_info=True,
+                )
                 self._cache_misses += 1
                 self._cache_errors += 1
 
@@ -285,12 +288,16 @@ class EmbeddingGenerator:
             try:
                 self._add_to_cache(cache_key, embeddings)
             except MemoryError as e:
-                logger.warning(f"Cache storage failed due to memory: {sanitize_error(e)}. Clearing cache and disabling.")
+                logger.warning(
+                    f"Cache storage failed due to memory: {sanitize_error(e)}. Clearing cache and disabling."
+                )
                 self._embedding_cache.clear()  # Free memory
                 self._cache_enabled = False  # Disable cache on memory error
                 self._cache_errors += 1
             except Exception as e:
-                logger.error(f"Failed to store embeddings in cache: {sanitize_error(e)}", exc_info=True)
+                logger.error(
+                    f"Failed to store embeddings in cache: {sanitize_error(e)}", exc_info=True
+                )
                 self._cache_errors += 1
 
                 # Disable cache after too many storage errors
@@ -356,23 +363,23 @@ class EmbeddingGenerator:
 
         # Process in batches
         for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
+            batch = texts[i : i + self.batch_size]
 
-            logger.debug(f"Processing batch {i//self.batch_size + 1}/{(len(texts)-1)//self.batch_size + 1}")
+            logger.debug(
+                f"Processing batch {i//self.batch_size + 1}/{(len(texts)-1)//self.batch_size + 1}"
+            )
 
             result = self.client.embed(
-                texts=batch,
-                model=self.model_name,
-                input_type="document"  # For indexing/storage
+                texts=batch, model=self.model_name, input_type="document"  # For indexing/storage
             )
 
             # Track cost (Voyage API returns total_tokens)
-            if hasattr(result, 'total_tokens'):
+            if hasattr(result, "total_tokens"):
                 self.tracker.track_embedding(
                     provider="voyage",
                     model=self.model_name,
                     tokens=result.total_tokens,
-                    operation="embedding"
+                    operation="embedding",
                 )
 
             batch_embeddings = result.embeddings
@@ -386,14 +393,14 @@ class EmbeddingGenerator:
 
         # Process in batches
         for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
+            batch = texts[i : i + self.batch_size]
 
-            logger.debug(f"Processing batch {i//self.batch_size + 1}/{(len(texts)-1)//self.batch_size + 1}")
+            logger.debug(
+                f"Processing batch {i//self.batch_size + 1}/{(len(texts)-1)//self.batch_size + 1}"
+            )
 
             response = self.client.embeddings.create(
-                model=self.model_name,
-                input=batch,
-                encoding_format="float"
+                model=self.model_name, input=batch, encoding_format="float"
             )
 
             # Track cost
@@ -401,7 +408,7 @@ class EmbeddingGenerator:
                 provider="openai",
                 model=self.model_name,
                 tokens=response.usage.total_tokens,
-                operation="embedding"
+                operation="embedding",
             )
 
             batch_embeddings = [data.embedding for data in response.data]
@@ -416,7 +423,7 @@ class EmbeddingGenerator:
             batch_size=self.batch_size,
             show_progress_bar=True,
             convert_to_numpy=True,
-            normalize_embeddings=False  # We handle normalization separately
+            normalize_embeddings=False,  # We handle normalization separately
         )
 
         # No cost tracking needed - local model (FREE)
@@ -466,8 +473,7 @@ class EmbeddingGenerator:
         embeddings = self.embed_texts(valid_texts)
 
         logger.info(
-            f"Layer {layer} embeddings generated: "
-            f"{len(embeddings)} vectors, {self.dimensions}D"
+            f"Layer {layer} embeddings generated: " f"{len(embeddings)} vectors, {self.dimensions}D"
         )
 
         return embeddings
@@ -482,7 +488,7 @@ class EmbeddingGenerator:
             "dimensions": embeddings.shape[1] if embeddings.ndim > 1 else 0,
             "mean_norm": float(np.mean(np.linalg.norm(embeddings, axis=1))),
             "std_norm": float(np.std(np.linalg.norm(embeddings, axis=1))),
-            "memory_mb": float(embeddings.nbytes / (1024 * 1024))
+            "memory_mb": float(embeddings.nbytes / (1024 * 1024)),
         }
 
 
@@ -493,10 +499,7 @@ if __name__ == "__main__":
     from docling_extractor_v2 import DoclingExtractorV2
 
     # Extract and chunk document
-    config = ExtractionConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=True
-    )
+    config = ExtractionConfig(enable_smart_hierarchy=True, generate_summaries=True)
 
     extractor = DoclingExtractorV2(config)
     result = extractor.extract("document.pdf")
@@ -506,9 +509,7 @@ if __name__ == "__main__":
 
     # Generate embeddings
     embedding_config = EmbeddingConfig(
-        model="text-embedding-3-large",
-        batch_size=100,
-        normalize=True
+        model="text-embedding-3-large", batch_size=100, normalize=True
     )
 
     embedder = EmbeddingGenerator(embedding_config)

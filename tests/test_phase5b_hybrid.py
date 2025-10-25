@@ -23,6 +23,7 @@ from src.hybrid_search import BM25Index, BM25Store, HybridVectorStore
 # Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def sample_chunks():
     """Create sample chunks for testing."""
@@ -36,8 +37,8 @@ def sample_chunks():
                     chunk_id="doc1_L1",
                     layer=1,
                     document_id="doc1",
-                    section_title="Document Summary"
-                )
+                    section_title="Document Summary",
+                ),
             )
         ],
         "layer2": [
@@ -50,8 +51,8 @@ def sample_chunks():
                     layer=2,
                     document_id="doc1",
                     section_id="s1",
-                    section_title="Safety Section"
-                )
+                    section_title="Safety Section",
+                ),
             ),
             Chunk(
                 chunk_id="doc1_L2_s2",
@@ -62,9 +63,9 @@ def sample_chunks():
                     layer=2,
                     document_id="doc1",
                     section_id="s2",
-                    section_title="Testing Section"
-                )
-            )
+                    section_title="Testing Section",
+                ),
+            ),
         ],
         "layer3": [
             Chunk(
@@ -76,8 +77,8 @@ def sample_chunks():
                     layer=3,
                     document_id="doc1",
                     section_id="s1",
-                    section_title="Safety Section"
-                )
+                    section_title="Safety Section",
+                ),
             ),
             Chunk(
                 chunk_id="doc1_L3_s1_c2",
@@ -88,8 +89,8 @@ def sample_chunks():
                     layer=3,
                     document_id="doc1",
                     section_id="s1",
-                    section_title="Safety Section"
-                )
+                    section_title="Safety Section",
+                ),
             ),
             Chunk(
                 chunk_id="doc1_L3_s2_c1",
@@ -100,10 +101,10 @@ def sample_chunks():
                     layer=3,
                     document_id="doc1",
                     section_id="s2",
-                    section_title="Testing Section"
-                )
-            )
-        ]
+                    section_title="Testing Section",
+                ),
+            ),
+        ],
     }
     return chunks
 
@@ -111,6 +112,7 @@ def sample_chunks():
 # ============================================================================
 # Unit Tests: BM25Index
 # ============================================================================
+
 
 def test_bm25_index_initialization():
     """Test BM25Index initialization."""
@@ -170,11 +172,7 @@ def test_bm25_index_document_filtering(sample_chunks):
     index = BM25Index()
     index.build_from_chunks(sample_chunks["layer3"])
 
-    results = index.search(
-        query="safety",
-        k=10,
-        document_filter="doc1"
-    )
+    results = index.search(query="safety", k=10, document_filter="doc1")
 
     assert len(results) > 0
     assert all(r["document_id"] == "doc1" for r in results)
@@ -214,6 +212,7 @@ def test_bm25_index_save_load(sample_chunks, tmp_path):
 # ============================================================================
 # Unit Tests: BM25Store
 # ============================================================================
+
 
 def test_bm25_store_initialization():
     """Test BM25Store initialization."""
@@ -286,6 +285,7 @@ def test_bm25_store_save_load(sample_chunks, tmp_path):
 # Unit Tests: RRF Fusion
 # ============================================================================
 
+
 @pytest.fixture
 def mock_dense_results():
     """Mock dense retrieval results."""
@@ -319,11 +319,7 @@ def mock_hybrid_store():
     bm25_store = BM25Store()
 
     # Create hybrid store
-    hybrid_store = HybridVectorStore(
-        faiss_store=faiss_store,
-        bm25_store=bm25_store,
-        fusion_k=60
-    )
+    hybrid_store = HybridVectorStore(faiss_store=faiss_store, bm25_store=bm25_store, fusion_k=60)
 
     return hybrid_store
 
@@ -331,9 +327,7 @@ def mock_hybrid_store():
 def test_rrf_fusion_basic(mock_hybrid_store, mock_dense_results, mock_sparse_results):
     """Test basic RRF fusion logic."""
     results = mock_hybrid_store._rrf_fusion(
-        dense_results=mock_dense_results,
-        sparse_results=mock_sparse_results,
-        k=3
+        dense_results=mock_dense_results, sparse_results=mock_sparse_results, k=3
     )
 
     assert len(results) == 3
@@ -351,14 +345,14 @@ def test_rrf_fusion_math(mock_hybrid_store):
     sparse = [
         {"chunk_id": "c2", "score": 10.0, "content": "text2"},
         {"chunk_id": "c3", "score": 8.0, "content": "text3"},
-        {"chunk_id": "c1", "score": 5.0, "content": "text1"}
+        {"chunk_id": "c1", "score": 5.0, "content": "text1"},
     ]
 
     results = mock_hybrid_store._rrf_fusion(dense, sparse, k=3)
 
     # c1: 1/(60+1) + 1/(60+3) = 0.0164 + 0.0159 = 0.0323
     c1_result = next(r for r in results if r["chunk_id"] == "c1")
-    expected_score = 1/(60+1) + 1/(60+3)
+    expected_score = 1 / (60 + 1) + 1 / (60 + 3)
     assert abs(c1_result["rrf_score"] - expected_score) < 0.0001
 
 
@@ -372,7 +366,7 @@ def test_rrf_fusion_dense_only(mock_hybrid_store):
     assert len(results) == 1
     assert results[0]["chunk_id"] == "c1"
     # Score should be 1/(60+1) = 0.0164
-    expected = 1/(60+1)
+    expected = 1 / (60 + 1)
     assert abs(results[0]["rrf_score"] - expected) < 0.0001
 
 
@@ -412,6 +406,7 @@ def test_rrf_fusion_k_parameter(mock_hybrid_store):
 # Integration Tests: HybridVectorStore
 # ============================================================================
 
+
 def test_hybrid_store_initialization(sample_chunks):
     """Test HybridVectorStore initialization."""
     from src.faiss_vector_store import FAISSVectorStore
@@ -422,11 +417,7 @@ def test_hybrid_store_initialization(sample_chunks):
     bm25_store.build_from_chunks(sample_chunks)
 
     # Create hybrid store
-    hybrid_store = HybridVectorStore(
-        faiss_store=faiss_store,
-        bm25_store=bm25_store,
-        fusion_k=60
-    )
+    hybrid_store = HybridVectorStore(faiss_store=faiss_store, bm25_store=bm25_store, fusion_k=60)
 
     assert hybrid_store.faiss_store is faiss_store
     assert hybrid_store.bm25_store is bm25_store
@@ -457,17 +448,15 @@ def test_hybrid_store_save_load(sample_chunks, tmp_path):
     from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
     # Create embedder
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        provider="huggingface",
-        model="BAAI/bge-small-en-v1.5",
-        batch_size=32
-    ))
+    embedder = EmbeddingGenerator(
+        EmbeddingConfig(provider="huggingface", model="BAAI/bge-small-en-v1.5", batch_size=32)
+    )
 
     # Generate embeddings for sample chunks
     embeddings = {
         "layer1": embedder.embed_chunks(sample_chunks["layer1"], layer=1),
         "layer2": embedder.embed_chunks(sample_chunks["layer2"], layer=2),
-        "layer3": embedder.embed_chunks(sample_chunks["layer3"], layer=3)
+        "layer3": embedder.embed_chunks(sample_chunks["layer3"], layer=3),
     }
 
     # Create FAISS store
@@ -501,6 +490,7 @@ def test_hybrid_store_save_load(sample_chunks, tmp_path):
 # Integration Tests: Full Pipeline
 # ============================================================================
 
+
 @pytest.mark.integration
 @pytest.mark.slow
 def test_hybrid_pipeline_integration(sample_chunks, tmp_path):
@@ -509,17 +499,15 @@ def test_hybrid_pipeline_integration(sample_chunks, tmp_path):
     from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
     # Create embedder (use small model for speed)
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        provider="huggingface",
-        model="BAAI/bge-small-en-v1.5",
-        batch_size=32
-    ))
+    embedder = EmbeddingGenerator(
+        EmbeddingConfig(provider="huggingface", model="BAAI/bge-small-en-v1.5", batch_size=32)
+    )
 
     # Generate embeddings
     embeddings = {
         "layer1": embedder.embed_chunks(sample_chunks["layer1"], layer=1),
         "layer2": embedder.embed_chunks(sample_chunks["layer2"], layer=2),
-        "layer3": embedder.embed_chunks(sample_chunks["layer3"], layer=3)
+        "layer3": embedder.embed_chunks(sample_chunks["layer3"], layer=3),
     }
 
     # Create FAISS store
@@ -531,20 +519,14 @@ def test_hybrid_pipeline_integration(sample_chunks, tmp_path):
     bm25_store.build_from_chunks(sample_chunks)
 
     # Create hybrid store
-    hybrid_store = HybridVectorStore(
-        faiss_store=faiss_store,
-        bm25_store=bm25_store,
-        fusion_k=60
-    )
+    hybrid_store = HybridVectorStore(faiss_store=faiss_store, bm25_store=bm25_store, fusion_k=60)
 
     # Test hybrid search
     query_text = "safety equipment requirements"
     query_embedding = embedder.embed_texts([query_text])
 
     results = hybrid_store.hierarchical_search(
-        query_text=query_text,
-        query_embedding=query_embedding,
-        k_layer3=2
+        query_text=query_text, query_embedding=query_embedding, k_layer3=2
     )
 
     # Assertions
@@ -561,16 +543,15 @@ def test_hybrid_backward_compatibility(sample_chunks):
     from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
     # Create embedder
-    embedder = EmbeddingGenerator(EmbeddingConfig(
-        provider="huggingface",
-        model="BAAI/bge-small-en-v1.5"
-    ))
+    embedder = EmbeddingGenerator(
+        EmbeddingConfig(provider="huggingface", model="BAAI/bge-small-en-v1.5")
+    )
 
     # Generate embeddings
     embeddings = {
         "layer1": embedder.embed_chunks(sample_chunks["layer1"], layer=1),
         "layer2": embedder.embed_chunks(sample_chunks["layer2"], layer=2),
-        "layer3": embedder.embed_chunks(sample_chunks["layer3"], layer=3)
+        "layer3": embedder.embed_chunks(sample_chunks["layer3"], layer=3),
     }
 
     # Create FAISS store (dense-only)
@@ -580,10 +561,7 @@ def test_hybrid_backward_compatibility(sample_chunks):
     # Test dense-only search still works
     query_embedding = embedder.embed_texts(["safety requirements"])
 
-    results = faiss_store.hierarchical_search(
-        query_embedding=query_embedding,
-        k_layer3=2
-    )
+    results = faiss_store.hierarchical_search(query_embedding=query_embedding, k_layer3=2)
 
     # Should return results without RRF scores
     assert "layer3" in results

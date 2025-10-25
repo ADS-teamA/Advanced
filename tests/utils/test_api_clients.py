@@ -180,6 +180,7 @@ class TestAPIClientFactory:
                 # Force re-import by calling the method
                 import src.utils.api_clients
                 import importlib
+
                 importlib.reload(src.utils.api_clients)
                 src.utils.api_clients.APIClientFactory.create_anthropic(api_key="test")
 
@@ -193,6 +194,7 @@ class TestAPIClientFactory:
                 # Force re-import by calling the method
                 import src.utils.api_clients
                 import importlib
+
                 importlib.reload(src.utils.api_clients)
                 src.utils.api_clients.APIClientFactory.create_openai(api_key="test")
 

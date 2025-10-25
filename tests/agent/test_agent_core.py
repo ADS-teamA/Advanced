@@ -181,7 +181,9 @@ class TestStreamingToggle:
         """Test that streaming is used when configured."""
         agent_core.config.cli_config.enable_streaming = True
 
-        with patch.object(agent_core, "_process_streaming", return_value=iter([])) as mock_streaming:
+        with patch.object(
+            agent_core, "_process_streaming", return_value=iter([])
+        ) as mock_streaming:
             with patch.object(agent_core, "_process_non_streaming") as mock_non_streaming:
                 result = agent_core.process_message("Test")
 
@@ -196,7 +198,9 @@ class TestStreamingToggle:
         agent_core.config.cli_config.enable_streaming = False
 
         # Force streaming with explicit parameter
-        with patch.object(agent_core, "_process_streaming", return_value=iter([])) as mock_streaming:
+        with patch.object(
+            agent_core, "_process_streaming", return_value=iter([])
+        ) as mock_streaming:
             result = agent_core.process_message("Test", stream=True)
             list(result)  # Consume generator
 

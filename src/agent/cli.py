@@ -163,7 +163,9 @@ class AgentCLI:
             if not self.config.tool_config.lazy_load_reranker:
                 print("Loading reranker...")
                 try:
-                    reranker = CrossEncoderReranker(model_name=self.config.tool_config.reranker_model)
+                    reranker = CrossEncoderReranker(
+                        model_name=self.config.tool_config.reranker_model
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
                     print(f"   ⚠️  Reranker failed to load: {e}")
@@ -191,7 +193,9 @@ class AgentCLI:
                     vector_store=vector_store, knowledge_graph=knowledge_graph
                 )
             except FileNotFoundError:
-                logger.warning(f"Knowledge graph file not found: {self.config.knowledge_graph_path}")
+                logger.warning(
+                    f"Knowledge graph file not found: {self.config.knowledge_graph_path}"
+                )
                 print(f"   ⚠️  Knowledge graph file not found: {self.config.knowledge_graph_path}")
                 print("   Continuing without knowledge graph (graph tools will be unavailable)")
                 self.config.enable_knowledge_graph = False
@@ -407,6 +411,47 @@ class AgentCLI:
                 print(f"  Cache read: {cache_stats['cache_read_tokens']:,} tokens (90% saved)")
                 print(f"  Cache created: {cache_stats['cache_creation_tokens']:,} tokens")
 
+            # Show tool token/cost statistics
+            if self.agent.tool_call_history:
+                total_tool_tokens = sum(
+                    call.get("estimated_tokens", 0) for call in self.agent.tool_call_history
+                )
+                total_tool_cost = sum(
+                    call.get("estimated_cost", 0.0) for call in self.agent.tool_call_history
+                )
+
+                print("\n🔧 Tool Result Statistics:")
+                print(f"  Total tool results: {len(self.agent.tool_call_history)}")
+                print(f"  Total tokens (estimated): {total_tool_tokens:,}")
+                print(f"  Total cost (estimated): ${total_tool_cost:.6f}")
+
+                # Show top 5 tools by token consumption
+                tool_tokens_by_name = {}
+                for call in self.agent.tool_call_history:
+                    tool_name = call.get("tool_name", "unknown")
+                    tokens = call.get("estimated_tokens", 0)
+                    cost = call.get("estimated_cost", 0.0)
+
+                    if tool_name not in tool_tokens_by_name:
+                        tool_tokens_by_name[tool_name] = {"tokens": 0, "cost": 0.0, "calls": 0}
+
+                    tool_tokens_by_name[tool_name]["tokens"] += tokens
+                    tool_tokens_by_name[tool_name]["cost"] += cost
+                    tool_tokens_by_name[tool_name]["calls"] += 1
+
+                if tool_tokens_by_name:
+                    sorted_by_tokens = sorted(
+                        tool_tokens_by_name.items(), key=lambda x: x[1]["tokens"], reverse=True
+                    )
+                    print("\n🔝 Top Tools by Token Usage:")
+                    for tool_name, data in sorted_by_tokens[:5]:
+                        avg_tokens = data["tokens"] / data["calls"] if data["calls"] > 0 else 0
+                        print(
+                            f"  {tool_name:20s} - {data['tokens']:6,} tokens "
+                            f"(${data['cost']:.6f}), {data['calls']} calls, "
+                            f"{avg_tokens:.0f} tokens/call"
+                        )
+
     def _show_config(self):
         """Show current configuration."""
         print("\n⚙️  Current Configuration:")
@@ -451,20 +496,30 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")
-    parser.add_argument("--vector-store", type=str, help="Path to vector store directory",
-                       default=os.getenv("VECTOR_STORE_PATH", "vector_db"))
-    parser.add_argument("--model", type=str, help="Claude model to use", default=os.getenv("AGENT_MODEL", "claude-haiku-4-5"))
+    parser.add_argument(
+        "--vector-store",
+        type=str,
+        help="Path to vector store directory",
+        default=os.getenv("VECTOR_STORE_PATH", "vector_db"),
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="Claude model to use",
+        default=os.getenv("AGENT_MODEL", "claude-haiku-4-5"),
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--no-streaming", action="store_true", help="Disable streaming responses")
 
     args = parser.parse_args()
 
     from .config import CLIConfig
+
     config = AgentConfig(
         vector_store_path=Path(args.vector_store),
         model=args.model,
         debug_mode=args.debug,
-        cli_config=CLIConfig(enable_streaming=not args.no_streaming)
+        cli_config=CLIConfig(enable_streaming=not args.no_streaming),
     )
 
     try:
@@ -476,5 +531,6 @@ if __name__ == "__main__":
         print(f"\n❌ ERROR: {e}")
         if args.debug:
             import traceback
+
             traceback.print_exc()
         sys.exit(1)

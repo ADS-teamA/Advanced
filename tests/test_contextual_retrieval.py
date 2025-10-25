@@ -97,7 +97,7 @@ class TestContextGeneration:
         context = mock_anthropic_retrieval.generate_context(
             chunk=chunk,
             document_summary="Nuclear reactor safety specification",
-            section_title="Pressure Limits"
+            section_title="Pressure Limits",
         )
 
         assert context == "This chunk discusses safety parameters."
@@ -110,9 +110,7 @@ class TestContextGeneration:
         following = "Next chunk"
 
         context = mock_anthropic_retrieval.generate_context(
-            chunk=chunk,
-            preceding_chunk=preceding,
-            following_chunk=following
+            chunk=chunk, preceding_chunk=preceding, following_chunk=following
         )
 
         assert context == "This chunk discusses safety parameters."
@@ -227,9 +225,7 @@ class TestRateLimiting:
     def test_rate_limit_max_retries_exceeded(self, mock_anthropic_retrieval):
         """Test that max retries are respected."""
         rate_limit_error = Exception("Rate limit exceeded (429)")
-        mock_anthropic_retrieval.client.messages.create = Mock(
-            side_effect=rate_limit_error
-        )
+        mock_anthropic_retrieval.client.messages.create = Mock(side_effect=rate_limit_error)
 
         with patch("time.sleep"):  # Don't actually sleep in tests
             with pytest.raises(Exception, match="Rate limit exceeded"):
@@ -247,10 +243,7 @@ class TestBatchProcessing:
     def mock_anthropic_retrieval(self):
         """Create retrieval with mocked Anthropic client."""
         config = ContextGenerationConfig(
-            provider="anthropic",
-            model="haiku",
-            batch_size=2,
-            max_workers=2
+            provider="anthropic", model="haiku", batch_size=2, max_workers=2
         )
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
@@ -287,6 +280,7 @@ class TestBatchProcessing:
 
     def test_batch_processing_handles_failures(self, mock_anthropic_retrieval):
         """Test that batch processing handles individual failures gracefully."""
+
         # Make some calls fail
         def side_effect(*args, **kwargs):
             if mock_anthropic_retrieval.client.messages.create.call_count % 2 == 0:
@@ -323,9 +317,7 @@ class TestPromptConstruction:
     def mock_retrieval(self):
         """Create retrieval instance for testing."""
         config = ContextGenerationConfig(
-            provider="anthropic",
-            model="haiku",
-            include_surrounding_chunks=True
+            provider="anthropic", model="haiku", include_surrounding_chunks=True
         )
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
@@ -341,7 +333,7 @@ class TestPromptConstruction:
             section_title="Section Title",
             section_path="Ch1 > Sec1.1",
             preceding_chunk="Previous",
-            following_chunk="Next"
+            following_chunk="Next",
         )
 
         assert "Doc summary" in prompt
@@ -353,10 +345,7 @@ class TestPromptConstruction:
     def test_prompt_minimal_metadata(self, mock_retrieval):
         """Test prompt construction with minimal metadata."""
         prompt = mock_retrieval._build_context_prompt(
-            chunk="Test chunk",
-            document_summary=None,
-            section_title=None,
-            section_path=None
+            chunk="Test chunk", document_summary=None, section_title=None, section_path=None
         )
 
         assert "Test chunk" in prompt
@@ -365,9 +354,7 @@ class TestPromptConstruction:
     def test_prompt_without_surrounding_chunks(self):
         """Test prompt when surrounding chunks are disabled."""
         config = ContextGenerationConfig(
-            provider="anthropic",
-            model="haiku",
-            include_surrounding_chunks=False
+            provider="anthropic", model="haiku", include_surrounding_chunks=False
         )
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
@@ -377,7 +364,7 @@ class TestPromptConstruction:
                 prompt = retrieval._build_context_prompt(
                     chunk="Test chunk",
                     preceding_chunk="Should not appear",
-                    following_chunk="Should not appear"
+                    following_chunk="Should not appear",
                 )
 
                 assert "preceding_chunk" not in prompt

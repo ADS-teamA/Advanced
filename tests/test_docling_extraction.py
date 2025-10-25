@@ -11,18 +11,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from config import ExtractionConfig
-from docling_extractor_v2 import (
-    DoclingExtractorV2,
-    TableData,
-    DocumentSection,
-    ExtractedDocument
-)
-from src.extraction.legal_analyzer import (
-    LegalDocumentAnalyzer,
-    LegalClause,
-    ClauseType,
-    RiskLevel
-)
+from docling_extractor_v2 import DoclingExtractorV2, TableData, DocumentSection, ExtractedDocument
+from src.extraction.legal_analyzer import LegalDocumentAnalyzer, LegalClause, ClauseType, RiskLevel
 from LawGPT.src.core.models import DocumentType
 
 
@@ -38,11 +28,7 @@ class TestExtractionConfig:
 
     def test_custom_config(self):
         """Test custom configuration."""
-        config = ExtractionConfig(
-            enable_ocr=False,
-            extract_tables=False,
-            use_gpu=True
-        )
+        config = ExtractionConfig(enable_ocr=False, extract_tables=False, use_gpu=True)
         assert config.enable_ocr is False
         assert config.extract_tables is False
         assert config.use_gpu is True
@@ -72,8 +58,7 @@ class TestDoclingExtractor:
         assert ".xlsx" in formats
 
     @pytest.mark.skipif(
-        not (Path(__file__).parent.parent / "data").exists(),
-        reason="data directory not found"
+        not (Path(__file__).parent.parent / "data").exists(), reason="data directory not found"
     )
     def test_extract_real_document(self, extractor):
         """Test extraction on real document if available."""
@@ -107,17 +92,13 @@ class TestDocumentProcessor:
         """Test document type detection logic."""
         # Test contract detection
         contract_text = "This Agreement is made between parties whereas..."
-        extracted = type('obj', (object,), {
-            'full_text': contract_text,
-            'num_sections': 5
-        })()
+        extracted = type("obj", (object,), {"full_text": contract_text, "num_sections": 5})()
 
         doc_type = processor._detect_document_type(extracted)
         assert doc_type == DocumentType.CONTRACT
 
     @pytest.mark.skipif(
-        not (Path(__file__).parent.parent / "data").exists(),
-        reason="data directory not found"
+        not (Path(__file__).parent.parent / "data").exists(), reason="data directory not found"
     )
     def test_process_real_document(self, processor):
         """Test processing real document if available."""
@@ -236,7 +217,7 @@ class TestLegalAnalyzer:
                 risk_level=RiskLevel.MEDIUM,
                 keywords=[],
                 char_start=0,
-                char_end=100
+                char_end=100,
             ),
             LegalClause(
                 clause_id="c2",
@@ -247,8 +228,8 @@ class TestLegalAnalyzer:
                 risk_level=RiskLevel.HIGH,
                 keywords=[],
                 char_start=100,
-                char_end=200
-            )
+                char_end=200,
+            ),
         ]
 
         analysis = LegalAnalysis(
@@ -259,7 +240,7 @@ class TestLegalAnalyzer:
             dates=[],
             key_terms={},
             risk_summary={},
-            metadata={}
+            metadata={},
         )
 
         coverage = analyzer.analyze_clause_coverage(analysis)
@@ -274,8 +255,7 @@ class TestIntegration:
     """Integration tests for complete workflow."""
 
     @pytest.mark.skipif(
-        not (Path(__file__).parent.parent / "data").exists(),
-        reason="data directory not found"
+        not (Path(__file__).parent.parent / "data").exists(), reason="data directory not found"
     )
     def test_complete_workflow(self):
         """Test complete document processing workflow."""
@@ -294,10 +274,7 @@ class TestIntegration:
         document = processor.process(pdf_files[0])
 
         # Analyze
-        analysis = analyzer.analyze(
-            text=document.text,
-            document_id=document.metadata.document_id
-        )
+        analysis = analyzer.analyze(text=document.text, document_id=document.metadata.document_id)
 
         # Verify results
         assert document.metadata.document_id is not None

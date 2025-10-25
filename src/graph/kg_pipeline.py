@@ -181,11 +181,16 @@ class KnowledgeGraphPipeline:
         kg.extraction_config = {
             "entity_extraction": {
                 "llm_model": self.config.entity_extraction.llm_model,
-                "enabled_types": [et.value for et in self.config.entity_extraction.enabled_entity_types],
+                "enabled_types": [
+                    et.value for et in self.config.entity_extraction.enabled_entity_types
+                ],
             },
             "relationship_extraction": {
                 "llm_model": self.config.relationship_extraction.llm_model,
-                "enabled_types": [rt.value for rt in self.config.relationship_extraction.enabled_relationship_types],
+                "enabled_types": [
+                    rt.value
+                    for rt in self.config.relationship_extraction.enabled_relationship_types
+                ],
             },
             "graph_backend": self.config.graph_storage.backend.value,
         }
@@ -210,7 +215,9 @@ class KnowledgeGraphPipeline:
 
         return kg
 
-    def build_from_phase3_file(self, phase3_path: str, document_id: Optional[str] = None) -> KnowledgeGraph:
+    def build_from_phase3_file(
+        self, phase3_path: str, document_id: Optional[str] = None
+    ) -> KnowledgeGraph:
         """
         Build knowledge graph from phase3 chunks JSON file.
 
@@ -224,7 +231,7 @@ class KnowledgeGraphPipeline:
         logger.info(f"Loading chunks from {phase3_path}...")
 
         # Load phase3 chunks
-        with open(phase3_path, 'r', encoding='utf-8') as f:
+        with open(phase3_path, "r", encoding="utf-8") as f:
             phase3_data = json.load(f)
 
         # Extract chunks
@@ -265,7 +272,7 @@ class KnowledgeGraphPipeline:
 
         # Load all chunks
         for phase3_path in phase3_files:
-            with open(phase3_path, 'r', encoding='utf-8') as f:
+            with open(phase3_path, "r", encoding="utf-8") as f:
                 phase3_data = json.load(f)
 
             chunks = phase3_data.get("chunks", [])
@@ -314,19 +321,23 @@ class KnowledgeGraphPipeline:
             if rel.source_entity_id == entity_id:
                 neighbor = self.graph_builder.get_entity(rel.target_entity_id)
                 if neighbor:
-                    neighbors.append({
-                        "entity": neighbor,
-                        "relationship": rel,
-                        "direction": "outgoing",
-                    })
+                    neighbors.append(
+                        {
+                            "entity": neighbor,
+                            "relationship": rel,
+                            "direction": "outgoing",
+                        }
+                    )
             elif rel.target_entity_id == entity_id:
                 neighbor = self.graph_builder.get_entity(rel.source_entity_id)
                 if neighbor:
-                    neighbors.append({
-                        "entity": neighbor,
-                        "relationship": rel,
-                        "direction": "incoming",
-                    })
+                    neighbors.append(
+                        {
+                            "entity": neighbor,
+                            "relationship": rel,
+                            "direction": "incoming",
+                        }
+                    )
 
         return {
             "entity": entity,

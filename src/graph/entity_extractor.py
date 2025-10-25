@@ -21,6 +21,7 @@ try:
 except ImportError:
     import sys
     import os
+
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from cost_tracker import get_global_tracker
 
@@ -65,6 +66,7 @@ class EntityExtractor:
         if self.config.llm_provider == "openai":
             try:
                 from openai import OpenAI
+
                 self.client = OpenAI(api_key=self.api_key)
             except ImportError:
                 raise ImportError("openai package not installed. Install with: pip install openai")
@@ -72,9 +74,12 @@ class EntityExtractor:
         elif self.config.llm_provider == "anthropic":
             try:
                 from anthropic import Anthropic
+
                 self.client = Anthropic(api_key=self.api_key)
             except ImportError:
-                raise ImportError("anthropic package not installed. Install with: pip install anthropic")
+                raise ImportError(
+                    "anthropic package not installed. Install with: pip install anthropic"
+                )
 
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
@@ -93,13 +98,13 @@ class EntityExtractor:
 
         # Process chunks in batches
         all_entities = []
-        batches = [chunks[i:i + self.config.batch_size] for i in range(0, len(chunks), self.config.batch_size)]
+        batches = [
+            chunks[i : i + self.config.batch_size]
+            for i in range(0, len(chunks), self.config.batch_size)
+        ]
 
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
-            futures = {
-                executor.submit(self._extract_from_batch, batch): batch
-                for batch in batches
-            }
+            futures = {executor.submit(self._extract_from_batch, batch): batch for batch in batches}
 
             for future in as_completed(futures):
                 try:
@@ -267,8 +272,11 @@ class EntityExtractor:
                     response = self.client.chat.completions.create(
                         model=self.config.llm_model,
                         messages=[
-                            {"role": "system", "content": "You are an expert at extracting structured entities from legal documents. Always return valid JSON."},
-                            {"role": "user", "content": prompt}
+                            {
+                                "role": "system",
+                                "content": "You are an expert at extracting structured entities from legal documents. Always return valid JSON.",
+                            },
+                            {"role": "user", "content": prompt},
                         ],
                         temperature=self.config.temperature,
                         max_tokens=4000,
@@ -280,7 +288,7 @@ class EntityExtractor:
                         model=self.config.llm_model,
                         input_tokens=response.usage.prompt_tokens,
                         output_tokens=response.usage.completion_tokens,
-                        operation="kg_extraction"
+                        operation="kg_extraction",
                     )
 
                     return response.choices[0].message.content.strip()
@@ -290,9 +298,7 @@ class EntityExtractor:
                         model=self.config.llm_model,
                         max_tokens=4000,
                         temperature=self.config.temperature,
-                        messages=[
-                            {"role": "user", "content": prompt}
-                        ],
+                        messages=[{"role": "user", "content": prompt}],
                         system="You are an expert at extracting structured entities from legal documents. Always return valid JSON.",
                     )
 
@@ -302,7 +308,7 @@ class EntityExtractor:
                         model=self.config.llm_model,
                         input_tokens=response.usage.input_tokens,
                         output_tokens=response.usage.output_tokens,
-                        operation="kg_extraction"
+                        operation="kg_extraction",
                     )
 
                     return response.content[0].text.strip()
@@ -311,6 +317,7 @@ class EntityExtractor:
                 logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     import time
+
                     time.sleep(retry_delay * (attempt + 1))
                 else:
                     raise
@@ -329,7 +336,7 @@ class EntityExtractor:
 
         try:
             # Extract JSON from response (handle markdown code blocks)
-            json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_text, re.DOTALL)
+            json_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", response_text, re.DOTALL)
             if json_match:
                 json_text = json_match.group(1)
             else:

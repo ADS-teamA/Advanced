@@ -93,13 +93,9 @@ class PersistenceManager:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         # Default JSON options
-        json_kwargs = {
-            "indent": 2,
-            "ensure_ascii": False,
-            **kwargs
-        }
+        json_kwargs = {"indent": 2, "ensure_ascii": False, **kwargs}
 
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, **json_kwargs)
 
         logger.debug(f"Saved JSON: {path}")
@@ -125,7 +121,7 @@ class PersistenceManager:
         """
         path = Path(path)
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         logger.debug(f"Loaded JSON: {path}")
@@ -158,7 +154,7 @@ class PersistenceManager:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             pickle.dump(data, f)
 
         logger.debug(f"Saved pickle: {path}")
@@ -184,7 +180,7 @@ class PersistenceManager:
         """
         path = Path(path)
 
-        with open(path, 'rb') as f:
+        with open(path, "rb") as f:
             data = pickle.load(f)
 
         logger.debug(f"Loaded pickle: {path}")
@@ -192,9 +188,7 @@ class PersistenceManager:
 
     @staticmethod
     def update_doc_id_indices(
-        target_map: Dict[str, List[int]],
-        source_map: Dict[str, List[int]],
-        offset: int
+        target_map: Dict[str, List[int]], source_map: Dict[str, List[int]], offset: int
     ) -> None:
         """
         Update doc_id_to_indices mapping with offset (common merge pattern).
@@ -294,9 +288,7 @@ class VectorStoreLoader:
 
     @staticmethod
     def load_with_backward_compatibility(
-        path: Path,
-        loader_class,
-        prefer_format: Optional[str] = None
+        path: Path, loader_class, prefer_format: Optional[str] = None
     ):
         """
         Load vector store with automatic format detection and migration.
@@ -320,8 +312,7 @@ class VectorStoreLoader:
 
         if format_type == "old":
             logger.info(
-                f"Detected old format at {path}. "
-                f"Loading with backward compatibility..."
+                f"Detected old format at {path}. " f"Loading with backward compatibility..."
             )
         else:
             logger.info(f"Detected new format at {path}. Loading...")
@@ -343,11 +334,7 @@ if __name__ == "__main__":
 
         # Example 1: Save/load JSON config
         print("1. JSON save/load...")
-        config = {
-            "dimensions": 3072,
-            "model": "bge-m3",
-            "layers": [1, 2, 3]
-        }
+        config = {"dimensions": 3072, "model": "bge-m3", "layers": [1, 2, 3]}
         json_path = temp_path / "config.json"
         PersistenceManager.save_json(json_path, config)
         loaded_config = PersistenceManager.load_json(json_path)

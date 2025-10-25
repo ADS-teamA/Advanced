@@ -15,7 +15,7 @@ class TestPromptCachingConfig:
         """Test that prompt caching is enabled by default."""
         config = AgentConfig(
             anthropic_api_key="sk-ant-test123",
-            vector_store_path=Path("tests/fixtures/vector_store")
+            vector_store_path=Path("tests/fixtures/vector_store"),
         )
         assert config.enable_prompt_caching is True
 
@@ -24,7 +24,7 @@ class TestPromptCachingConfig:
         config = AgentConfig(
             anthropic_api_key="sk-ant-test123",
             vector_store_path=Path("tests/fixtures/vector_store"),
-            enable_prompt_caching=False
+            enable_prompt_caching=False,
         )
         assert config.enable_prompt_caching is False
 
@@ -38,7 +38,7 @@ class TestPromptCachingHelpers:
         return AgentConfig(
             anthropic_api_key="sk-ant-test123",
             vector_store_path=Path("tests/fixtures/vector_store"),
-            enable_prompt_caching=True
+            enable_prompt_caching=True,
         )
 
     @pytest.fixture
@@ -47,10 +47,12 @@ class TestPromptCachingHelpers:
         # Mock registry
         mock_registry = MagicMock()
         mock_registry.__len__ = Mock(return_value=10)
-        mock_registry.get_claude_sdk_tools = Mock(return_value=[
-            {"name": "tool1", "description": "Test tool 1"},
-            {"name": "tool2", "description": "Test tool 2"},
-        ])
+        mock_registry.get_claude_sdk_tools = Mock(
+            return_value=[
+                {"name": "tool1", "description": "Test tool 1"},
+                {"name": "tool2", "description": "Test tool 2"},
+            ]
+        )
 
         monkeypatch.setattr("src.agent.agent_core.get_registry", lambda: mock_registry)
 
@@ -163,7 +165,7 @@ class TestCostTrackingWithCache:
             output_tokens=500,
             operation="agent",
             cache_creation_tokens=800,
-            cache_read_tokens=200
+            cache_read_tokens=200,
         )
 
         assert cost > 0
@@ -185,7 +187,7 @@ class TestCostTrackingWithCache:
             model="claude-haiku-4-5",
             input_tokens=500,
             output_tokens=300,
-            operation="agent"
+            operation="agent",
         )
 
         assert cost > 0
