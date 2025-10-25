@@ -241,6 +241,16 @@ class AgentCLI:
         # Create agent
         self.agent = AgentCore(self.config)
 
+        # Auto-adjust streaming based on provider support
+        # (OpenAI models have streaming disabled by default, Claude models have it enabled)
+        streaming_supported = self.agent.provider.supports_feature('streaming')
+        if self.config.cli_config.enable_streaming != streaming_supported:
+            logger.info(
+                f"Auto-adjusting streaming: {self.config.cli_config.enable_streaming} → {streaming_supported} "
+                f"(provider: {self.agent.provider.get_provider_name()})"
+            )
+            self.config.cli_config.enable_streaming = streaming_supported
+
         # Initialize with document list (adds to conversation history)
         self.agent.initialize_with_documents()
 
@@ -333,6 +343,9 @@ class AgentCLI:
         elif cmd in ["/config", "/c"]:
             self._show_config()
 
+        elif cmd in ["/model", "/m"]:
+            self._handle_model_command(command)
+
         elif cmd in ["/clear", "/reset"]:
             self.agent.reset_conversation()
             print("✅ Conversation cleared")
@@ -349,12 +362,14 @@ class AgentCLI:
         """Show help message."""
         print("\n📖 Available Commands:")
         print("  /help, /h        - Show this help")
+        print("  /model, /m       - List available models or switch model")
         print("  /stats, /s       - Show tool execution and cost statistics")
         print("  /config, /c      - Show current configuration")
         print("  /clear, /reset   - Clear conversation and reinitialize")
         print("  /exit, /quit, /q - Exit the agent")
         print("\n💡 Tips:")
         print("  - Just type your question to start")
+        print("  - Use /model <name> to switch models (haiku, sonnet, gpt-5-mini, gpt-5-nano)")
         print("  - Agent has access to 27 specialized tools")
         print("  - Use specific questions for best results")
         print("  - Citations are included in responses")
@@ -401,15 +416,15 @@ class AgentCLI:
 
             print("\n💰 Cost Statistics:")
             print(f"  Total cost: ${total_cost:.4f}")
-            print(f"  Total tokens: {total_tokens:,}")
-            print(f"    Input: {tracker.total_input_tokens:,}")
+            print(f"  Total tokens: {total_tokens:,} (new input + output + cached input)")
+            print(f"    Input (new): {tracker.total_input_tokens:,}")
             print(f"    Output: {tracker.total_output_tokens:,}")
 
             # Show cache stats if caching was used
             if cache_stats["cache_read_tokens"] > 0 or cache_stats["cache_creation_tokens"] > 0:
-                print("\n📦 Cache Statistics (Prompt Caching):")
-                print(f"  Cache read: {cache_stats['cache_read_tokens']:,} tokens (90% saved)")
-                print(f"  Cache created: {cache_stats['cache_creation_tokens']:,} tokens")
+                print(f"    Input (cached): {cache_stats['cache_read_tokens']:,} (90% discount)")
+                print(f"\n📦 Cache Creation:")
+                print(f"  {cache_stats['cache_creation_tokens']:,} tokens written to cache")
 
             # Show tool token/cost statistics
             if self.agent.tool_call_history:
@@ -422,8 +437,8 @@ class AgentCLI:
 
                 print("\n🔧 Tool Result Statistics:")
                 print(f"  Total tool results: {len(self.agent.tool_call_history)}")
-                print(f"  Total tokens (estimated): {total_tool_tokens:,}")
-                print(f"  Total cost (estimated): ${total_tool_cost:.6f}")
+                print(f"  Estimated tokens: ~{total_tool_tokens:,} (included in input above)")
+                print(f"  Estimated cost: ~${total_tool_cost:.6f} (included in total above)")
 
                 # Show top 5 tools by token consumption
                 tool_tokens_by_name = {}
@@ -443,18 +458,19 @@ class AgentCLI:
                     sorted_by_tokens = sorted(
                         tool_tokens_by_name.items(), key=lambda x: x[1]["tokens"], reverse=True
                     )
-                    print("\n🔝 Top Tools by Token Usage:")
+                    print("\n🔝 Top Tools by Estimated Token Usage:")
                     for tool_name, data in sorted_by_tokens[:5]:
                         avg_tokens = data["tokens"] / data["calls"] if data["calls"] > 0 else 0
                         print(
-                            f"  {tool_name:20s} - {data['tokens']:6,} tokens "
-                            f"(${data['cost']:.6f}), {data['calls']} calls, "
-                            f"{avg_tokens:.0f} tokens/call"
+                            f"  {tool_name:20s} - ~{data['tokens']:6,} tokens "
+                            f"(~${data['cost']:.6f}), {data['calls']} calls, "
+                            f"~{avg_tokens:.0f} tokens/call"
                         )
 
     def _show_config(self):
         """Show current configuration."""
         print("\n⚙️  Current Configuration:")
+        print(f"  Provider: {self.agent.provider.get_provider_name()}")
         print(f"  Model: {self.config.model}")
         print(f"  Max tokens: {self.config.max_tokens}")
         print(f"  Temperature: {self.config.temperature}")
@@ -463,6 +479,130 @@ class AgentCLI:
         print(f"  Streaming: {self.config.cli_config.enable_streaming}")
         print(f"  Show citations: {self.config.cli_config.show_citations}")
         print(f"  Citation format: {self.config.cli_config.citation_format}")
+
+        # Show feature support
+        print("\n✨ Provider Features:")
+        print(f"  Prompt caching: {'✅' if self.agent.provider.supports_feature('prompt_caching') else '❌'}")
+        print(f"  Streaming: {'✅' if self.agent.provider.supports_feature('streaming') else '❌'}")
+        print(f"  Tool use: {'✅' if self.agent.provider.supports_feature('tool_use') else '❌'}")
+
+    def _handle_model_command(self, command: str):
+        """
+        Handle /model command.
+
+        Usage:
+            /model              - List available models
+            /model <name>       - Switch to specific model
+        """
+        parts = command.split()
+
+        # No arguments - list available models
+        if len(parts) == 1:
+            self._list_available_models()
+            return
+
+        # Switch to new model
+        new_model = parts[1]
+
+        try:
+            from .providers import create_provider
+            from ..utils.model_registry import ModelRegistry
+
+            # Resolve alias
+            resolved_model = ModelRegistry.resolve_llm(new_model)
+
+            # Show current model
+            old_model = self.agent.provider.get_model_name()
+            old_provider = self.agent.provider.get_provider_name()
+
+            print(f"\n🔄 Switching model...")
+            print(f"  From: {old_model} ({old_provider})")
+            print(f"  To:   {resolved_model}")
+
+            # Create new provider
+            new_provider = create_provider(
+                model=resolved_model,
+                anthropic_api_key=self.config.anthropic_api_key,
+                openai_api_key=self.config.openai_api_key,
+            )
+
+            # Update agent
+            self.agent.provider = new_provider
+            self.config.model = resolved_model
+
+            # Auto-adjust streaming based on provider support
+            streaming_supported = new_provider.supports_feature('streaming')
+            old_streaming = self.config.cli_config.enable_streaming
+            self.config.cli_config.enable_streaming = streaming_supported
+
+            # Show success and features
+            print(f"\n✅ Successfully switched to: {resolved_model}")
+            print(f"   Provider: {new_provider.get_provider_name()}")
+            print(f"   Features:")
+            print(f"     Prompt caching: {'✅ Enabled' if new_provider.supports_feature('prompt_caching') else '❌ Not supported'}")
+            print(f"     Streaming: {'✅ Enabled' if streaming_supported else '❌ Disabled'}")
+            print(f"     Tool use: {'✅ Enabled' if new_provider.supports_feature('tool_use') else '❌ Not supported'}")
+
+            # Show streaming change if it happened
+            if old_streaming != streaming_supported:
+                if streaming_supported:
+                    print(f"\n   ℹ️  Streaming automatically enabled for {new_provider.get_provider_name()} models")
+                else:
+                    print(f"\n   ℹ️  Streaming automatically disabled for {new_provider.get_provider_name()} models")
+
+            # Warn if caching was lost
+            if self.config.enable_prompt_caching and not new_provider.supports_feature("prompt_caching"):
+                print("\n⚠️  Warning: Prompt caching not supported by this model.")
+                print("   Costs will be higher than with Claude models (no 90% cache discount).")
+
+            # Reset conversation (tools need to be regenerated for new provider)
+            print("\n🔄 Resetting conversation for new model...")
+            self.agent.reset_conversation()
+            print("✅ Ready to use new model!\n")
+
+        except ValueError as e:
+            print(f"\n❌ Invalid model: {e}")
+            print("Use /model to see available models")
+        except Exception as e:
+            print(f"\n❌ Failed to switch model: {e}")
+            logger.error(f"Model switch error: {e}", exc_info=True)
+
+    def _list_available_models(self):
+        """List available models with pricing info."""
+        from ..cost_tracker import PRICING
+
+        print("\n📋 Available Models:")
+
+        print("\n🔵 Anthropic Claude:")
+        claude_models = [
+            ("haiku", "claude-haiku-4-5-20251001", "Fast & cost-effective"),
+            ("sonnet", "claude-sonnet-4-5-20250929", "Balanced performance"),
+            ("opus", "claude-opus-4", "Most capable"),
+        ]
+
+        for alias, full_name, desc in claude_models:
+            pricing = PRICING.get("anthropic", {}).get(full_name, {})
+            input_price = pricing.get("input", 0)
+            output_price = pricing.get("output", 0)
+            print(f"  {alias:12s} - {desc:25s} (${input_price:.2f}/${output_price:.2f} per 1M tokens, ✅ caching)")
+
+        print("\n🟢 OpenAI GPT-5:")
+        gpt_models = [
+            ("gpt-5-nano", "gpt-5-nano", "Ultra-fast, minimal cost"),
+            ("gpt-5-mini", "gpt-5-mini", "Balanced & affordable"),
+            ("gpt-5", "gpt-5", "Most capable"),
+        ]
+
+        for alias, full_name, desc in gpt_models:
+            pricing = PRICING.get("openai", {}).get(full_name, {})
+            input_price = pricing.get("input", 0)
+            output_price = pricing.get("output", 0)
+            print(f"  {alias:12s} - {desc:25s} (${input_price:.2f}/${output_price:.2f} per 1M tokens, ❌ no caching)")
+
+        print("\n💡 Usage:")
+        print("  /model <name>    - Switch to model (e.g., /model gpt-5-mini)")
+        print("\n📊 Current model:")
+        print(f"  {self.agent.provider.get_model_name()} ({self.agent.provider.get_provider_name()})")
 
 
 def main(config: AgentConfig):
