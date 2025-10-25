@@ -134,10 +134,14 @@ class AgentCore:
 
     def initialize_with_documents(self):
         """
-        Initialize conversation by calling get_document_list and list_available_tools.
+        Initialize conversation by providing available documents.
 
-        Adds document list and tool list to conversation history so agent has context
-        about available documents and tools before first user query.
+        Adds document list to conversation history so agent knows what documents
+        are available for search. Tool definitions are provided separately via
+        the API 'tools' parameter and cached for efficiency.
+
+        Note: Tool list is NOT included here to avoid duplication - Claude receives
+        tool definitions directly via API parameter with prompt caching.
         """
         if self._initialized_with_documents:
             return  # Already initialized
@@ -163,7 +167,8 @@ class AgentCore:
                 logger.info("No documents available for initialization")
                 return
 
-            # Build document list message
+            # Build document list message (ONLY documents, NOT tools)
+            # Tools are provided via API 'tools' parameter and cached separately
             doc_list_text = f"Available documents in the system ({count}):\n\n"
             for doc in documents:
                 doc_id = doc.get("id", "Unknown")
@@ -183,49 +188,9 @@ class AgentCore:
 
                 doc_list_text += f"- {doc_id}: {summary}\n"
 
-            # Get tool list tool
-            tool_list_tool = self.registry.get_tool("list_available_tools")
-            if not tool_list_tool:
-                logger.warning("list_available_tools tool not available for initialization")
-                # Continue without tools list
-                tool_list_text = ""
-            else:
-                # Execute tool list tool
-                tool_result = tool_list_tool.execute()
-
-                if not tool_result.success or not tool_result.data:
-                    logger.warning("Failed to get tool list for initialization")
-                    tool_list_text = ""
-                else:
-                    tools = tool_result.data.get("tools", [])
-                    tool_count = len(tools)
-
-                    # Build tool list message (summary only, not full details)
-                    tool_list_text = f"\n\nAvailable tools ({tool_count}):\n\n"
-
-                    # Group by tier
-                    tier1_tools = [t for t in tools if "Tier 1" in t.get("tier", "")]
-                    tier2_tools = [t for t in tools if "Tier 2" in t.get("tier", "")]
-                    tier3_tools = [t for t in tools if "Tier 3" in t.get("tier", "")]
-
-                    if tier1_tools:
-                        tool_list_text += "TIER 1 - Basic Retrieval (fast, <100ms):\n"
-                        for tool in tier1_tools:
-                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
-
-                    if tier2_tools:
-                        tool_list_text += "\nTIER 2 - Advanced Retrieval (500-1000ms):\n"
-                        for tool in tier2_tools:
-                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
-
-                    if tier3_tools:
-                        tool_list_text += "\nTIER 3 - Analysis & Insights (1-3s):\n"
-                        for tool in tier3_tools:
-                            tool_list_text += f"  • {tool['name']}: {tool['description'][:80]}...\n"
-
-            # Combine messages
-            init_message = doc_list_text + tool_list_text
-            init_message += "\n\n(This is system initialization - the user will now ask questions about these documents)"
+            # Add footer explaining initialization
+            init_message = doc_list_text
+            init_message += "\n(These are the documents available in the system. Use your tools to search and analyze them.)"
 
             # Add as first message in conversation history
             self.conversation_history.append({
@@ -236,11 +201,11 @@ class AgentCore:
             # Add simple acknowledgment from assistant
             self.conversation_history.append({
                 "role": "assistant",
-                "content": "I understand. I have access to these documents and will use the appropriate tools to search them and answer user questions."
+                "content": "I understand. I have access to these documents and will use the appropriate tools to search and analyze them."
             })
 
             self._initialized_with_documents = True
-            logger.debug(f"Initialized conversation with {count} documents and {len(self.registry)} tools")
+            logger.info(f"Initialized conversation with {count} documents")
 
         except (FileNotFoundError, PermissionError) as e:
             logger.warning(f"Document initialization failed - file access issue: {e}")
@@ -573,6 +538,26 @@ class AgentCore:
 
                         result = self.registry.execute_tool(tool_name, **tool_input)
 
+                        # Estimate cost of tool result (tokens added to context)
+                        # Tool results are sent back to Claude, so they count as input tokens
+                        estimated_cost = 0.0
+                        if result.estimated_tokens > 0:
+                            # Get input cost per 1M tokens for current model
+                            try:
+                                from ..cost_tracker import PRICING
+                                model_pricing = PRICING.get("anthropic", {}).get(self.config.model)
+                                if model_pricing:
+                                    input_price_per_1m = model_pricing.get("input", 0.0)
+                                    estimated_cost = (result.estimated_tokens / 1_000_000) * input_price_per_1m
+                            except Exception as e:
+                                logger.debug(f"Failed to calculate tool result cost: {e}")
+
+                        # Log tool execution with cost estimate
+                        logger.info(
+                            f"Tool '{tool_name}' result: ~{result.estimated_tokens} tokens, "
+                            f"~${estimated_cost:.6f} cost estimate"
+                        )
+
                         # Check for tool failure and alert user
                         if not result.success:
                             logger.error(
@@ -590,6 +575,8 @@ class AgentCore:
                                 "input": tool_input,
                                 "success": result.success,
                                 "execution_time_ms": result.execution_time_ms,
+                                "estimated_tokens": result.estimated_tokens,
+                                "estimated_cost": estimated_cost,
                             }
                         )
 
@@ -698,6 +685,26 @@ class AgentCore:
 
                             result = self.registry.execute_tool(tool_name, **tool_input)
 
+                            # Estimate cost of tool result (tokens added to context)
+                            # Tool results are sent back to Claude, so they count as input tokens
+                            estimated_cost = 0.0
+                            if result.estimated_tokens > 0:
+                                # Get input cost per 1M tokens for current model
+                                try:
+                                    from ..cost_tracker import PRICING
+                                    model_pricing = PRICING.get("anthropic", {}).get(self.config.model)
+                                    if model_pricing:
+                                        input_price_per_1m = model_pricing.get("input", 0.0)
+                                        estimated_cost = (result.estimated_tokens / 1_000_000) * input_price_per_1m
+                                except Exception as e:
+                                    logger.debug(f"Failed to calculate tool result cost: {e}")
+
+                            # Log tool execution with cost estimate
+                            logger.info(
+                                f"Tool '{tool_name}' result: ~{result.estimated_tokens} tokens, "
+                                f"~${estimated_cost:.6f} cost estimate"
+                            )
+
                             # Check for tool failure and log error
                             if not result.success:
                                 error_msg = f"⚠️  Tool '{tool_name}' failed: {result.error}"
@@ -715,6 +722,8 @@ class AgentCore:
                                     "input": tool_input,
                                     "success": result.success,
                                     "execution_time_ms": result.execution_time_ms,
+                                    "estimated_tokens": result.estimated_tokens,
+                                    "estimated_cost": estimated_cost,
                                 }
                             )
 

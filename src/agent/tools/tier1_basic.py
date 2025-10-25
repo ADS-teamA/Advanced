@@ -24,7 +24,7 @@ class SimpleSearchInput(ToolInput):
     """Input for simple_search tool."""
 
     query: str = Field(..., description="Natural language search query")
-    k: int = Field(6, description="Number of results to return", ge=1, le=10)
+    k: int = Field(5, description="Number of results to return (3-5 recommended)", ge=1, le=10)
 
 
 @register_tool
@@ -43,7 +43,7 @@ class SimpleSearchTool(BaseTool):
     input_schema = SimpleSearchInput
     requires_reranker = True
 
-    def execute_impl(self, query: str, k: int = 6) -> ToolResult:
+    def execute_impl(self, query: str, k: int = 5) -> ToolResult:
         k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Embed query

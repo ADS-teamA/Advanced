@@ -163,6 +163,14 @@ class CostTracker:
         self._total_output_tokens: int = 0
         self._total_cost: float = 0.0
 
+        # Cache tracking (for total tokens calculation)
+        self._total_cache_read_tokens: int = 0
+        self._total_cache_creation_tokens: int = 0
+
+        # Per-message tracking (for CLI display)
+        self._last_reported_cost: float = 0.0
+        self._last_reported_tokens: int = 0
+
         # Private breakdowns
         self._cost_by_provider: Dict[str, float] = {}
         self._cost_by_operation: Dict[str, float] = {}
@@ -227,8 +235,10 @@ class CostTracker:
         if provider == "claude":
             provider = "anthropic"
 
-        # Get pricing
-        cost = self._calculate_llm_cost(provider, model, input_tokens, output_tokens)
+        # Get pricing (includes cache cost calculation)
+        cost = self._calculate_llm_cost(
+            provider, model, input_tokens, output_tokens, cache_read_tokens
+        )
 
         # Store entry
         entry = UsageEntry(
@@ -248,6 +258,10 @@ class CostTracker:
         self._total_input_tokens += input_tokens
         self._total_output_tokens += output_tokens
         self._total_cost += cost
+
+        # Update cache accumulators
+        self._total_cache_read_tokens += cache_read_tokens
+        self._total_cache_creation_tokens += cache_creation_tokens
 
         # Update breakdowns
         self._cost_by_provider[provider] = self._cost_by_provider.get(provider, 0.0) + cost
@@ -322,9 +336,24 @@ class CostTracker:
         provider: str,
         model: str,
         input_tokens: int,
-        output_tokens: int
+        output_tokens: int,
+        cache_read_tokens: int = 0
     ) -> float:
-        """Calculate cost for LLM usage."""
+        """
+        Calculate cost for LLM usage, including cache discount.
+
+        Cache reads are billed at 10% of the regular input price.
+
+        Args:
+            provider: Provider name
+            model: Model name
+            input_tokens: Regular input tokens (100% price)
+            output_tokens: Output tokens (100% price)
+            cache_read_tokens: Cache hit tokens (10% price)
+
+        Returns:
+            Total cost in USD
+        """
         # Get pricing for this model
         pricing = PRICING.get(provider, {}).get(model)
 
@@ -339,7 +368,10 @@ class CostTracker:
         input_cost = (input_tokens / 1_000_000) * pricing["input"]
         output_cost = (output_tokens / 1_000_000) * pricing["output"]
 
-        return input_cost + output_cost
+        # Cache reads are billed at 10% of input price
+        cache_cost = (cache_read_tokens / 1_000_000) * pricing["input"] * 0.1
+
+        return input_cost + output_cost + cache_cost
 
     def _calculate_embedding_cost(
         self,
@@ -366,8 +398,27 @@ class CostTracker:
         return self.total_cost
 
     def get_total_tokens(self) -> int:
-        """Get total tokens (input + output)."""
-        return self.total_input_tokens + self.total_output_tokens
+        """
+        Get total tokens actually used (including cache reads).
+
+        This is the true number of tokens processed by the API,
+        not the billed amount (which is discounted for cache hits).
+
+        Returns:
+            Total tokens: input + output + cache_read
+        """
+        return self.total_input_tokens + self.total_output_tokens + self._total_cache_read_tokens
+
+    def get_billed_tokens(self) -> int:
+        """
+        Get equivalent billed tokens (cache reads count as 10% of regular tokens).
+
+        Returns:
+            Billed token equivalent
+        """
+        # Cache reads are billed at 10% of regular price
+        cache_billed_equivalent = int(self._total_cache_read_tokens * 0.1)
+        return self.total_input_tokens + self.total_output_tokens + cache_billed_equivalent
 
     def get_cache_stats(self) -> Dict[str, int]:
         """
@@ -390,22 +441,37 @@ class CostTracker:
 
     def get_session_cost_summary(self) -> str:
         """
-        Get brief cost summary for current session (for CLI display).
+        Get brief cost summary for current session (Variant C: per-message + session).
+
+        Format:
+            💰 This message: $0.0501 (46,532 tokens) | Session total: $0.0617 (71,446 tokens)
+            📦 Cache: 10,658 tokens read (90% saved)
 
         Returns:
-            Single line cost summary string
+            Multi-line cost summary string
         """
-        total = self.get_total_cost()
-        tokens = self.get_total_tokens()
+        # Calculate per-message stats
+        message_cost = self.get_total_cost() - self._last_reported_cost
+        message_tokens = self.get_total_tokens() - self._last_reported_tokens
+
+        # Calculate session totals
+        session_cost = self.get_total_cost()
+        session_tokens = self.get_total_tokens()
+
+        # Calculate per-message cache reads
         cache_stats = self.get_cache_stats()
+        total_cache_read = cache_stats["cache_read_tokens"]
 
-        # Basic cost info
-        summary = f"💰 Session cost: ${total:.4f} ({tokens:,} tokens)"
+        # Build summary line
+        summary = f"💰 This message: ${message_cost:.4f} ({message_tokens:,} tokens) | Session total: ${session_cost:.4f} ({session_tokens:,} tokens)"
 
-        # Add cache info if caching is being used
-        if cache_stats["cache_read_tokens"] > 0:
-            cache_read = cache_stats["cache_read_tokens"]
-            summary += f" | 📦 Cache: {cache_read:,} tokens read (90% saved)"
+        # Add cache info if caching was used in this session
+        if total_cache_read > 0:
+            summary += f"\n📦 Cache: {total_cache_read:,} tokens read (90% saved)"
+
+        # Update last reported state for next message
+        self._last_reported_cost = session_cost
+        self._last_reported_tokens = session_tokens
 
         return summary
 
@@ -452,6 +518,10 @@ class CostTracker:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_cost = 0.0
+        self._total_cache_read_tokens = 0
+        self._total_cache_creation_tokens = 0
+        self._last_reported_cost = 0.0
+        self._last_reported_tokens = 0
         self._cost_by_provider.clear()
         self._cost_by_operation.clear()
 

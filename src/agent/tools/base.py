@@ -8,6 +8,7 @@ Provides lightweight abstraction for all RAG tools with:
 - Result formatting
 """
 
+import json
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -17,6 +18,33 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+def estimate_tokens_from_result(result_data: Any) -> int:
+    """
+    Estimate token count from tool result data.
+
+    Uses JSON serialization + character count / 4 heuristic.
+    This is an approximation - actual tokenization depends on the model.
+
+    Args:
+        result_data: Tool result data (any JSON-serializable type)
+
+    Returns:
+        Estimated token count
+    """
+    try:
+        # Serialize to JSON string
+        json_str = json.dumps(result_data, ensure_ascii=False, default=str)
+
+        # Estimate tokens: ~4 chars per token (approximation)
+        # This is conservative - actual ratio is 3-4 for English, 4-6 for code/JSON
+        estimated_tokens = len(json_str) // 4
+
+        return max(estimated_tokens, 1)  # Minimum 1 token
+    except Exception as e:
+        logger.warning(f"Failed to estimate tokens from result: {e}")
+        return 0
 
 
 class ToolInput(BaseModel):
@@ -43,6 +71,7 @@ class ToolResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
     citations: List[str] = field(default_factory=list)
     execution_time_ms: float = 0.0
+    estimated_tokens: int = 0  # Estimated token count of result data
 
     def __post_init__(self):
         """Validate ToolResult invariants."""
@@ -167,8 +196,13 @@ class BaseTool(ABC):
             result.metadata["tool_name"] = self.name
             result.metadata["tier"] = self.tier
 
+            # Estimate token count from result data
+            result.estimated_tokens = estimate_tokens_from_result(result.data)
+            result.metadata["estimated_tokens"] = result.estimated_tokens
+
             logger.info(
-                f"Tool '{self.name}' executed in {elapsed_ms:.0f}ms " f"(success={result.success})"
+                f"Tool '{self.name}' executed in {elapsed_ms:.0f}ms "
+                f"(success={result.success}, ~{result.estimated_tokens} tokens)"
             )
 
             return result

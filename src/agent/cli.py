@@ -407,6 +407,49 @@ class AgentCLI:
                 print(f"  Cache read: {cache_stats['cache_read_tokens']:,} tokens (90% saved)")
                 print(f"  Cache created: {cache_stats['cache_creation_tokens']:,} tokens")
 
+            # Show tool token/cost statistics
+            if self.agent.tool_call_history:
+                total_tool_tokens = sum(
+                    call.get("estimated_tokens", 0) for call in self.agent.tool_call_history
+                )
+                total_tool_cost = sum(
+                    call.get("estimated_cost", 0.0) for call in self.agent.tool_call_history
+                )
+
+                print("\n🔧 Tool Result Statistics:")
+                print(f"  Total tool results: {len(self.agent.tool_call_history)}")
+                print(f"  Total tokens (estimated): {total_tool_tokens:,}")
+                print(f"  Total cost (estimated): ${total_tool_cost:.6f}")
+
+                # Show top 5 tools by token consumption
+                tool_tokens_by_name = {}
+                for call in self.agent.tool_call_history:
+                    tool_name = call.get("tool_name", "unknown")
+                    tokens = call.get("estimated_tokens", 0)
+                    cost = call.get("estimated_cost", 0.0)
+
+                    if tool_name not in tool_tokens_by_name:
+                        tool_tokens_by_name[tool_name] = {"tokens": 0, "cost": 0.0, "calls": 0}
+
+                    tool_tokens_by_name[tool_name]["tokens"] += tokens
+                    tool_tokens_by_name[tool_name]["cost"] += cost
+                    tool_tokens_by_name[tool_name]["calls"] += 1
+
+                if tool_tokens_by_name:
+                    sorted_by_tokens = sorted(
+                        tool_tokens_by_name.items(),
+                        key=lambda x: x[1]["tokens"],
+                        reverse=True
+                    )
+                    print("\n🔝 Top Tools by Token Usage:")
+                    for tool_name, data in sorted_by_tokens[:5]:
+                        avg_tokens = data["tokens"] / data["calls"] if data["calls"] > 0 else 0
+                        print(
+                            f"  {tool_name:20s} - {data['tokens']:6,} tokens "
+                            f"(${data['cost']:.6f}), {data['calls']} calls, "
+                            f"{avg_tokens:.0f} tokens/call"
+                        )
+
     def _show_config(self):
         """Show current configuration."""
         print("\n⚙️  Current Configuration:")
