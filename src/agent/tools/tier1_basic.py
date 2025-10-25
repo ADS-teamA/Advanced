@@ -6,7 +6,7 @@ These should handle 80% of user queries.
 """
 
 import logging
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import Field
 
@@ -244,11 +244,11 @@ class ListAvailableToolsTool(BaseTool):
                     ],
                     "selection_strategy": {
                         "most_queries": "simple_search",
-                        "entity_focused": "entity_search",
-                        "specific_document": "document_search",
-                        "multi_hop_reasoning": "multi_hop_search (if KG available)",
+                        "entity_focused": "Use simple_search with entity names, or multi_hop_search if KG available",
+                        "specific_document": "Use exact_match_search or filtered_search with document_id filter",
+                        "multi_hop_reasoning": "multi_hop_search (requires KG)",
                         "comparison": "compare_documents",
-                        "temporal_info": "temporal_search or timeline_view"
+                        "temporal_info": "filtered_search with filter_type='temporal' or timeline_view"
                     }
                 }
             },
@@ -264,6 +264,16 @@ class ListAvailableToolsTool(BaseTool):
 # ============================================================================
 # UNIFIED TOOLS (Consolidated from multiple similar tools)
 # ============================================================================
+#
+# These tools combine multiple legacy tools for better UX and reduced tool count:
+#
+# get_document_info:
+#   - Replaces: get_document_summary, get_document_metadata, get_document_sections, get_section_details
+#   - Benefit: Single tool with info_type parameter instead of 4 separate tools
+#
+# exact_match_search:
+#   - Replaces: keyword_search, cross_reference_search, entity_search
+#   - Benefit: Unified interface with search_type parameter + ROI filtering
 
 
 class GetDocumentInfoInput(ToolInput):
@@ -515,13 +525,19 @@ class ExactMatchSearchInput(ToolInput):
     """Input for unified exact_match_search tool."""
 
     query: str = Field(..., description="Search query (keywords or reference text)")
-    search_type: str = Field(
+    search_type: Literal["keywords", "cross_references"] = Field(
         ...,
         description="Search type: 'keywords' (general keyword search), 'cross_references' (find references to specific clauses/articles)"
     )
     k: int = Field(6, description="Number of results", ge=1, le=10)
-    document_id: Optional[str] = Field(None, description="Optional: Limit search to specific document (ROI - Region of Interest)")
-    section_id: Optional[str] = Field(None, description="Optional: Limit search to specific section (requires document_id)")
+    document_id: Optional[str] = Field(
+        None,
+        description="Optional: Filter search to specific document (index-level filtering for better performance)"
+    )
+    section_id: Optional[str] = Field(
+        None,
+        description="Optional: Filter results to specific section (requires document_id, uses post-retrieval filtering)"
+    )
 
 
 @register_tool
@@ -560,7 +576,10 @@ class ExactMatchSearchTool(BaseTool):
             )
 
         try:
-            # Retrieve more candidates if we need to filter by section_id
+            # Retrieve 3x candidates when section_id filtering is needed, since we'll
+            # be post-filtering results by section_id (BM25 doesn't support section-level
+            # index filtering, only document-level). This ensures we get ~k results after filtering.
+            # Note: If section has < k chunks, we may return fewer than k results.
             retrieval_k = k * 3 if section_id else k
 
             if search_type == "keywords":
@@ -584,7 +603,10 @@ class ExactMatchSearchTool(BaseTool):
                     results = results_dict["layer3"]
 
             elif search_type == "cross_references":
-                # Cross-reference search (find exact references)
+                # Cross-reference search: Find exact mentions of clauses/articles/sections
+                # Uses BM25 for initial retrieval, then strict substring matching to ensure
+                # the reference actually appears in the chunk (BM25 may match partial words).
+                # Retrieves 2x candidates to account for filtering by substring match.
                 results_dict = self.vector_store.hierarchical_search(
                     query_text=query,
                     query_embedding=None,
