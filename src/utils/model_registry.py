@@ -56,6 +56,10 @@ class ModelRegistry:
         # OpenAI models
         "gpt-4o": "gpt-4o",
         "gpt-4o-mini": "gpt-4o-mini",
+        # GPT-5 models (2025)
+        "gpt-5": "gpt-5",
+        "gpt-5-mini": "gpt-5-mini",
+        "gpt-5-nano": "gpt-5-nano",
         # O-series reasoning models
         "o1": "o1",
         "o1-mini": "o1-mini",

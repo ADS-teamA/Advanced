@@ -444,9 +444,9 @@ class CostTracker:
 
         Format:
             💰 This message: $0.0015
-              Input: 227 tokens
+              Input (new): 227 tokens
               Output: 200 tokens
-              Cache read: 4,956 tokens (~90% cost savings)
+              Input (cached): 4,956 tokens (90% discount)
 
             Session total: $0.0029 (5,660 tokens)
 
@@ -471,11 +471,11 @@ class CostTracker:
 
         # Show token breakdown (only non-zero categories)
         if msg_input > 0:
-            lines.append(f"  Input: {msg_input:,} tokens")
+            lines.append(f"  Input (new): {msg_input:,} tokens")
         if msg_output > 0:
             lines.append(f"  Output: {msg_output:,} tokens")
         if msg_cache_read > 0:
-            lines.append(f"  Cache read: {msg_cache_read:,} tokens (~90% cost savings)")
+            lines.append(f"  Input (cached): {msg_cache_read:,} tokens (90% discount)")
 
         # Session total
         lines.append(f"\nSession total: ${session_cost:.4f} ({session_tokens:,} tokens)")
