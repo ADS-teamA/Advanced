@@ -72,3 +72,4 @@ htmlcov/
 # Test data files (large PDFs)
 data_test/*.pdf
 !data_test/.gitkeep
+output/
