@@ -19,10 +19,32 @@ This document provides comprehensive explanations of key pipeline improvements i
 
 ## 1. Prompt Caching (PHASE 7)
 
+**Status: ✅ IMPLEMENTED** (January 2025)
+
 ### What It Is
 Prompt caching is a Claude API feature that "remembers" parts of prompts between different queries, avoiding resending static content like system instructions and tool definitions.
 
-### Current Problem
+### Implementation Details
+
+The system now automatically caches:
+- **System prompt** (agent instructions)
+- **Tool definitions** (27 RAG tools)
+- **Document initialization** (document list + tool list)
+
+Configuration:
+```bash
+# Enable/disable via environment variable (default: enabled)
+export ENABLE_PROMPT_CACHING=true
+
+# Or in code
+config = AgentConfig(enable_prompt_caching=True)
+```
+
+Cost tracking now includes cache statistics:
+- `cache_creation_tokens`: Tokens written to cache
+- `cache_read_tokens`: Tokens read from cache (90% cost reduction)
+
+### Previous Problem (Before Implementation)
 
 ```python
 # CURRENT STATE (without caching):

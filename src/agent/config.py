@@ -115,44 +115,6 @@ class ToolConfig:
             raise ValueError(f"context_window must be non-negative, got {self.context_window}")
 
 
-@dataclass
-class HyDEConfig:
-    """Hypothetical Document Embeddings configuration."""
-
-    enable: bool = False
-    num_hypothetical_docs: int = 1
-    llm_model: str = "claude-haiku-4-5"
-    max_tokens: int = 300
-    temperature: float = 0.5
-
-    def __post_init__(self):
-        """Validate configuration values."""
-        if self.num_hypothetical_docs <= 0:
-            raise ValueError(f"num_hypothetical_docs must be positive, got {self.num_hypothetical_docs}")
-        if self.max_tokens <= 0:
-            raise ValueError(f"max_tokens must be positive, got {self.max_tokens}")
-        if not 0.0 <= self.temperature <= 1.0:
-            raise ValueError(f"temperature must be in [0.0, 1.0], got {self.temperature}")
-
-
-@dataclass
-class QueryDecompositionConfig:
-    """Multi-query decomposition configuration."""
-
-    enable: bool = False
-    max_sub_queries: int = 3
-    combine_results: str = "rrf"  # "rrf", "concat", "ranked"
-    llm_model: str = "claude-haiku-4-5"
-
-    def __post_init__(self):
-        """Validate configuration values."""
-        if self.max_sub_queries < 2:
-            raise ValueError(f"max_sub_queries must be >= 2, got {self.max_sub_queries}")
-        valid_strategies = ["rrf", "concat", "ranked"]
-        if self.combine_results not in valid_strategies:
-            raise ValueError(
-                f"combine_results must be one of {valid_strategies}, got '{self.combine_results}'"
-            )
 
 
 @dataclass
@@ -211,18 +173,21 @@ class AgentConfig:
     embedding_model: str = field(default_factory=_detect_optimal_embedding_model)
 
     # === Feature Flags ===
-    enable_hyde: bool = False
-    enable_query_decomposition: bool = False
     enable_tool_validation: bool = True
     enable_knowledge_graph: bool = False
+
+    # === Prompt Caching (Anthropic) ===
+    # Enable prompt caching to reduce costs by 90% and improve latency
+    # Caches: system prompt, tools, and initialization messages
+    enable_prompt_caching: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_PROMPT_CACHING", "true").lower() == "true"
+    )
 
     # === Debug Mode ===
     debug_mode: bool = False
 
     # === Sub-Configs ===
     tool_config: ToolConfig = field(default_factory=ToolConfig)
-    hyde_config: HyDEConfig = field(default_factory=HyDEConfig)
-    query_decomp_config: QueryDecompositionConfig = field(default_factory=QueryDecompositionConfig)
     cli_config: CLIConfig = field(default_factory=CLIConfig)
 
     # === System Prompt ===
@@ -287,8 +252,6 @@ class AgentConfig:
         - AGENT_MODEL: Model to use (default: claude-sonnet-4-5-20250929)
         - VECTOR_STORE_PATH: Path to hybrid store
         - KNOWLEDGE_GRAPH_PATH: Path to KG JSON (optional)
-        - ENABLE_HYDE: Enable HyDE (true/false)
-        - ENABLE_DECOMPOSITION: Enable query decomposition (true/false)
 
         Args:
             **overrides: Override specific config values
@@ -300,8 +263,6 @@ class AgentConfig:
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             model=os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929"),
             vector_store_path=Path(os.getenv("VECTOR_STORE_PATH", "vector_db")),
-            enable_hyde=os.getenv("ENABLE_HYDE", "false").lower() == "true",
-            enable_query_decomposition=os.getenv("ENABLE_DECOMPOSITION", "false").lower() == "true",
         )
 
         # Apply overrides

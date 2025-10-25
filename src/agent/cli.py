@@ -301,6 +301,10 @@ class AgentCLI:
                     response = self.agent.process_message(user_input, stream=False)
                     print(f"\n{COLOR_GREEN}A: {response}{COLOR_RESET}")
 
+                # Show session cost after each response
+                cost_summary = self.agent.tracker.get_session_cost_summary()
+                print(f"\n{cost_summary}")
+
             except KeyboardInterrupt:
                 print("\n\n👋 Goodbye!")
                 break
@@ -341,15 +345,16 @@ class AgentCLI:
         """Show help message."""
         print("\n📖 Available Commands:")
         print("  /help, /h        - Show this help")
-        print("  /stats, /s       - Show tool execution statistics")
+        print("  /stats, /s       - Show tool execution and cost statistics")
         print("  /config, /c      - Show current configuration")
-        print("  /clear, /reset   - Clear conversation history")
+        print("  /clear, /reset   - Clear conversation and reinitialize")
         print("  /exit, /quit, /q - Exit the agent")
         print("\n💡 Tips:")
         print("  - Just type your question to start")
-        print("  - Agent has access to 17 specialized tools")
+        print("  - Agent has access to 27 specialized tools")
         print("  - Use specific questions for best results")
         print("  - Citations are included in responses")
+        print("  - Session cost is shown after each response")
 
     def _show_stats(self):
         """Show tool execution statistics."""
@@ -383,6 +388,24 @@ class AgentCLI:
             print(f"  Tool calls: {conv_stats['tool_calls']}")
             if conv_stats["tools_used"]:
                 print(f"  Tools used: {', '.join(conv_stats['tools_used'])}")
+
+            # Show cost statistics
+            tracker = self.agent.tracker
+            total_cost = tracker.get_total_cost()
+            total_tokens = tracker.get_total_tokens()
+            cache_stats = tracker.get_cache_stats()
+
+            print("\n💰 Cost Statistics:")
+            print(f"  Total cost: ${total_cost:.4f}")
+            print(f"  Total tokens: {total_tokens:,}")
+            print(f"    Input: {tracker.total_input_tokens:,}")
+            print(f"    Output: {tracker.total_output_tokens:,}")
+
+            # Show cache stats if caching was used
+            if cache_stats["cache_read_tokens"] > 0 or cache_stats["cache_creation_tokens"] > 0:
+                print("\n📦 Cache Statistics (Prompt Caching):")
+                print(f"  Cache read: {cache_stats['cache_read_tokens']:,} tokens (90% saved)")
+                print(f"  Cache created: {cache_stats['cache_creation_tokens']:,} tokens")
 
     def _show_config(self):
         """Show current configuration."""

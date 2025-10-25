@@ -128,6 +128,8 @@ class UsageEntry:
     output_tokens: int
     cost: float
     operation: str  # "summary", "context", "embedding", "agent", etc.
+    cache_creation_tokens: int = 0  # Tokens written to cache
+    cache_read_tokens: int = 0  # Tokens read from cache
 
 
 @dataclass
@@ -168,7 +170,9 @@ class CostTracker:
         model: str,
         input_tokens: int,
         output_tokens: int,
-        operation: str = "llm"
+        operation: str = "llm",
+        cache_creation_tokens: int = 0,
+        cache_read_tokens: int = 0
     ) -> float:
         """
         Track LLM usage and calculate cost.
@@ -179,6 +183,8 @@ class CostTracker:
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
             operation: Operation type ("summary", "context", "agent", etc.)
+            cache_creation_tokens: Tokens written to cache (Anthropic only)
+            cache_read_tokens: Tokens read from cache (Anthropic only)
 
         Returns:
             Cost in USD for this call
@@ -198,7 +204,9 @@ class CostTracker:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=cost,
-            operation=operation
+            operation=operation,
+            cache_creation_tokens=cache_creation_tokens,
+            cache_read_tokens=cache_read_tokens
         )
         self.entries.append(entry)
 
@@ -211,10 +219,18 @@ class CostTracker:
         self.cost_by_provider[provider] = self.cost_by_provider.get(provider, 0.0) + cost
         self.cost_by_operation[operation] = self.cost_by_operation.get(operation, 0.0) + cost
 
-        logger.debug(
-            f"LLM usage tracked: {provider}/{model} - "
-            f"{input_tokens} in, {output_tokens} out - ${cost:.6f}"
-        )
+        # Log with cache info if applicable
+        if cache_creation_tokens > 0 or cache_read_tokens > 0:
+            logger.debug(
+                f"LLM usage tracked: {provider}/{model} - "
+                f"{input_tokens} in, {output_tokens} out - ${cost:.6f} "
+                f"(cache: {cache_read_tokens} read, {cache_creation_tokens} created)"
+            )
+        else:
+            logger.debug(
+                f"LLM usage tracked: {provider}/{model} - "
+                f"{input_tokens} in, {output_tokens} out - ${cost:.6f}"
+            )
 
         return cost
 
@@ -318,6 +334,46 @@ class CostTracker:
     def get_total_tokens(self) -> int:
         """Get total tokens (input + output)."""
         return self.total_input_tokens + self.total_output_tokens
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        """
+        Get cache statistics (Anthropic prompt caching).
+
+        Returns:
+            Dictionary with cache_read_tokens and cache_creation_tokens
+        """
+        cache_read = 0
+        cache_creation = 0
+
+        for entry in self.entries:
+            cache_read += entry.cache_read_tokens
+            cache_creation += entry.cache_creation_tokens
+
+        return {
+            "cache_read_tokens": cache_read,
+            "cache_creation_tokens": cache_creation
+        }
+
+    def get_session_cost_summary(self) -> str:
+        """
+        Get brief cost summary for current session (for CLI display).
+
+        Returns:
+            Single line cost summary string
+        """
+        total = self.get_total_cost()
+        tokens = self.get_total_tokens()
+        cache_stats = self.get_cache_stats()
+
+        # Basic cost info
+        summary = f"💰 Session cost: ${total:.4f} ({tokens:,} tokens)"
+
+        # Add cache info if caching is being used
+        if cache_stats["cache_read_tokens"] > 0:
+            cache_read = cache_stats["cache_read_tokens"]
+            summary += f" | 📦 Cache: {cache_read:,} tokens read (90% saved)"
+
+        return summary
 
     def get_summary(self) -> str:
         """
