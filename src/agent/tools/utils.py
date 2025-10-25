@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def format_chunk_result(
-    chunk: Dict[str, Any], include_score: bool = True, max_content_length: int = 800
+    chunk: Dict[str, Any], include_score: bool = True, max_content_length: int = 400
 ) -> Dict[str, Any]:
     """
     Format a chunk result for tool output.
@@ -19,7 +19,7 @@ def format_chunk_result(
     Args:
         chunk: Chunk dict from retrieval
         include_score: Whether to include score
-        max_content_length: Maximum content length (chars). Default 800 to prevent token overflow.
+        max_content_length: Maximum content length (chars). Default 400 to prevent token overflow.
                           Set to None for no truncation.
 
     Returns:
@@ -107,13 +107,13 @@ def create_error_result(error_message: str, tool_name: str = None) -> Dict[str, 
     }
 
 
-def validate_k_parameter(k: int, max_k: int = 50) -> int:
+def validate_k_parameter(k: int, max_k: int = 10) -> int:
     """
     Validate and clamp k parameter.
 
     Args:
         k: Number of results requested
-        max_k: Maximum allowed value
+        max_k: Maximum allowed value (default: 10 to prevent token overflow)
 
     Returns:
         Validated k value

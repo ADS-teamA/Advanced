@@ -24,7 +24,7 @@ class SimpleSearchInput(ToolInput):
     """Input for simple_search tool."""
 
     query: str = Field(..., description="Natural language search query")
-    k: int = Field(6, description="Number of results to return", ge=1, le=20)
+    k: int = Field(6, description="Number of results to return", ge=1, le=10)
 
 
 @register_tool
@@ -98,7 +98,7 @@ class EntitySearchInput(ToolInput):
     entity_value: str = Field(
         ..., description="Entity value to search for (e.g., 'GRI 306', 'GSSB')"
     )
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -162,7 +162,7 @@ class DocumentSearchInput(ToolInput):
 
     query: str = Field(..., description="Search query")
     document_id: str = Field(..., description="Document ID to search within")
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -229,7 +229,7 @@ class SectionSearchInput(ToolInput):
 
     query: str = Field(..., description="Search query")
     section_title: str = Field(..., description="Section title to search within")
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -298,7 +298,7 @@ class KeywordSearchInput(ToolInput):
     """Input for keyword_search tool."""
 
     keywords: str = Field(..., description="Keywords to search for (space-separated)")
-    k: int = Field(6, description="Number of results", ge=1, le=20)
+    k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
 @register_tool
@@ -492,7 +492,7 @@ class GetDocumentSectionsTool(BaseTool):
     """
 
     name = "get_document_sections"
-    description = "Get a list of all sections in a document by document ID"
+    description = "Get a list of all sections in a document by document ID. WARNING: Returns max 50 sections to prevent token overflow. Use section_search for specific sections."
     tier = 1
     input_schema = GetDocumentSectionsInput
 
@@ -513,8 +513,7 @@ class GetDocumentSectionsTool(BaseTool):
                 section_info = {
                     "section_id": meta.get("section_id"),
                     "section_title": meta.get("section_title"),
-                    "section_path": meta.get("section_path"),
-                    "page_number": meta.get("page_number"),
+                    # Removed section_path and page_number to save tokens
                 }
                 sections.append(section_info)
 
@@ -529,10 +528,32 @@ class GetDocumentSectionsTool(BaseTool):
         # Sort sections by section_id (preserves document order)
         sections.sort(key=lambda x: x.get("section_id", ""))
 
+        # Limit to first 50 sections to prevent token overflow
+        total_count = len(sections)
+        max_sections = 50
+        truncated = total_count > max_sections
+        sections = sections[:max_sections]
+
+        logger.info(
+            f"Document '{document_id}': {total_count} sections total, "
+            f"returning {len(sections)}{' (truncated)' if truncated else ''}"
+        )
+
         return ToolResult(
             success=True,
-            data={"document_id": document_id, "sections": sections, "count": len(sections)},
-            metadata={"document_id": document_id, "section_count": len(sections)},
+            data={
+                "document_id": document_id,
+                "sections": sections,
+                "count": len(sections),
+                "total_sections": total_count,
+                "truncated": truncated,
+            },
+            metadata={
+                "document_id": document_id,
+                "section_count": len(sections),
+                "total_sections": total_count,
+                "truncated": truncated,
+            },
         )
 
 
