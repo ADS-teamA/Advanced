@@ -310,7 +310,8 @@ def main():
     if passed == total:
         print(f"\n{GREEN}✓ ALL TESTS PASSED{RESET}")
         print("\n🚀 Agent is ready to use!")
-        print(f"   Run: python run_agent.py --store output/hybrid_store")
+        print(f"   Run: ./run_cli.sh output/hybrid_store")
+        print(f"   Or:  uv run python -m src.agent.cli --vector-store output/hybrid_store")
         return 0
     else:
         print(f"\n{YELLOW}⚠  SOME TESTS FAILED{RESET}")

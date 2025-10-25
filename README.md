@@ -1,14 +1,14 @@
-# MY_SUJBOT - Advanced RAG Pipeline for Technical Documents
+# MY_SUJBOT - Production RAG System for Legal/Technical Documents
 
-Evidence-based RAG pipeline optimized for legal and technical documentation, with hierarchical structure preservation and multi-layer chunking.
+Research-based RAG system optimized for legal and technical documentation with 7-phase pipeline and interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System with Interactive Agent)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 27-Tool Agent)
 
 ---
 
 ## 🎯 Overview
 
-Production-ready RAG system based on 4 research papers:
+Production-ready RAG system based on 4 research papers implementing state-of-the-art techniques:
 - **LegalBench-RAG** (Pipitone & Alami, 2024)
 - **Summary-Augmented Chunking** (Reuter et al., 2024)
 - **Multi-Layer Embeddings** (Lima, 2024)
@@ -16,37 +16,37 @@ Production-ready RAG system based on 4 research papers:
 
 ### Key Features
 
-- **✅ PHASE 1:** Smart hierarchy extraction (font-size based classification)
-- **✅ PHASE 2:** Generic summary generation (gpt-4o-mini, 150 chars)
-- **✅ PHASE 3:** Multi-layer chunking + SAC (RCTS 500 chars, 58% DRM reduction)
-- **✅ PHASE 4:** Embedding + FAISS indexing (text-embedding-3-large, 3 indexes)
-- **⏳ PHASE 5-7:** Retrieval API, context assembly, answer generation
+**Pipeline (PHASE 1-6):**
+- **PHASE 1:** Smart hierarchy extraction (Docling, font-size classification)
+- **PHASE 2:** Generic summary generation (150 chars, proven better than expert summaries)
+- **PHASE 3:** RCTS chunking (500 chars) + SAC (58% DRM reduction)
+- **PHASE 4:** Multi-layer indexing (3 separate FAISS indexes)
+- **PHASE 5:** Hybrid search (BM25+Dense+RRF) + Knowledge graph + Cross-encoder reranking
+- **PHASE 6:** Context assembly with citations
+
+**Agent (PHASE 7):**
+- **Interactive CLI** powered by Claude SDK
+- **27 specialized tools** (12 basic + 9 advanced + 6 analysis)
+- **Cost tracking** with prompt caching (90% savings on cached tokens)
+- **Conversation management** (/help, /stats, /config, /clear)
 
 ---
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+- Python 3.10+
+- `uv` package manager ([installation](https://docs.astral.sh/uv/))
+- API keys: `ANTHROPIC_API_KEY` and optionally `OPENAI_API_KEY`
+
 ### Installation
-
-**⚠️ IMPORTANT: Installation is platform-specific. See [INSTALL.md](INSTALL.md) for detailed instructions.**
-
-**Quick Install:**
-
-**Windows:**
-```bash
-# 1. Install PyTorch FIRST (prevents DLL errors)
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
-# 2. Install dependencies
-uv sync
-
-# 3. Configure (use cloud embeddings - recommended for Windows)
-copy .env.example .env
-# Edit .env and set EMBEDDING_MODEL=text-embedding-3-large
-```
 
 **macOS/Linux:**
 ```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Install dependencies
 uv sync
 
@@ -55,65 +55,178 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-**API Keys (Required):**
+**Windows:**
 ```bash
-# .env file
-ANTHROPIC_API_KEY=sk-ant-...  # Required for summaries
-OPENAI_API_KEY=sk-...         # For OpenAI embeddings (optional)
-EMBEDDING_MODEL=text-embedding-3-large  # Recommended for Windows
+# Install uv
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# IMPORTANT: Install PyTorch FIRST (prevents DLL errors)
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install dependencies
+uv sync
+
+# Configure (use cloud embeddings for Windows)
+copy .env.example .env
+# Edit .env and set EMBEDDING_MODEL=text-embedding-3-large
 ```
 
-**For detailed platform-specific instructions, troubleshooting, and embedding model selection, see [INSTALL.md](INSTALL.md).**
-
-### Basic Usage (PHASE 1-4 Complete Pipeline)
-
-```python
-from extraction import IndexingPipeline, IndexingConfig
-
-# Complete pipeline: PHASE 1-4
-config = IndexingConfig(
-    # PHASE 1: Hierarchy
-    enable_smart_hierarchy=True,
-    ocr_language=["cs-CZ", "en-US"],
-
-    # PHASE 2: Summaries
-    generate_summaries=True,
-    summary_model="gpt-4o-mini",
-
-    # PHASE 3: Chunking
-    chunk_size=500,
-    enable_sac=True,
-
-    # PHASE 4: Embedding
-    embedding_model="text-embedding-3-large"
-)
-
-pipeline = IndexingPipeline(config)
-
-# Index document (runs all 4 phases)
-vector_store = pipeline.index_document("your_document.pdf")
-
-# Save vector store
-vector_store.save("output/vector_store")
-
-# Query
-query_embedding = pipeline.embedder.embed_texts(["safety procedures"])
-results = vector_store.hierarchical_search(query_embedding, k_layer3=6)
-
-print(f"Found {len(results['layer3'])} relevant chunks")
-for i, chunk in enumerate(results['layer3'][:3], 1):
-    print(f"{i}. {chunk['section_title']} (score: {chunk['score']:.4f})")
+**API Keys (.env):**
+```bash
+ANTHROPIC_API_KEY=sk-ant-...  # Required
+OPENAI_API_KEY=sk-...         # Optional (for OpenAI embeddings)
+LLM_MODEL=gpt-5-nano          # For summaries & agent
+EMBEDDING_MODEL=text-embedding-3-large  # Windows
+# EMBEDDING_MODEL=bge-m3      # macOS M1/M2/M3 (local, FREE, GPU-accelerated)
 ```
 
-### Run Tests
+**For detailed platform-specific instructions, see [INSTALL.md](INSTALL.md).**
+
+---
+
+## 📖 Usage
+
+### 1. Index Documents
 
 ```bash
-# Test PHASE 1-3 (extraction, summaries, chunking)
-uv run python scripts/test_complete_pipeline.py
+# Single document
+uv run python run_pipeline.py data/document.pdf
 
-# Test PHASE 4 (embedding + FAISS indexing)
-uv run python scripts/test_phase4_indexing.py
+# Batch processing
+uv run python run_pipeline.py data/regulace/
+
+# Fast mode (default) - 2-3 min, full price
+uv run python run_pipeline.py data/document.pdf
+
+# Eco mode - 15-30 min, 50% cheaper (overnight bulk indexing)
+# Set SPEED_MODE=eco in .env
 ```
+
+**Output:** Vector store in `output/<document_name>/phase4_vector_store/`
+
+### 2. Run RAG Agent
+
+```bash
+# Launch interactive agent (27 tools)
+uv run python -m src.agent.cli
+
+# With specific vector store
+uv run python -m src.agent.cli --vector-store output/my_doc/phase4_vector_store
+
+# Debug mode
+uv run python -m src.agent.cli --debug
+```
+
+**Agent Commands:**
+- `/help` - Show available commands and tools
+- `/stats` - Show tool usage, conversation stats, session costs
+- `/config` - Show current configuration
+- `/clear` - Clear conversation history
+- `/exit` - Exit agent
+
+**Example Session:**
+```
+🤖 RAG Agent CLI (27 tools, Claude SDK)
+📚 Loaded vector store: output/safety_manual/phase4_vector_store
+💰 Session cost: $0.0000 (0 tokens)
+
+You: What are the safety procedures for reactor shutdown?
+
+Agent: [Uses 3 tools: document_search → section_search → extract_text]
+Based on the safety manual, reactor shutdown follows these procedures:
+
+1. **Normal Shutdown** (Section 4.2):
+   - Reduce power to 50% over 30 minutes
+   - Insert control rods gradually...
+
+[Citations: Section 4.2, Page 45-47]
+
+💰 Session cost: $0.0234 (12,450 tokens) | 📦 Cache: 8,500 tokens read (90% saved)
+```
+
+### 3. Run Tests
+
+```bash
+# All tests
+uv run pytest tests/ -v
+
+# Specific phase
+uv run pytest tests/test_phase4_indexing.py -v
+
+# With coverage
+uv run pytest tests/ --cov=src --cov-report=html
+```
+
+---
+
+## 🏗️ Architecture
+
+### Complete Pipeline Flow
+
+```
+Document (PDF/DOCX)
+    ↓
+[PHASE 1] Hierarchy Extraction
+    ├─ Docling conversion (OCR: Czech/English)
+    ├─ Font-size based classification
+    └─ HierarchicalChunker (parent-child relationships)
+    ↓
+[PHASE 2] Summary Generation
+    ├─ gpt-4o-mini or gpt-5-nano (~$0.001 per doc)
+    ├─ Generic summaries (150 chars) - NOT expert
+    └─ Document + section summaries
+    ↓
+[PHASE 3] Multi-Layer Chunking + SAC
+    ├─ Layer 1: Document (1 chunk, summary)
+    ├─ Layer 2: Sections (N chunks, summaries)
+    └─ Layer 3: RCTS 500 chars + SAC (PRIMARY)
+    ↓
+[PHASE 4] Embedding + FAISS Indexing
+    ├─ text-embedding-3-large (3072D) or bge-m3 (1024D)
+    ├─ 3 separate FAISS indexes (IndexFlatIP)
+    └─ Cosine similarity search
+    ↓
+[PHASE 5] Hybrid Search + Knowledge Graph + Reranking
+    ├─ BM25 + Dense retrieval + RRF fusion
+    ├─ Entity/relationship extraction (NetworkX)
+    └─ Cross-encoder reranking (NOT Cohere - hurts legal docs)
+    ↓
+[PHASE 6] Context Assembly
+    ├─ Strip SAC summaries
+    ├─ Concatenate chunks
+    └─ Add citations with section paths
+    ↓
+[PHASE 7] Agent with 27 Tools
+    ├─ Interactive CLI (Claude SDK)
+    ├─ 12 basic tools (fast search)
+    ├─ 9 advanced tools (quality retrieval)
+    ├─ 6 analysis tools (deep understanding)
+    └─ Cost tracking + prompt caching
+```
+
+### 27 Agent Tools
+
+**Basic Tools (Fast, <1s):**
+- `document_search` - Find relevant documents
+- `section_search` - Search within sections
+- `chunk_search` - Semantic chunk search
+- `keyword_search` - Exact keyword matching
+- `metadata_query` - Filter by metadata
+- ... (7 more)
+
+**Advanced Tools (Quality, 1-3s):**
+- `hybrid_search` - BM25 + Dense + RRF
+- `graph_query` - Knowledge graph traversal
+- `reranked_search` - Cross-encoder reranking
+- `multi_query` - Query decomposition
+- ... (5 more)
+
+**Analysis Tools (Deep, 3-10s):**
+- `compare_documents` - Cross-document analysis
+- `summarize_topic` - Topic-based summarization
+- `extract_entities` - Entity recognition
+- `trace_relationships` - Relationship mapping
+- ... (2 more)
 
 ---
 
@@ -131,73 +244,110 @@ Based on research and testing:
 
 ---
 
-## 🏗️ Architecture
+## 🔬 Research Foundation
 
-### Pipeline Overview
+### Critical Implementation Rules (DO NOT CHANGE)
 
+**Evidence-based decisions:**
+
+1. **RCTS > Fixed-size chunking** (LegalBench-RAG)
+   - Chunk size: **500 chars** (optimal, +167% Precision@1)
+   - Overlap: 0 (RCTS handles naturally)
+
+2. **Generic > Expert summaries** (Reuter et al.)
+   - Summary length: **150 chars**
+   - Style: **Generic** (NOT expert - counterintuitive but proven)
+
+3. **SAC reduces DRM by 58%** (Reuter et al.)
+   - Prepend document summary to each chunk
+   - Baseline DRM: 67% → SAC DRM: 28%
+
+4. **Multi-layer embeddings** (Lima)
+   - 3 separate FAISS indexes
+   - 2.3x essential chunks
+
+5. **No Cohere reranking** (LegalBench-RAG)
+   - Cohere worse than no reranking on legal docs
+   - Use cross-encoder instead
+
+6. **Dense > Sparse for legal docs** (Reuter et al.)
+   - Better precision/recall than BM25-only
+   - Hybrid (BM25+Dense+RRF) best overall
+
+---
+
+## 💻 Configuration
+
+### Load from .env (Recommended)
+
+```python
+from src.indexing_pipeline import IndexingPipeline, IndexingConfig
+
+# Load all settings from .env
+config = IndexingConfig.from_env()
+pipeline = IndexingPipeline(config)
+
+# Override specific settings
+config = IndexingConfig.from_env(
+    enable_knowledge_graph=True,
+    enable_hybrid_search=True,
+    speed_mode="eco"  # 50% cheaper for bulk indexing
+)
+
+# Index document
+result = pipeline.index_document("document.pdf")
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ INPUT: PDF Document                                         │
-└────────────────────────┬────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 1: Smart Hierarchy Extraction                        │
-│  - Docling conversion                                       │
-│  - Font-size based level classification                     │
-│  - HierarchicalChunker for parent-child relationships      │
-│  Output: 118 sections, depth=4                             │
-└────────────────────────┬────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 2: Generic Summary Generation                        │
-│  - gpt-4o-mini (~$0.001 per doc)                           │
-│  - 150-char generic summaries                               │
-│  - Document + section summaries                             │
-│  Output: Summaries for all sections                        │
-└────────────────────────┬────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 3: Multi-Layer Chunking + SAC                        │
-│  - Layer 1: Document (1 chunk)                             │
-│  - Layer 2: Sections (N chunks)                            │
-│  - Layer 3: RCTS 500 chars + SAC (M chunks, PRIMARY)       │
-│  Output: 242 total chunks, 58% DRM reduction               │
-└────────────────────────┬────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 4: Embedding & FAISS Indexing                        │
-│  - text-embedding-3-large (3072D)                          │
-│  - 3 separate FAISS indexes (IndexFlatIP)                  │
-│  - Hierarchical search with DRM prevention                 │
-│  Output: 242 vectors, 3 layers, cosine similarity         │
-└────────────────────────┬────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 5-7: TO BE IMPLEMENTED                               │
-│  - Query & Retrieval API (K=6, no reranking)              │
-│  - Context Assembly (strip SAC, citations)                 │
-│  - Answer Generation (GPT-4/Mixtral, citations)           │
-└─────────────────────────────────────────────────────────────┘
+
+### Key .env Variables
+
+```bash
+# API Keys
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+
+# Models
+LLM_MODEL=gpt-5-nano                    # Summaries & agent
+EMBEDDING_MODEL=text-embedding-3-large  # Windows
+# EMBEDDING_MODEL=bge-m3                # macOS (local, FREE)
+
+# Pipeline
+SPEED_MODE=fast                         # fast or eco (50% savings)
+ENABLE_HYBRID_SEARCH=true
+ENABLE_KNOWLEDGE_GRAPH=true
+ENABLE_PROMPT_CACHING=true              # Anthropic only (90% savings)
+
+# OCR
+OCR_LANGUAGE=ces,eng                    # Czech + English
 ```
 
-### 3-Layer Chunking Strategy
+### Optimal Settings (Research-Based)
 
-```
-Layer 1: Document Level
-├─ 1 chunk per document
-├─ Content: Document summary (~150 chars)
-└─ Purpose: Global filtering, DRM prevention
+```python
+IndexingConfig(
+    # PHASE 1: Hierarchy
+    enable_smart_hierarchy=True,
+    ocr_language=["ces", "eng"],
 
-Layer 2: Section Level
-├─ 1 chunk per section
-├─ Content: Section summary or full section
-└─ Purpose: Mid-level context, section queries
+    # PHASE 2: Summaries
+    generate_summaries=True,
+    summary_model="gpt-5-nano",
+    summary_max_chars=150,
+    summary_style="generic",  # NOT expert!
 
-Layer 3: Chunk Level (PRIMARY)
-├─ RCTS with 500 char chunks
-├─ Content: Raw chunk + SAC (document summary prepended)
-├─ Purpose: Fine-grained retrieval
-└─ Result: 58% DRM reduction
+    # PHASE 3: Chunking
+    chunk_size=500,           # Optimal per research
+    enable_sac=True,          # 58% DRM reduction
+
+    # PHASE 4: Embedding
+    embedding_model="text-embedding-3-large",
+
+    # PHASE 5: Advanced Features
+    enable_hybrid_search=True,
+    enable_knowledge_graph=True,
+
+    # Performance
+    speed_mode="fast",        # or "eco" for bulk indexing
+)
 ```
 
 ---
@@ -207,139 +357,31 @@ Layer 3: Chunk Level (PRIMARY)
 ```
 MY_SUJBOT/
 ├── src/
-│   └── extraction/
-│       ├── docling_extractor_v2.py     # PHASE 1+2: Extraction & summaries
-│       ├── summary_generator.py        # PHASE 2: Generic summaries
-│       ├── multi_layer_chunker.py      # PHASE 3: Multi-layer chunking + SAC
-│       ├── embedding_generator.py      # PHASE 4: Embedding generation
-│       ├── faiss_vector_store.py       # PHASE 4: FAISS vector store
-│       ├── indexing_pipeline.py        # PHASE 4: Complete indexing pipeline
-│       └── __init__.py
-├── scripts/
-│   ├── test_complete_pipeline.py       # Test PHASE 1-3
-│   └── test_phase4_indexing.py         # Test PHASE 4 (embedding + FAISS)
-├── PIPELINE.md                          # Complete pipeline specification
-├── IMPLEMENTATION_SUMMARY.md            # PHASE 1+2 implementation
-├── PHASE3_COMPLETE.md                   # PHASE 3 implementation
-├── PHASE4_COMPLETE.md                   # PHASE 4 implementation
-├── QUICK_START.md                       # Quick start guide
-├── data/
-│   └── regulace/                        # Test documents
-├── output/
-│   └── complete_pipeline_test/          # Test outputs
-└── pyproject.toml
-```
-
----
-
-## 🔬 Research Foundation
-
-### Key Findings Implemented
-
-1. **RCTS > Fixed-size chunking** (LegalBench-RAG)
-   - Precision@1: 6.41% vs 2.40%
-   - 500 chars optimal
-
-2. **Generic > Expert summaries** (Reuter et al.)
-   - Counterintuitive but proven
-   - Better semantic alignment
-
-3. **SAC reduces DRM by 58%** (Reuter et al.)
-   - Baseline DRM: 67% → SAC DRM: 28%
-   - Prepend document summary to each chunk
-
-4. **Multi-layer embeddings** (Lima)
-   - 2.3x essential chunks
-   - 3 separate indexes
-
-5. **Dense > Sparse retrieval** (Reuter et al.)
-   - Better precision/recall than hybrid
-   - No BM25 needed
-
-6. **No reranking** (LegalBench-RAG)
-   - Cohere reranker worse than no reranking
-   - General-purpose rerankers not optimized for legal/technical
-
----
-
-## 💻 Usage Examples
-
-### Example 1: Nuclear Documentation
-
-```python
-config = ExtractionConfig(
-    enable_smart_hierarchy=True,
-    generate_summaries=True,
-    ocr_language=["cs-CZ", "en-US"]
-)
-
-extractor = DoclingExtractorV2(config)
-result = extractor.extract("VVER1200_safety_report.pdf")
-
-# Hierarchical structure
-print(f"Chapters: {result.num_roots}")
-print(f"Total sections: {result.num_sections}")
-print(f"Max depth: {result.hierarchy_depth}")
-
-# Find safety sections
-for section in result.sections:
-    if "bezpečnost" in section.title.lower():
-        print(f"{section.path}")
-        print(f"Summary: {section.summary}")
-```
-
-### Example 2: Batch Processing
-
-```python
-from pathlib import Path
-import json
-
-documents = Path("data/nuclear_docs/").glob("*.pdf")
-
-for doc in documents:
-    result = extractor.extract(doc)
-    chunks = chunker.chunk_document(result)
-
-    # Save
-    output = Path("output") / f"{doc.stem}_chunks.json"
-    with open(output, "w") as f:
-        json.dump(chunks, f, indent=2)
-
-    print(f"✓ {doc.name}: {chunks['total_chunks']} chunks")
-```
-
----
-
-## 🧪 Testing
-
-### Run Tests
-
-```bash
-# Complete pipeline test
-uv run python scripts/test_complete_pipeline.py
-
-# Check results
-ls output/complete_pipeline_test/
-```
-
-### Expected Output
-
-```
-PHASE 1: Smart Hierarchy Extraction
-✓ Document extracted
-  Sections: 118
-  Hierarchy depth: 4
-
-PHASE 2: Generic Summaries
-✓ Document summary: "Technical specification for..."
-  Sections with summaries: 118/118
-
-PHASE 3: Multi-Layer Chunking + SAC
-✓ Multi-layer chunking completed
-  Layer 1 (Document): 1 chunks
-  Layer 2 (Section):  118 chunks
-  Layer 3 (Chunk):    123 chunks (PRIMARY)
-  Total chunks:       242
+│   ├── indexing_pipeline.py           # Main orchestrator (PHASE 1-6)
+│   ├── config.py                      # Central config (load from .env)
+│   ├── docling_extractor_v2.py        # PHASE 1: Hierarchy extraction
+│   ├── summary_generator.py           # PHASE 2: Generic summaries
+│   ├── multi_layer_chunker.py         # PHASE 3: Chunking + SAC
+│   ├── embedding_generator.py         # PHASE 4: Embeddings
+│   ├── faiss_vector_store.py          # PHASE 4: FAISS indexes
+│   ├── hybrid_search.py               # PHASE 5: BM25+Dense+RRF
+│   ├── graph/                         # PHASE 5: Knowledge graph
+│   │   ├── entity_extractor.py
+│   │   └── graph_store.py
+│   └── agent/                         # PHASE 7: RAG Agent
+│       ├── cli.py                     # Interactive CLI
+│       ├── config.py                  # Agent configuration
+│       └── tools/                     # 27 specialized tools
+├── tests/                             # Comprehensive test suite
+├── data/                              # Input documents
+├── output/                            # Pipeline outputs
+├── vector_db/                         # Central vector database
+├── docs/                              # Documentation
+├── run_pipeline.py                    # Pipeline entry point
+├── CLAUDE.md                          # Development guidelines
+├── INSTALL.md                         # Platform-specific installation
+├── PIPELINE.md                        # Complete pipeline spec
+└── .env.example                       # Environment template
 ```
 
 ---
@@ -348,92 +390,106 @@ PHASE 3: Multi-Layer Chunking + SAC
 
 ### Core Documentation
 
-- **[INSTALL.md](INSTALL.md)** - Platform-specific installation instructions
-- **[PIPELINE.md](PIPELINE.md)** - Complete pipeline specification with research
+- **[INSTALL.md](INSTALL.md)** - Platform-specific installation (Windows/macOS/Linux)
 - **[CLAUDE.md](CLAUDE.md)** - Development guidelines and project instructions
+- **[PIPELINE.md](PIPELINE.md)** - Complete pipeline specification with research
 
 ### User Guides
 
-- **[Agent CLI Guide](docs/agent/README.md)** - RAG Agent CLI documentation (PHASE 7)
-- **[macOS Quick Start](docs/how-to-run-macos.md)** - Quick start guide for macOS users
-- **[Vector DB Management](docs/vector-db-management.md)** - Vector database management tools
+- **[Agent CLI Guide](docs/agent/README.md)** - RAG Agent CLI documentation
+- **[macOS Quick Start](docs/how-to-run-macos.md)** - Quick start for macOS users
+- **[Vector DB Management](docs/vector-db-management.md)** - Central database tools
 
 ### Advanced Topics
 
 - **[Cost Tracking](docs/cost-tracking.md)** - API cost monitoring and optimization
-- **[Cost Optimization Analysis](docs/development/cost-optimization.md)** - Detailed cost analysis
-- **[Batching Optimizations](docs/development/batching-optimizations.md)** - Performance optimization guide
+- **[Cost Optimization](docs/development/cost-optimization.md)** - Detailed cost analysis
+- **[Batching Optimizations](docs/development/batching-optimizations.md)** - Performance guide
 
 ---
 
-## 🛠️ Configuration
+## 🧪 Testing
 
-### Optimal Settings (Research-Based)
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Test specific phase
+uv run pytest tests/test_phase4_indexing.py -v
+
+# Test agent
+uv run pytest tests/agent/ -v
+
+# With coverage
+uv run pytest tests/ --cov=src --cov-report=html
+
+# Single test
+uv run pytest tests/agent/test_validation.py::test_api_key_validation -v
+```
+
+---
+
+## ⚡ Performance Tips
+
+### Background Processing
+
+```bash
+# Run pipeline in background (long-running)
+nohup uv run python run_pipeline.py data/ > pipeline.log 2>&1 &
+
+# Monitor progress
+tail -f pipeline.log
+
+# Agent in background
+nohup uv run python -m src.agent.cli > agent.log 2>&1 &
+```
+
+### Cost Optimization
+
+**Speed Modes:**
+- `speed_mode="fast"` (default): 2-3 min, full price (ThreadPoolExecutor)
+- `speed_mode="eco"`: 15-30 min, 50% cheaper (OpenAI Batch API)
 
 ```python
-ExtractionConfig(
-    # PHASE 1: Hierarchy
-    enable_smart_hierarchy=True,
-    hierarchy_tolerance=1.5,
-
-    # PHASE 2: Summaries
-    generate_summaries=True,
-    summary_model="gpt-4o-mini",
-    summary_max_chars=150,
-    summary_style="generic",  # NOT expert!
-
-    # OCR
-    ocr_language=["cs-CZ", "en-US"],
-    ocr_recognition="accurate",
-
-    # Tables
-    extract_tables=True,
-    table_mode=TableFormerMode.ACCURATE
-)
-
-MultiLayerChunker(
-    chunk_size=500,      # Optimal per research
-    chunk_overlap=0,     # RCTS handles naturally
-    enable_sac=True      # 58% DRM reduction
-)
+# For overnight bulk indexing
+config = IndexingConfig.from_env(speed_mode="eco")
 ```
+
+**Prompt Caching (Anthropic only):**
+```bash
+# .env
+ENABLE_PROMPT_CACHING=true  # 90% cost reduction on cached tokens
+```
+
+**Example savings:**
+```
+Session cost: $0.0234 (12,450 tokens) | Cache: 8,500 tokens read (90% saved)
+```
+
+---
+
+## 🌍 Platform Support
+
+**Tested Platforms:**
+- macOS (Apple Silicon M1/M2/M3) - Recommended for local embeddings
+- Linux (Ubuntu 20.04+) - Production deployment
+- Windows 10/11 - Cloud embeddings recommended
+
+**Embedding Model Selection:**
+- **Windows:** `text-embedding-3-large` (cloud) - avoids PyTorch DLL issues
+- **macOS M1/M2/M3:** `bge-m3` (local, FREE, GPU-accelerated)
+- **Linux GPU:** `bge-m3` (local)
+- **Linux CPU:** `text-embedding-3-large` (cloud)
 
 ---
 
 ## ⚠️ Requirements
 
 - **Python:** >=3.10
-- **Platform:** macOS (Apple Silicon optimized), Linux, Windows
+- **uv:** Latest version (package manager)
 - **Memory:** 8GB+ recommended
-- **OpenAI API:** Required for PHASE 2 (summaries) & PHASE 4 (text-embedding-3-large)
-- **FAISS:** Required for PHASE 4 (`uv pip install faiss-cpu`)
-- **sentence-transformers:** Optional (for BGE-M3 alternative model)
-
----
-
-## 📝 Next Steps (PHASE 5-7)
-
-### PHASE 5: Query & Retrieval API
-- K=6 retrieval on Layer 3
-- Document-level filtering
-- Similarity threshold
-- NO reranking
-
-### PHASE 6: Context Assembly
-- Strip SAC summaries
-- Concatenate chunks
-- Add citations
-
-### PHASE 7: Answer Generation
-- GPT-4 or Mixtral 8x7B
-- Mandatory citations
-- Temperature: 0.1-0.3
-
----
-
-## 📄 License
-
-MIT License
+- **API Keys:** ANTHROPIC_API_KEY (required), OPENAI_API_KEY (optional)
+- **GPU:** Optional (for local embeddings on macOS/Linux)
 
 ---
 
@@ -447,6 +503,11 @@ Based on research from:
 
 ---
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System with Interactive Agent)
-**Next:** PHASE 5 - Query & Retrieval API
-**Updated:** 2025-10-20
+## 📄 License
+
+MIT License
+
+---
+
+**Status:** PHASE 1-7 COMPLETE ✅
+**Last Updated:** 2025-10-25
