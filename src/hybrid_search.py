@@ -545,6 +545,9 @@ class HybridVectorStore:
                 f"({len(fused_l3)} chunks remaining)"
             )
 
+        # Section-aware deduplication to avoid redundant chunks
+        fused_l3 = self._deduplicate_by_section(fused_l3, max_results=k_layer3)
+
         results["layer3"] = fused_l3
 
         # Step 3: Optional Layer 2 (Section context) - Hybrid
@@ -595,6 +598,52 @@ class HybridVectorStore:
         self.bm25_store.merge(other.bm25_store)
 
         logger.info("Hybrid vector store merge complete")
+
+    def _deduplicate_by_section(
+        self,
+        chunks: List[Dict],
+        max_results: int
+    ) -> List[Dict]:
+        """
+        Deduplicate chunks so we don't return multiple results from the same section.
+
+        Preference order:
+        1. Keep the first occurrence (highest-ranked) for each (document_id, section_id)
+        2. If section metadata missing, fall back to chunk_id
+        3. Once unique sections are exhausted, refill with remaining chunks until max_results
+        """
+        if not chunks:
+            return []
+
+        seen_sections = set()
+        unique_chunks = []
+        duplicates = []
+
+        for chunk in chunks:
+            section_id = chunk.get("section_id") or chunk.get("section_title")
+            doc_id = chunk.get("document_id", "")
+            dedup_key = (doc_id, section_id) if section_id else (doc_id, chunk.get("chunk_id"))
+
+            if dedup_key not in seen_sections:
+                seen_sections.add(dedup_key)
+                unique_chunks.append(chunk)
+            else:
+                duplicates.append(chunk)
+
+        # Refill with duplicates if we need more results
+        deduped = unique_chunks[:max_results]
+        if len(deduped) < max_results:
+            for chunk in duplicates:
+                deduped.append(chunk)
+                if len(deduped) >= max_results:
+                    break
+
+        if len(deduped) != len(chunks):
+            logger.info(
+                f"Section-aware deduplication removed {len(chunks) - len(deduped)} redundant chunks"
+            )
+
+        return deduped
 
     def _rrf_fusion(
         self,
