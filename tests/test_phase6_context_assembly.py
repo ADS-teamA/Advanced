@@ -16,7 +16,7 @@ from src.context_assembly import (
     CitationFormat,
     ChunkProvenance,
     AssembledContext,
-    assemble_context
+    assemble_context,
 )
 
 
@@ -33,7 +33,7 @@ def sample_chunks_with_sac():
             "page_number": 15,
             "raw_content": "Organizations shall report waste generated in metric tonnes.",
             "content": "This chunk discusses waste reporting requirements.\n\nOrganizations shall report waste generated in metric tonnes.",
-            "rerank_score": 0.92
+            "rerank_score": 0.92,
         },
         {
             "chunk_id": "chunk_002",
@@ -43,7 +43,7 @@ def sample_chunks_with_sac():
             "page_number": 17,
             "raw_content": "Waste diverted from disposal shall be categorized by composition.",
             "content": "This section covers waste diversion categories.\n\nWaste diverted from disposal shall be categorized by composition.",
-            "rerank_score": 0.88
+            "rerank_score": 0.88,
         },
         {
             "chunk_id": "chunk_003",
@@ -52,8 +52,8 @@ def sample_chunks_with_sac():
             "section_title": "Management Approach",
             "page_number": 5,
             "raw_content": "The organization should describe its approach to employment practices.",
-            "rerank_score": 0.75
-        }
+            "rerank_score": 0.75,
+        },
     ]
 
 
@@ -70,7 +70,7 @@ def sample_chunks_without_metadata():
             "chunk_id": "chunk_002",
             "document_id": "doc_123",
             "text": "Another chunk with minimal info.",
-        }
+        },
     ]
 
 
@@ -129,7 +129,7 @@ def test_raw_content_preferred():
             "chunk_id": "chunk_001",
             "document_id": "test.pdf",
             "raw_content": "This is the raw content.",
-            "content": "SAC summary\n\nThis is the raw content."
+            "content": "SAC summary\n\nThis is the raw content.",
         }
     ]
 
@@ -147,7 +147,7 @@ def test_fallback_to_content_field():
         {
             "chunk_id": "chunk_001",
             "document_id": "test.pdf",
-            "content": "Only content field available."
+            "content": "Only content field available.",
         }
     ]
 
@@ -236,11 +236,7 @@ def test_provenance_with_missing_metadata(sample_chunks_without_metadata):
 def test_document_name_extraction_from_id():
     """Test that document name is extracted from document_id when missing."""
     chunks = [
-        {
-            "chunk_id": "chunk_001",
-            "document_id": "data/docs/GRI_306.pdf",
-            "content": "Test content"
-        }
+        {"chunk_id": "chunk_001", "document_id": "data/docs/GRI_306.pdf", "content": "Test content"}
     ]
 
     assembler = ContextAssembler()
@@ -268,7 +264,7 @@ def test_max_tokens_limit():
         {
             "chunk_id": f"chunk_{i}",
             "document_id": "test.pdf",
-            "raw_content": "A" * 100  # 100 chars = ~25 tokens
+            "raw_content": "A" * 100,  # 100 chars = ~25 tokens
         }
         for i in range(10)
     ]
@@ -291,7 +287,7 @@ def test_max_chunk_length_truncation():
         {
             "chunk_id": "chunk_001",
             "document_id": "test.pdf",
-            "raw_content": "A" * 500  # Very long chunk
+            "raw_content": "A" * 500,  # Very long chunk
         }
     ]
 
@@ -310,7 +306,7 @@ def test_chunk_separator_custom():
     """Test custom chunk separator."""
     chunks = [
         {"chunk_id": "c1", "document_id": "test.pdf", "raw_content": "Content 1"},
-        {"chunk_id": "c2", "document_id": "test.pdf", "raw_content": "Content 2"}
+        {"chunk_id": "c2", "document_id": "test.pdf", "raw_content": "Content 2"},
     ]
 
     assembler = ContextAssembler(chunk_separator="\n\n***\n\n")
@@ -322,9 +318,7 @@ def test_chunk_separator_custom():
 
 def test_without_chunk_headers():
     """Test assembly without chunk headers."""
-    chunks = [
-        {"chunk_id": "c1", "document_id": "test.pdf", "raw_content": "Content 1"}
-    ]
+    chunks = [{"chunk_id": "c1", "document_id": "test.pdf", "raw_content": "Content 1"}]
 
     assembler = ContextAssembler(add_chunk_headers=False)
 
@@ -365,11 +359,7 @@ def test_get_citations_method(sample_chunks_with_sac):
 # Test: Convenience Function
 def test_convenience_function(sample_chunks_with_sac):
     """Test assemble_context convenience function."""
-    context = assemble_context(
-        sample_chunks_with_sac,
-        max_chunks=2,
-        citation_format="inline"
-    )
+    context = assemble_context(sample_chunks_with_sac, max_chunks=2, citation_format="inline")
 
     assert isinstance(context, str)
     assert len(context) > 0
@@ -381,9 +371,7 @@ def test_convenience_function_with_different_formats(sample_chunks_with_sac):
     # Test each format
     for format_name in ["inline", "simple", "detailed", "footnote"]:
         context = assemble_context(
-            sample_chunks_with_sac,
-            max_chunks=1,
-            citation_format=format_name
+            sample_chunks_with_sac, max_chunks=1, citation_format=format_name
         )
 
         assert isinstance(context, str)
@@ -398,7 +386,7 @@ def test_chunk_provenance_to_citation():
         document_id="GRI_306.pdf",
         document_name="GRI 306",
         section_title="Disclosure 306-3",
-        page_number=15
+        page_number=15,
     )
 
     # Test different formats
@@ -417,16 +405,9 @@ def test_full_assembly_pipeline(sample_chunks_with_sac):
     Simulates: Retrieval → Context Assembly → LLM Prompt
     """
     # Step 1: Assemble context
-    assembler = ContextAssembler(
-        citation_format=CitationFormat.INLINE,
-        include_metadata=True
-    )
+    assembler = ContextAssembler(citation_format=CitationFormat.INLINE, include_metadata=True)
 
-    result = assembler.assemble(
-        chunks=sample_chunks_with_sac,
-        max_chunks=3,
-        max_tokens=2000
-    )
+    result = assembler.assemble(chunks=sample_chunks_with_sac, max_chunks=3, max_tokens=2000)
 
     # Step 2: Verify assembled context
     assert result.chunks_used == 3

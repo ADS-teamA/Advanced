@@ -250,7 +250,9 @@ class ExplainSearchResultsTool(BaseTool):
                         break
 
                 if not chunk:
-                    explanations.append({"chunk_id": chunk_id, "found": False, "error": "Chunk not found"})
+                    explanations.append(
+                        {"chunk_id": chunk_id, "found": False, "error": "Chunk not found"}
+                    )
                     continue
 
                 # Extract scores (from HybridVectorStore modification)
@@ -316,14 +318,19 @@ class FilteredSearchInput(ToolInput):
 
     query: str = Field(..., description="Search query")
     filter_type: str = Field(
-        ...,
-        description="Type of filter to apply: 'document', 'section', 'metadata', 'temporal'"
+        ..., description="Type of filter to apply: 'document', 'section', 'metadata', 'temporal'"
     )
-    filter_value: str = Field(..., description="Filter value (document_id, section_title, or date range)")
+    filter_value: str = Field(
+        ..., description="Filter value (document_id, section_title, or date range)"
+    )
     document_type: Optional[str] = Field(None, description="For metadata filter: document type")
     section_type: Optional[str] = Field(None, description="For metadata filter: section type")
-    start_date: Optional[str] = Field(None, description="For temporal filter: start date (ISO: YYYY-MM-DD)")
-    end_date: Optional[str] = Field(None, description="For temporal filter: end date (ISO: YYYY-MM-DD)")
+    start_date: Optional[str] = Field(
+        None, description="For temporal filter: start date (ISO: YYYY-MM-DD)"
+    )
+    end_date: Optional[str] = Field(
+        None, description="For temporal filter: end date (ISO: YYYY-MM-DD)"
+    )
     k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
@@ -357,6 +364,7 @@ class FilteredSearchTool(BaseTool):
         k: int = 6,
     ) -> ToolResult:
         from .utils import validate_k_parameter
+
         k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         try:
@@ -385,7 +393,8 @@ class FilteredSearchTool(BaseTool):
                 )
                 section_lower = section_title.lower()
                 chunks = [
-                    c for c in results["layer3"]
+                    c
+                    for c in results["layer3"]
                     if section_lower in c.get("section_title", "").lower()
                 ][:k]
 
@@ -404,7 +413,9 @@ class FilteredSearchTool(BaseTool):
                     ]
                 if section_type:
                     chunks = [
-                        c for c in chunks if c.get("section_type", "").lower() == section_type.lower()
+                        c
+                        for c in chunks
+                        if c.get("section_type", "").lower() == section_type.lower()
                     ]
 
                 # Rerank if available
@@ -497,10 +508,11 @@ class SimilaritySearchInput(ToolInput):
 
     chunk_id: str = Field(..., description="Chunk ID to find similar content for")
     search_mode: str = Field(
-        ...,
-        description="Search mode: 'related' (semantically related), 'similar' (more like this)"
+        ..., description="Search mode: 'related' (semantically related), 'similar' (more like this)"
     )
-    cross_document: bool = Field(True, description="Search across all documents or within same document")
+    cross_document: bool = Field(
+        True, description="Search across all documents or within same document"
+    )
     k: int = Field(6, description="Number of results", ge=1, le=10)
 
 
@@ -558,7 +570,11 @@ class SimilaritySearchTool(BaseTool):
                 )
 
             # Validate embedder
-            if not self.embedder or not hasattr(self.embedder, 'dimensions') or not self.embedder.dimensions:
+            if (
+                not self.embedder
+                or not hasattr(self.embedder, "dimensions")
+                or not self.embedder.dimensions
+            ):
                 return ToolResult(
                     success=False,
                     data=None,
@@ -641,13 +657,15 @@ class EntityToolInput(ToolInput):
     entity_value: str = Field(..., description="Entity value, ID, or name")
     operation: str = Field(
         ...,
-        description="Operation: 'search' (find mentions), 'explain' (detailed info), 'relationships' (get relationships)"
+        description="Operation: 'search' (find mentions), 'explain' (detailed info), 'relationships' (get relationships)",
     )
     k: int = Field(6, description="Number of results (for search operation)", ge=1, le=10)
     relationship_type: Optional[str] = Field(
         None, description="Filter by relationship type (for relationships operation)"
     )
-    direction: str = Field("both", description="Direction for relationships: 'outgoing', 'incoming', 'both'")
+    direction: str = Field(
+        "both", description="Direction for relationships: 'outgoing', 'incoming', 'both'"
+    )
 
 
 @register_tool
@@ -695,7 +713,8 @@ class EntityTool(BaseTool):
 
                 formatted = [format_chunk_result(c) for c in filtered]
                 citations = [
-                    f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
+                    f"[{i+1}] {c['document_id']}: {c['section_title']}"
+                    for i, c in enumerate(formatted)
                 ]
 
                 return ToolResult(
@@ -912,7 +931,7 @@ class ExpandContextInput(ToolInput):
     chunk_ids: List[str] = Field(..., description="List of chunk IDs to expand")
     expansion_mode: str = Field(
         ...,
-        description="Expansion mode: 'adjacent' (before/after chunks), 'section' (same section), 'similarity' (semantically similar), 'hybrid' (section + similarity)"
+        description="Expansion mode: 'adjacent' (before/after chunks), 'section' (same section), 'similarity' (semantically similar), 'hybrid' (section + similarity)",
     )
     k: int = Field(3, description="Number of additional chunks per input chunk", ge=1, le=10)
 
@@ -962,14 +981,21 @@ class ExpandContextTool(BaseTool):
             expanded_results = []
 
             for target_chunk in target_chunks:
-                expansion = {"target_chunk": format_chunk_result(target_chunk), "expanded_chunks": []}
+                expansion = {
+                    "target_chunk": format_chunk_result(target_chunk),
+                    "expanded_chunks": [],
+                }
 
                 if expansion_mode == "adjacent":
                     # Get adjacent chunks (before/after)
                     context_chunks = self._expand_adjacent(target_chunk, layer3_chunks, k=k)
                     expansion["expanded_chunks"] = context_chunks
-                    expansion["context_before"] = [c for c in context_chunks if c.get("position") == "before"]
-                    expansion["context_after"] = [c for c in context_chunks if c.get("position") == "after"]
+                    expansion["context_before"] = [
+                        c for c in context_chunks if c.get("position") == "before"
+                    ]
+                    expansion["context_after"] = [
+                        c for c in context_chunks if c.get("position") == "after"
+                    ]
 
                 elif expansion_mode == "section":
                     # Get chunks from same section
@@ -990,9 +1016,7 @@ class ExpandContextTool(BaseTool):
 
                 elif expansion_mode == "hybrid":
                     # Combine section + similarity
-                    section_chunks = self._expand_by_section(
-                        target_chunk, layer3_chunks, k=k // 2
-                    )
+                    section_chunks = self._expand_by_section(target_chunk, layer3_chunks, k=k // 2)
                     expansion["expanded_chunks"].extend(section_chunks)
 
                     try:
@@ -1052,8 +1076,7 @@ class ExpandContextTool(BaseTool):
         same_section = [
             (i, chunk)
             for i, chunk in enumerate(all_chunks)
-            if chunk.get("document_id") == document_id
-            and chunk.get("section_id") == section_id
+            if chunk.get("document_id") == document_id and chunk.get("section_id") == section_id
         ]
 
         # Sort by chunk_id
@@ -1124,7 +1147,11 @@ class ExpandContextTool(BaseTool):
     def _expand_by_similarity(self, target_chunk: Dict, k: int) -> List[Dict]:
         """Expand by finding semantically similar chunks."""
         # Validate embedder
-        if not self.embedder or not hasattr(self.embedder, 'dimensions') or not self.embedder.dimensions:
+        if (
+            not self.embedder
+            or not hasattr(self.embedder, "dimensions")
+            or not self.embedder.dimensions
+        ):
             raise ValueError("Embedder not available for similarity-based expansion")
 
         content = target_chunk.get("content", "")

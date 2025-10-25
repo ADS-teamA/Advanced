@@ -47,32 +47,34 @@ def mock_vector_store():
     store = Mock()
 
     # Mock hierarchical_search
-    store.hierarchical_search = Mock(return_value={
-        "layer1": [],
-        "layer2": [],
-        "layer3": [
-            {
-                "chunk_id": "chunk_001",
-                "document_id": "GRI_306",
-                "section_id": "sec_3.2",
-                "section_title": "Disclosure 306-3",
-                "content": "Organizations shall report total weight of hazardous waste.",
-                "raw_content": "Organizations shall report total weight of hazardous waste.",
-                "rrf_score": 0.85,
-                "page_number": 15,
-            },
-            {
-                "chunk_id": "chunk_002",
-                "document_id": "GRI_306",
-                "section_id": "sec_3.4",
-                "section_title": "Disclosure 306-4",
-                "content": "Organizations shall report waste diverted from disposal.",
-                "raw_content": "Organizations shall report waste diverted from disposal.",
-                "rrf_score": 0.72,
-                "page_number": 17,
-            },
-        ],
-    })
+    store.hierarchical_search = Mock(
+        return_value={
+            "layer1": [],
+            "layer2": [],
+            "layer3": [
+                {
+                    "chunk_id": "chunk_001",
+                    "document_id": "GRI_306",
+                    "section_id": "sec_3.2",
+                    "section_title": "Disclosure 306-3",
+                    "content": "Organizations shall report total weight of hazardous waste.",
+                    "raw_content": "Organizations shall report total weight of hazardous waste.",
+                    "rrf_score": 0.85,
+                    "page_number": 15,
+                },
+                {
+                    "chunk_id": "chunk_002",
+                    "document_id": "GRI_306",
+                    "section_id": "sec_3.4",
+                    "section_title": "Disclosure 306-4",
+                    "content": "Organizations shall report waste diverted from disposal.",
+                    "raw_content": "Organizations shall report waste diverted from disposal.",
+                    "rrf_score": 0.72,
+                    "page_number": 17,
+                },
+            ],
+        }
+    )
 
     # Mock metadata layers
     store.metadata_layer1 = [
@@ -137,15 +139,17 @@ def mock_vector_store():
 
     # Mock BM25 store
     bm25_store = Mock()
-    bm25_store.search_layer3 = Mock(return_value=[
-        {
-            "chunk_id": "chunk_001",
-            "document_id": "GRI_306",
-            "section_title": "Disclosure 306-3",
-            "content": "Organizations shall report total weight of hazardous waste.",
-            "bm25_score": 12.5,
-        },
-    ])
+    bm25_store.search_layer3 = Mock(
+        return_value=[
+            {
+                "chunk_id": "chunk_001",
+                "document_id": "GRI_306",
+                "section_title": "Disclosure 306-3",
+                "content": "Organizations shall report total weight of hazardous waste.",
+                "bm25_score": 12.5,
+            },
+        ]
+    )
     store.bm25_store = bm25_store
 
     return store
@@ -218,9 +222,9 @@ class TestSimpleSearchTool:
     def test_simple_search_empty_results(self, mock_embedder):
         """Test simple search with no results."""
         empty_store = Mock()
-        empty_store.hierarchical_search = Mock(return_value={
-            "layer1": [], "layer2": [], "layer3": []
-        })
+        empty_store.hierarchical_search = Mock(
+            return_value={"layer1": [], "layer2": [], "layer3": []}
+        )
 
         tool = SimpleSearchTool(
             vector_store=empty_store,
@@ -262,16 +266,18 @@ class TestEntitySearchTool:
     def test_entity_search_not_found(self, mock_embedder):
         """Test entity search with no matching results."""
         empty_store = Mock()
-        empty_store.hierarchical_search = Mock(return_value={
-            "layer3": [
-                {
-                    "chunk_id": "chunk_999",
-                    "content": "This chunk does not contain the entity.",
-                    "document_id": "TEST",
-                    "section_title": "Test Section",
-                }
-            ]
-        })
+        empty_store.hierarchical_search = Mock(
+            return_value={
+                "layer3": [
+                    {
+                        "chunk_id": "chunk_999",
+                        "content": "This chunk does not contain the entity.",
+                        "document_id": "TEST",
+                        "section_title": "Test Section",
+                    }
+                ]
+            }
+        )
 
         tool = EntitySearchTool(
             vector_store=empty_store,
@@ -338,9 +344,7 @@ class TestDocumentSearchTool:
     def test_document_search_empty_results(self, mock_embedder):
         """Test document search with no results."""
         empty_store = Mock()
-        empty_store.hierarchical_search = Mock(return_value={
-            "layer3": []
-        })
+        empty_store.hierarchical_search = Mock(return_value={"layer3": []})
 
         tool = DocumentSearchTool(
             vector_store=empty_store,
@@ -390,16 +394,18 @@ class TestSectionSearchTool:
     def test_section_search_not_found(self, mock_embedder):
         """Test section search with no matching sections."""
         store = Mock()
-        store.hierarchical_search = Mock(return_value={
-            "layer3": [
-                {
-                    "chunk_id": "chunk_001",
-                    "section_title": "Different Section",
-                    "content": "Content",
-                    "document_id": "TEST",
-                }
-            ]
-        })
+        store.hierarchical_search = Mock(
+            return_value={
+                "layer3": [
+                    {
+                        "chunk_id": "chunk_001",
+                        "section_title": "Different Section",
+                        "content": "Content",
+                        "document_id": "TEST",
+                    }
+                ]
+            }
+        )
 
         tool = SectionSearchTool(
             vector_store=store,
@@ -439,16 +445,18 @@ class TestKeywordSearchTool:
         # No bm25_store attribute - should use fallback
         # Need spec to make hasattr() return False
         del store.bm25_store
-        store.hierarchical_search = Mock(return_value={
-            "layer3": [
-                {
-                    "chunk_id": "chunk_001",
-                    "content": "Test content with keywords.",
-                    "document_id": "TEST",
-                    "section_title": "Section",
-                }
-            ]
-        })
+        store.hierarchical_search = Mock(
+            return_value={
+                "layer3": [
+                    {
+                        "chunk_id": "chunk_001",
+                        "content": "Test content with keywords.",
+                        "document_id": "TEST",
+                        "section_title": "Section",
+                    }
+                ]
+            }
+        )
 
         tool = KeywordSearchTool(
             vector_store=store,
@@ -777,12 +785,8 @@ class TestGetDocumentMetadataTool:
     def test_get_document_metadata_estimates(self, mock_embedder):
         """Test character and word count estimates."""
         store = Mock()
-        store.metadata_layer1 = [
-            {"document_id": "TEST", "content": "Summary"}
-        ]
-        store.metadata_layer2 = [
-            {"document_id": "TEST", "section_title": "Section 1"}
-        ]
+        store.metadata_layer1 = [{"document_id": "TEST", "content": "Summary"}]
+        store.metadata_layer2 = [{"document_id": "TEST", "section_title": "Section 1"}]
         store.metadata_layer3 = [
             {"document_id": "TEST", "content": "A" * 100},  # 100 chars
             {"document_id": "TEST", "content": "B" * 200},  # 200 chars
@@ -844,11 +848,36 @@ class TestGetChunkContextTool:
         """Test context window behavior."""
         store = Mock()
         store.metadata_layer3 = [
-            {"chunk_id": "chunk_1", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 1"},
-            {"chunk_id": "chunk_2", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 2"},
-            {"chunk_id": "chunk_3", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 3"},
-            {"chunk_id": "chunk_4", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 4"},
-            {"chunk_id": "chunk_5", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 5"},
+            {
+                "chunk_id": "chunk_1",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 1",
+            },
+            {
+                "chunk_id": "chunk_2",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 2",
+            },
+            {
+                "chunk_id": "chunk_3",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 3",
+            },
+            {
+                "chunk_id": "chunk_4",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 4",
+            },
+            {
+                "chunk_id": "chunk_5",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 5",
+            },
         ]
 
         config = Mock()
@@ -864,7 +893,7 @@ class TestGetChunkContextTool:
 
         assert result.success is True
         assert len(result.data["context_before"]) == 1  # chunk_2
-        assert len(result.data["context_after"]) == 1   # chunk_4
+        assert len(result.data["context_after"]) == 1  # chunk_4
         assert result.data["context_before"][0]["chunk_id"] == "chunk_2"
         assert result.data["context_after"][0]["chunk_id"] == "chunk_4"
 
@@ -872,8 +901,18 @@ class TestGetChunkContextTool:
         """Test context at document boundaries (first/last chunk)."""
         store = Mock()
         store.metadata_layer3 = [
-            {"chunk_id": "chunk_1", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 1"},
-            {"chunk_id": "chunk_2", "document_id": "TEST", "section_id": "sec_1", "content": "Chunk 2"},
+            {
+                "chunk_id": "chunk_1",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 1",
+            },
+            {
+                "chunk_id": "chunk_2",
+                "document_id": "TEST",
+                "section_id": "sec_1",
+                "content": "Chunk 2",
+            },
         ]
 
         config = Mock()
@@ -1002,10 +1041,7 @@ class TestInputValidation:
         )
 
         result = tool.execute(
-            query="test",
-            document_id="TEST",
-            k=6,
-            extra_param="should_fail"  # Extra parameter
+            query="test", document_id="TEST", k=6, extra_param="should_fail"  # Extra parameter
         )
 
         assert result.success is False

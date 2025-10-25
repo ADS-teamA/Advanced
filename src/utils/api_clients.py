@@ -48,10 +48,7 @@ class APIClientFactory:
     """
 
     @staticmethod
-    def create_anthropic(
-        api_key: Optional[str] = None,
-        validate_connection: bool = False
-    ):
+    def create_anthropic(api_key: Optional[str] = None, validate_connection: bool = False):
         """
         Create Anthropic (Claude) API client.
 
@@ -119,10 +116,7 @@ class APIClientFactory:
             raise RuntimeError(f"Failed to create Anthropic client: {safe_error}")
 
     @staticmethod
-    def create_openai(
-        api_key: Optional[str] = None,
-        validate_connection: bool = False
-    ):
+    def create_openai(api_key: Optional[str] = None, validate_connection: bool = False):
         """
         Create OpenAI API client.
 
@@ -148,8 +142,7 @@ class APIClientFactory:
             import openai
         except ImportError:
             raise ImportError(
-                "openai package required for OpenAI models. "
-                "Install with: uv pip install openai"
+                "openai package required for OpenAI models. " "Install with: uv pip install openai"
             )
 
         # Load API key
@@ -188,10 +181,7 @@ class APIClientFactory:
             raise RuntimeError(f"Failed to create OpenAI client: {safe_error}")
 
     @staticmethod
-    def create_voyage(
-        api_key: Optional[str] = None,
-        validate_connection: bool = False
-    ):
+    def create_voyage(api_key: Optional[str] = None, validate_connection: bool = False):
         """
         Create Voyage AI client.
 
@@ -253,10 +243,7 @@ class APIClientFactory:
             raise RuntimeError(f"Failed to create Voyage AI client: {safe_error}")
 
     @staticmethod
-    def create_huggingface_model(
-        model_name: str,
-        device: Optional[str] = None
-    ):
+    def create_huggingface_model(model_name: str, device: Optional[str] = None):
         """
         Create HuggingFace SentenceTransformer model (for local embeddings).
 

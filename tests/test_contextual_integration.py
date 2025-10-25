@@ -25,6 +25,7 @@ from config import ChunkingConfig, ContextGenerationConfig
 @dataclass
 class MockSection:
     """Mock section for testing."""
+
     section_id: str
     title: str
     path: str
@@ -40,6 +41,7 @@ class MockSection:
 @dataclass
 class MockExtractedDocument:
     """Mock extracted document for testing."""
+
     document_id: str
     document_summary: str
     full_text: str
@@ -63,7 +65,7 @@ class TestMultiLayerChunkerIntegration:
                 depth=1,
                 page_number=1,
                 char_start=0,
-                char_end=250
+                char_end=250,
             ),
             MockSection(
                 section_id="sec2",
@@ -75,15 +77,15 @@ class TestMultiLayerChunkerIntegration:
                 depth=1,
                 page_number=2,
                 char_start=250,
-                char_end=1250
-            )
+                char_end=1250,
+            ),
         ]
 
         return MockExtractedDocument(
             document_id="test_doc_001",
             document_summary="Test nuclear reactor safety document",
             full_text="Full document text here",
-            sections=sections
+            sections=sections,
         )
 
     def test_chunker_with_contextual_retrieval_enabled(self, sample_document):
@@ -92,10 +94,7 @@ class TestMultiLayerChunkerIntegration:
             chunk_size=500,
             chunk_overlap=0,
             enable_contextual=True,
-            context_config=ContextGenerationConfig(
-                provider="anthropic",
-                model="haiku"
-            )
+            context_config=ContextGenerationConfig(provider="anthropic", model="haiku"),
         )
 
         # Mock the contextual retrieval
@@ -106,11 +105,12 @@ class TestMultiLayerChunkerIntegration:
             # Mock successful context generation
             def mock_batch_generate(chunks):
                 from contextual_retrieval import ChunkContext
+
                 return [
                     ChunkContext(
                         chunk_text=chunk_text,
                         context=f"Context for: {chunk_text[:30]}...",
-                        success=True
+                        success=True,
                     )
                     for chunk_text, _ in chunks
                 ]
@@ -156,10 +156,8 @@ class TestMultiLayerChunkerIntegration:
             chunk_overlap=0,
             enable_contextual=True,
             context_config=ContextGenerationConfig(
-                provider="anthropic",
-                model="haiku",
-                fallback_to_basic=True
-            )
+                provider="anthropic", model="haiku", fallback_to_basic=True
+            ),
         )
 
         # Mock contextual retrieval to raise exception
@@ -185,11 +183,7 @@ class TestMultiLayerChunkerIntegration:
 
     def test_chunker_basic_mode_disabled_contextual(self, sample_document):
         """Test chunker with contextual retrieval disabled (basic mode)."""
-        config = ChunkingConfig(
-            chunk_size=500,
-            chunk_overlap=0,
-            enable_contextual=False
-        )
+        config = ChunkingConfig(chunk_size=500, chunk_overlap=0, enable_contextual=False)
 
         # Create chunker
         chunker = MultiLayerChunker(config=config)
@@ -207,11 +201,7 @@ class TestMultiLayerChunkerIntegration:
 
     def test_chunking_stats(self, sample_document):
         """Test that chunking stats are correctly calculated."""
-        config = ChunkingConfig(
-            chunk_size=500,
-            chunk_overlap=0,
-            enable_contextual=False
-        )
+        config = ChunkingConfig(chunk_size=500, chunk_overlap=0, enable_contextual=False)
 
         chunker = MultiLayerChunker(config=config)
         result = chunker.chunk_document(sample_document)
@@ -228,7 +218,10 @@ class TestMultiLayerChunkerIntegration:
         assert stats["layer1_count"] == 1
         assert stats["layer2_count"] == 2
         assert stats["layer3_count"] > 0
-        assert stats["total_chunks"] == stats["layer1_count"] + stats["layer2_count"] + stats["layer3_count"]
+        assert (
+            stats["total_chunks"]
+            == stats["layer1_count"] + stats["layer2_count"] + stats["layer3_count"]
+        )
 
         # Verify Layer 3 stats
         assert "layer3_avg_size" in stats
@@ -253,9 +246,9 @@ class TestMultiLayerChunkerIntegration:
                     depth=1,
                     page_number=1,
                     char_start=0,
-                    char_end=0
+                    char_end=0,
                 )
-            ]
+            ],
         )
 
         config = ChunkingConfig(enable_contextual=False)
@@ -292,9 +285,9 @@ class TestContextualRetrievalErrorScenarios:
                     depth=1,
                     page_number=1,
                     char_start=0,
-                    char_end=600
+                    char_end=600,
                 )
-            ]
+            ],
         )
 
     def test_partial_context_generation_failures(self, sample_document):
@@ -305,8 +298,8 @@ class TestContextualRetrievalErrorScenarios:
             context_config=ContextGenerationConfig(
                 provider="anthropic",
                 model="haiku",
-                fallback_to_basic=False  # Don't fallback completely
-            )
+                fallback_to_basic=False,  # Don't fallback completely
+            ),
         )
 
         with patch("multi_layer_chunker.ContextualRetrieval") as MockContextRetrieval:
@@ -315,21 +308,23 @@ class TestContextualRetrievalErrorScenarios:
             # Mock partial failures
             def mock_batch_generate(chunks):
                 from contextual_retrieval import ChunkContext
+
                 results = []
                 for i, (chunk_text, _) in enumerate(chunks):
                     if i % 2 == 0:  # Every other chunk fails
-                        results.append(ChunkContext(
-                            chunk_text=chunk_text,
-                            context="",
-                            success=False,
-                            error="API error"
-                        ))
+                        results.append(
+                            ChunkContext(
+                                chunk_text=chunk_text, context="", success=False, error="API error"
+                            )
+                        )
                     else:
-                        results.append(ChunkContext(
-                            chunk_text=chunk_text,
-                            context=f"Context for chunk {i}",
-                            success=True
-                        ))
+                        results.append(
+                            ChunkContext(
+                                chunk_text=chunk_text,
+                                context=f"Context for chunk {i}",
+                                success=True,
+                            )
+                        )
                 return results
 
             mock_generator.generate_contexts_batch = Mock(side_effect=mock_batch_generate)
@@ -358,8 +353,8 @@ class TestContextualRetrievalErrorScenarios:
                 provider="anthropic",
                 model="haiku",
                 batch_size=2,  # Small batches
-                max_workers=1  # Sequential to test rate limiting
-            )
+                max_workers=1,  # Sequential to test rate limiting
+            ),
         )
 
         with patch("multi_layer_chunker.ContextualRetrieval") as MockContextRetrieval:
@@ -370,6 +365,7 @@ class TestContextualRetrievalErrorScenarios:
 
             def mock_batch_generate(chunks):
                 from contextual_retrieval import ChunkContext
+
                 nonlocal call_count
                 call_count += 1
 
@@ -378,11 +374,7 @@ class TestContextualRetrievalErrorScenarios:
                     raise Exception("Rate limit exceeded (429)")
 
                 return [
-                    ChunkContext(
-                        chunk_text=chunk_text,
-                        context=f"Context {i}",
-                        success=True
-                    )
+                    ChunkContext(chunk_text=chunk_text, context=f"Context {i}", success=True)
                     for i, (chunk_text, _) in enumerate(chunks)
                 ]
 
@@ -419,9 +411,9 @@ class TestChunkMetadataIntegrity:
                     depth=3,
                     page_number=5,
                     char_start=1000,
-                    char_end=2400
+                    char_end=2400,
                 )
-            ]
+            ],
         )
 
         config = ChunkingConfig(enable_contextual=False)

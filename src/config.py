@@ -65,12 +65,12 @@ def load_env():
             else:
                 logger.info(f"Loading configuration from {path}")
 
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 for line_num, line in enumerate(f, 1):
                     line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
+                    if line and not line.startswith("#") and "=" in line:
                         try:
-                            key, value = line.split('=', 1)
+                            key, value = line.split("=", 1)
                             os.environ[key.strip()] = value.strip()
                         except ValueError as e:
                             logger.warning(f"Skipping malformed line {line_num} in {path}: {line}")
@@ -93,8 +93,7 @@ def load_env():
         except Exception as e:
             logger.error(f"Failed to load .env file: {e}")
             raise RuntimeError(
-                f"Failed to load configuration from .env file: {e}\n"
-                f"Path: {path}"
+                f"Failed to load configuration from .env file: {e}\n" f"Path: {path}"
             )
 
     # Try primary path first
@@ -124,11 +123,11 @@ class ModelConfig:
 
     # LLM Configuration
     llm_provider: str  # "claude" or "openai"
-    llm_model: str     # e.g., "claude-sonnet-4.5", "gpt-4o-mini"
+    llm_model: str  # e.g., "claude-sonnet-4.5", "gpt-4o-mini"
 
     # Embedding Configuration
     embedding_provider: str  # "voyage", "openai", "huggingface"
-    embedding_model: str     # e.g., "kanon-2", "text-embedding-3-large", "bge-m3"
+    embedding_model: str  # e.g., "kanon-2", "text-embedding-3-large", "bge-m3"
 
     # API Keys
     anthropic_api_key: Optional[str] = None
@@ -155,15 +154,13 @@ class ModelConfig:
             # LLM Configuration
             llm_provider=os.getenv("LLM_PROVIDER", "claude"),
             llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-5-20250929"),
-
             # Embedding Configuration
             embedding_provider=os.getenv("EMBEDDING_PROVIDER", "huggingface"),
             embedding_model=os.getenv("EMBEDDING_MODEL", "bge-m3"),
-
             # API Keys
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
-            voyage_api_key=os.getenv("VOYAGE_API_KEY")
+            voyage_api_key=os.getenv("VOYAGE_API_KEY"),
         )
 
     def get_llm_config(self) -> dict:
@@ -172,14 +169,10 @@ class ModelConfig:
             return {
                 "provider": "claude",
                 "model": self.llm_model,
-                "api_key": self.anthropic_api_key
+                "api_key": self.anthropic_api_key,
             }
         elif self.llm_provider == "openai":
-            return {
-                "provider": "openai",
-                "model": self.llm_model,
-                "api_key": self.openai_api_key
-            }
+            return {"provider": "openai", "model": self.llm_model, "api_key": self.openai_api_key}
         else:
             raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
 
@@ -189,19 +182,19 @@ class ModelConfig:
             return {
                 "provider": "voyage",
                 "model": self.embedding_model,
-                "api_key": self.voyage_api_key
+                "api_key": self.voyage_api_key,
             }
         elif self.embedding_provider == "openai":
             return {
                 "provider": "openai",
                 "model": self.embedding_model,
-                "api_key": self.openai_api_key
+                "api_key": self.openai_api_key,
             }
         elif self.embedding_provider == "huggingface":
             return {
                 "provider": "huggingface",
                 "model": self.embedding_model,
-                "api_key": None  # Local models
+                "api_key": None,  # Local models
             }
         else:
             raise ValueError(f"Unsupported embedding provider: {self.embedding_provider}")
@@ -301,25 +294,25 @@ class SummarizationConfig:
     """
 
     # Research-backed parameters (from LegalBench-RAG)
-    max_chars: int = 150          # Summary length (research optimal)
-    tolerance: int = 20           # Length tolerance
-    style: str = "generic"        # Generic > Expert summaries
-    temperature: float = 0.3      # Low temperature for consistency
-    max_tokens: int = 100         # Max LLM output tokens (optimized: 150 chars ≈ 40-60 tokens)
+    max_chars: int = 150  # Summary length (research optimal)
+    tolerance: int = 20  # Length tolerance
+    style: str = "generic"  # Generic > Expert summaries
+    temperature: float = 0.3  # Low temperature for consistency
+    max_tokens: int = 100  # Max LLM output tokens (optimized: 150 chars ≈ 40-60 tokens)
     retry_on_exceed: bool = True  # Retry if exceeds max_chars
-    max_retries: int = 3          # Max retry attempts
+    max_retries: int = 3  # Max retry attempts
     # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
-    max_workers: int = 20         # Parallel summary generation
-    min_text_length: int = 50     # Min text length for summarization
+    max_workers: int = 20  # Parallel summary generation
+    min_text_length: int = 50  # Min text length for summarization
 
     # Prompt batching optimization (DISABLED - JSON overhead makes it slower)
     # For most LLMs, parallel mode with smaller max_tokens is faster than batching
     enable_prompt_batching: bool = False  # Batch multiple sections in one API call
-    batch_size: int = 8           # Number of sections per API call (if enabled)
+    batch_size: int = 8  # Number of sections per API call (if enabled)
 
     # OpenAI Batch API optimization (NEW - 50% cost savings, async processing)
-    use_batch_api: bool = True    # Use OpenAI Batch API for summaries (50% cheaper)
-    batch_api_poll_interval: int = 5   # Seconds between status checks (faster response)
+    use_batch_api: bool = True  # Use OpenAI Batch API for summaries (50% cheaper)
+    batch_api_poll_interval: int = 5  # Seconds between status checks (faster response)
     batch_api_timeout: int = 43200  # Max wait time in seconds (12 hours default)
 
     # Model config loaded from .env (don't set here)
@@ -350,10 +343,7 @@ class SummarizationConfig:
             SummarizationConfig instance loaded from environment
         """
         speed_mode = os.getenv("SPEED_MODE", "fast")
-        config = cls(
-            use_batch_api=(speed_mode == "eco"),
-            **overrides
-        )
+        config = cls(use_batch_api=(speed_mode == "eco"), **overrides)
         return config
 
 
@@ -372,24 +362,24 @@ class ContextGenerationConfig:
     enable_contextual: bool = True
 
     # Research-backed parameters
-    temperature: float = 0.3      # Low temperature for consistency
-    max_tokens: int = 150         # Context should be 50-100 words
+    temperature: float = 0.3  # Low temperature for consistency
+    max_tokens: int = 150  # Context should be 50-100 words
 
     # Context window params
     include_surrounding_chunks: bool = True  # Include chunks above/below for better context
-    num_surrounding_chunks: int = 1          # Number of chunks to include on each side
+    num_surrounding_chunks: int = 1  # Number of chunks to include on each side
 
     # Fallback behavior
     fallback_to_basic: bool = True  # Use basic chunking if context generation fails
 
     # Batch processing (for performance)
     # OPTIMIZED: Zvýšeno pro rychlejší zpracování (2× rychlejší)
-    batch_size: int = 20   # Generate contexts in batches
-    max_workers: int = 10   # Parallel context generation
+    batch_size: int = 20  # Generate contexts in batches
+    max_workers: int = 10  # Parallel context generation
 
     # OpenAI Batch API optimization (NEW - 50% cost savings, async processing)
-    use_batch_api: bool = True    # Use OpenAI Batch API for contexts (50% cheaper)
-    batch_api_poll_interval: int = 5   # Seconds between status checks
+    use_batch_api: bool = True  # Use OpenAI Batch API for contexts (50% cheaper)
+    batch_api_poll_interval: int = 5  # Seconds between status checks
     batch_api_timeout: int = 43200  # Max wait time in seconds (12 hours default)
 
     # Model config loaded from .env (don't set here)
@@ -400,6 +390,7 @@ class ContextGenerationConfig:
     def __post_init__(self):
         """Load model config and API key from environment if not provided."""
         import logging
+
         logger = logging.getLogger(__name__)
 
         # Load model config from .env
@@ -485,11 +476,11 @@ class EmbeddingConfig:
 
     # Model selection (loaded from .env)
     provider: Optional[str] = None  # "voyage", "openai", "huggingface"
-    model: Optional[str] = None     # Model name
+    model: Optional[str] = None  # Model name
 
     # Research-backed parameters
-    batch_size: int = 64            # Batch size for embedding generation (optimized)
-    normalize: bool = True          # Normalize for cosine similarity (FAISS IndexFlatIP)
+    batch_size: int = 64  # Batch size for embedding generation (optimized)
+    normalize: bool = True  # Normalize for cosine similarity (FAISS IndexFlatIP)
 
     # Multi-layer indexing
     enable_multi_layer: bool = True  # Enable multi-layer indexing (document, section, chunk)
@@ -498,8 +489,8 @@ class EmbeddingConfig:
     dimensions: Optional[int] = None  # Auto-detected from model
 
     # Performance optimization
-    cache_enabled: bool = True       # Enable embedding cache (40-80% hit rate)
-    cache_max_size: int = 1000       # Max cache entries
+    cache_enabled: bool = True  # Enable embedding cache (40-80% hit rate)
+    cache_max_size: int = 1000  # Max cache entries
 
     def __post_init__(self):
         """Load model config from environment if not provided and validate."""
@@ -518,7 +509,9 @@ class EmbeddingConfig:
             raise ValueError(f"cache_max_size must be positive, got {self.cache_max_size}")
         # Provider can be None (will be loaded from env in __post_init__) or one of the valid values
         if self.provider is not None and self.provider not in ["voyage", "openai", "huggingface"]:
-            raise ValueError(f"provider must be 'voyage', 'openai', or 'huggingface', got {self.provider}")
+            raise ValueError(
+                f"provider must be 'voyage', 'openai', or 'huggingface', got {self.provider}"
+            )
 
     @classmethod
     def from_env(cls) -> "EmbeddingConfig":
@@ -593,19 +586,19 @@ class RAGConfig:
             return {
                 "provider": "voyage",
                 "model": self.models.embedding_model,
-                "api_key": self.models.voyage_api_key
+                "api_key": self.models.voyage_api_key,
             }
         elif self.models.embedding_provider == "openai":
             return {
                 "provider": "openai",
                 "model": self.models.embedding_model,
-                "api_key": self.models.openai_api_key
+                "api_key": self.models.openai_api_key,
             }
         elif self.models.embedding_provider == "huggingface":
             return {
                 "provider": "huggingface",
                 "model": self.models.embedding_model,
-                "api_key": None  # Local models
+                "api_key": None,  # Local models
             }
         else:
             raise ValueError(f"Unknown embedding provider: {self.models.embedding_provider}")

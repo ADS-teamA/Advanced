@@ -37,7 +37,7 @@ def retry_with_exponential_backoff(
     backoff_factor: float = 2.0,
     exceptions: Tuple[Type[Exception], ...] = (Exception,),
     on_retry: Optional[Callable[[Exception, int, float], None]] = None,
-    retry_condition: Optional[Callable[[Exception], bool]] = None
+    retry_condition: Optional[Callable[[Exception], bool]] = None,
 ):
     """
     Decorator for exponential backoff retry logic.
@@ -92,6 +92,7 @@ def retry_with_exponential_backoff(
         >>> def logged_call():
         >>>     return client.create(...)
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -121,7 +122,7 @@ def retry_with_exponential_backoff(
                         raise
 
                     # Calculate delay with exponential backoff
-                    delay = min(base_delay * (backoff_factor ** attempt), max_delay)
+                    delay = min(base_delay * (backoff_factor**attempt), max_delay)
 
                     # Log retry
                     logger.warning(
@@ -136,7 +137,7 @@ def retry_with_exponential_backoff(
                         except Exception as callback_error:
                             logger.error(
                                 f"Retry callback failed: {sanitize_error(callback_error)}",
-                                exc_info=True
+                                exc_info=True,
                             )
 
                     # Sleep before retry
@@ -147,6 +148,7 @@ def retry_with_exponential_backoff(
                 raise last_exception
 
         return wrapper
+
     return decorator
 
 
@@ -268,9 +270,7 @@ if __name__ == "__main__":
     print("\n2. Testing rate limit retry...")
 
     @retry_with_exponential_backoff(
-        max_retries=2,
-        base_delay=0.5,
-        retry_condition=is_rate_limit_error
+        max_retries=2, base_delay=0.5, retry_condition=is_rate_limit_error
     )
     def rate_limited_function():
         if random.random() < 0.7:
@@ -286,10 +286,7 @@ if __name__ == "__main__":
     # Example 3: Non-retryable error (should fail immediately)
     print("\n3. Testing non-retryable error...")
 
-    @retry_with_exponential_backoff(
-        max_retries=3,
-        retry_condition=is_retryable_error
-    )
+    @retry_with_exponential_backoff(max_retries=3, retry_condition=is_retryable_error)
     def non_retryable_function():
         raise Exception("Invalid API key")  # Not retryable
 
@@ -308,10 +305,7 @@ if __name__ == "__main__":
         delays.append(delay)
 
     @retry_with_exponential_backoff(
-        max_retries=4,
-        base_delay=1.0,
-        backoff_factor=2.0,
-        on_retry=track_delay
+        max_retries=4, base_delay=1.0, backoff_factor=2.0, on_retry=track_delay
     )
     def always_fails():
         raise Exception("Always fails")

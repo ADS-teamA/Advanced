@@ -235,9 +235,7 @@ class TestExplainEntityTool:
         kg.entities.items = Mock(return_value=list(entities_dict.items()))
 
         # Mock vector store to return chunks
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer3": []
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer3": []}
 
         # Keep the same relationship mocks
         kg.get_outgoing_relationships.return_value = []
@@ -331,9 +329,7 @@ class TestGetEntityRelationshipsTool:
 
         # Execute
         result = tool.execute(
-            entity_id="entity_1",
-            relationship_type="REFERENCES",
-            direction="outgoing"
+            entity_id="entity_1", relationship_type="REFERENCES", direction="outgoing"
         )
 
         # Assert
@@ -618,9 +614,7 @@ class TestGetStatisticsTool:
         kg.relationships = {"r1": rel1}
 
         # Mock layer1 search
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"doc_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"doc_id": "doc1"}]}
 
         # Execute
         result = tool.execute(stat_type="entity")
@@ -638,9 +632,7 @@ class TestGetStatisticsTool:
         tool = GetStatisticsTool(**base_tool_kwargs)
 
         # Mock layer1 search
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"doc_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"doc_id": "doc1"}]}
 
         # Execute
         result = tool.execute(stat_type="corpus")
@@ -689,9 +681,7 @@ class TestGetIndexStatisticsTool:
         tool = GetIndexStatisticsTool(**base_tool_kwargs)
 
         # Mock document list
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"document_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"document_id": "doc1"}]}
 
         # Execute
         result = tool.execute(include_cache_stats=True)
@@ -729,9 +719,7 @@ class TestGetIndexStatisticsTool:
         kg.relationships = {"r1": rel1, "r2": rel2}
 
         # Mock document list
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"document_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"document_id": "doc1"}]}
 
         # Execute
         result = tool.execute()
@@ -750,9 +738,7 @@ class TestGetIndexStatisticsTool:
         tool = GetIndexStatisticsTool(**base_tool_kwargs)
 
         # Mock document list
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"document_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"document_id": "doc1"}]}
 
         # Execute
         result = tool.execute()
@@ -770,9 +756,7 @@ class TestGetIndexStatisticsTool:
         tool.reranker = Mock()  # Reranker available
 
         # Mock document list
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"document_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"document_id": "doc1"}]}
 
         # Execute
         result = tool.execute()
@@ -790,9 +774,7 @@ class TestGetIndexStatisticsTool:
         tool = GetIndexStatisticsTool(**base_tool_kwargs)
 
         # Mock document list
-        mock_vector_store.hierarchical_search.return_value = {
-            "layer1": [{"document_id": "doc1"}]
-        }
+        mock_vector_store.hierarchical_search.return_value = {"layer1": [{"document_id": "doc1"}]}
 
         # Execute
         result = tool.execute()

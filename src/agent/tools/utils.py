@@ -33,6 +33,7 @@ def _ensure_token_manager_imported():
                 get_token_counter,
                 SmartTruncator,
             )
+
             _DetailLevel = DetailLevel
             _get_adaptive_formatter = get_adaptive_formatter
             _get_token_counter = get_token_counter
@@ -88,8 +89,8 @@ def format_chunk_result(
             # Map detail_level string to enum
             detail_map = {
                 "summary": _DetailLevel.SUMMARY,  # ~100 tokens
-                "medium": _DetailLevel.MEDIUM,     # ~300 tokens
-                "full": _DetailLevel.FULL,         # ~600 tokens
+                "medium": _DetailLevel.MEDIUM,  # ~300 tokens
+                "full": _DetailLevel.FULL,  # ~600 tokens
             }
             level = detail_map.get(detail_level.lower(), _DetailLevel.MEDIUM)
 
@@ -197,10 +198,7 @@ def create_error_result(error_message: str, tool_name: str = None) -> Dict[str, 
 
 
 def validate_k_parameter(
-    k: int,
-    max_k: int = None,
-    adaptive: bool = True,
-    detail_level: str = "medium"
+    k: int, max_k: int = None, adaptive: bool = True, detail_level: str = "medium"
 ) -> Tuple[int, Optional[str]]:
     """
     Validate and adaptively adjust k parameter based on token budget.
@@ -238,10 +236,7 @@ def validate_k_parameter(
             tokens_per_item = formatter.budget.tokens_per_item(level)
 
             calculated_k, reason = formatter.adaptive_k(
-                requested_k=k,
-                tokens_per_item=tokens_per_item,
-                min_k=3,
-                max_k=50  # Safety limit
+                requested_k=k, tokens_per_item=tokens_per_item, min_k=3, max_k=50  # Safety limit
             )
 
             if calculated_k != k:

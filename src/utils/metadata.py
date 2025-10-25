@@ -128,12 +128,24 @@ class ChunkMetadata:
         # Extract custom metadata
         # Exclude standard fields to avoid duplication
         standard_fields = {
-            "chunk_id", "id", "document_id", "doc_id",
-            "section_id", "section_title", "section_name",
-            "section_path", "section_number",
-            "page_number", "page", "layer",
-            "content", "raw_content", "context",  # Content fields
-            "embedding", "score", "distance"  # Vector store fields
+            "chunk_id",
+            "id",
+            "document_id",
+            "doc_id",
+            "section_id",
+            "section_title",
+            "section_name",
+            "section_path",
+            "section_number",
+            "page_number",
+            "page",
+            "layer",
+            "content",
+            "raw_content",
+            "context",  # Content fields
+            "embedding",
+            "score",
+            "distance",  # Vector store fields
         }
         custom = {k: v for k, v in chunk.items() if k not in standard_fields}
 
@@ -145,7 +157,7 @@ class ChunkMetadata:
             section_path=section_path,
             page_number=page_number,
             layer=layer,
-            custom=custom
+            custom=custom,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -165,11 +177,7 @@ class ChunkMetadata:
                 "layer": 3
             }
         """
-        result = {
-            "chunk_id": self.chunk_id,
-            "document_id": self.document_id,
-            "layer": self.layer
-        }
+        result = {"chunk_id": self.chunk_id, "document_id": self.document_id, "layer": self.layer}
 
         # Add optional fields if present
         if self.section_id:
@@ -187,9 +195,7 @@ class ChunkMetadata:
         return result
 
     def format_provenance(
-        self,
-        format_style: str = "detailed",
-        include_chunk_id: bool = False
+        self, format_style: str = "detailed", include_chunk_id: bool = False
     ) -> str:
         """
         Format metadata as provenance string for citations.
@@ -281,7 +287,7 @@ class ChunkMetadata:
             section_path=other.section_path or self.section_path,
             page_number=other.page_number if other.page_number is not None else self.page_number,
             layer=other.layer,
-            custom={**self.custom, **other.custom}
+            custom={**self.custom, **other.custom},
         )
 
 
@@ -365,7 +371,7 @@ if __name__ == "__main__":
         "section_title": "Waste disposal requirements",
         "page_number": 15,
         "layer": 3,
-        "custom_field": "custom_value"
+        "custom_field": "custom_value",
     }
     metadata = ChunkMetadata.from_chunk(chunk)
     print(f"   Metadata: {metadata}")
@@ -389,18 +395,14 @@ if __name__ == "__main__":
         document_id="GRI_306",
         page_number=15,
         section_title="Waste disposal",
-        layer=3
+        layer=3,
     )
     merged = base.merge(extra)
     print(f"   Merged: {merged.format_provenance('detailed')}")
 
     # Example 5: Helper functions
     print("\n5. Helper functions...")
-    test_chunk = {
-        "doc_id": "GRI_305",
-        "section_name": "Emissions",
-        "page": "10"
-    }
+    test_chunk = {"doc_id": "GRI_305", "section_name": "Emissions", "page": "10"}
     print(f"   Document ID: {extract_document_id(test_chunk)}")
     print(f"   Section:     {extract_section_title(test_chunk)}")
     print(f"   Page:        {extract_page_number(test_chunk)}")

@@ -28,11 +28,7 @@ class TestRetryWithExponentialBackoff:
 
     def test_retry_on_failure(self):
         """Test function retries on failure."""
-        mock_fn = Mock(side_effect=[
-            Exception("Fail 1"),
-            Exception("Fail 2"),
-            "success"
-        ])
+        mock_fn = Mock(side_effect=[Exception("Fail 1"), Exception("Fail 2"), "success"])
 
         @retry_with_exponential_backoff(max_retries=3, base_delay=0.1)
         def test_function():
@@ -64,18 +60,12 @@ class TestRetryWithExponentialBackoff:
         def capture_delay(e, attempt, delay):
             delays.append(delay)
 
-        mock_fn = Mock(side_effect=[
-            Exception("Fail 1"),
-            Exception("Fail 2"),
-            Exception("Fail 3"),
-            "success"
-        ])
+        mock_fn = Mock(
+            side_effect=[Exception("Fail 1"), Exception("Fail 2"), Exception("Fail 3"), "success"]
+        )
 
         @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=1.0,
-            backoff_factor=2.0,
-            on_retry=capture_delay
+            max_retries=3, base_delay=1.0, backoff_factor=2.0, on_retry=capture_delay
         )
         def test_function():
             return mock_fn()
@@ -96,19 +86,16 @@ class TestRetryWithExponentialBackoff:
         def capture_delay(e, attempt, delay):
             delays.append(delay)
 
-        mock_fn = Mock(side_effect=[
-            Exception("Fail 1"),
-            Exception("Fail 2"),
-            Exception("Fail 3"),
-            "success"
-        ])
+        mock_fn = Mock(
+            side_effect=[Exception("Fail 1"), Exception("Fail 2"), Exception("Fail 3"), "success"]
+        )
 
         @retry_with_exponential_backoff(
             max_retries=3,
             base_delay=10.0,
             max_delay=15.0,
             backoff_factor=2.0,
-            on_retry=capture_delay
+            on_retry=capture_delay,
         )
         def test_function():
             return mock_fn()
@@ -124,16 +111,9 @@ class TestRetryWithExponentialBackoff:
 
     def test_specific_exception_types(self):
         """Test retry only on specific exception types."""
-        mock_fn = Mock(side_effect=[
-            ValueError("Retryable"),
-            "success"
-        ])
+        mock_fn = Mock(side_effect=[ValueError("Retryable"), "success"])
 
-        @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=0.1,
-            exceptions=(ValueError,)
-        )
+        @retry_with_exponential_backoff(max_retries=3, base_delay=0.1, exceptions=(ValueError,))
         def test_function():
             return mock_fn()
 
@@ -147,9 +127,7 @@ class TestRetryWithExponentialBackoff:
         mock_fn = Mock(side_effect=TypeError("Not retryable"))
 
         @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=0.1,
-            exceptions=(ValueError,)  # Only retry ValueError
+            max_retries=3, base_delay=0.1, exceptions=(ValueError,)  # Only retry ValueError
         )
         def test_function():
             return mock_fn()
@@ -162,20 +140,19 @@ class TestRetryWithExponentialBackoff:
 
     def test_retry_condition(self):
         """Test custom retry condition function."""
+
         def should_retry(e):
             # Only retry if error message contains "retry"
             return "retry" in str(e).lower()
 
-        mock_fn = Mock(side_effect=[
-            Exception("Please retry"),  # Will retry
-            Exception("Do not retry"),  # Will not retry
-        ])
-
-        @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=0.1,
-            retry_condition=should_retry
+        mock_fn = Mock(
+            side_effect=[
+                Exception("Please retry"),  # Will retry
+                Exception("Do not retry"),  # Will not retry
+            ]
         )
+
+        @retry_with_exponential_backoff(max_retries=3, base_delay=0.1, retry_condition=should_retry)
         def test_function():
             return mock_fn()
 
@@ -190,23 +167,11 @@ class TestRetryWithExponentialBackoff:
         retry_info = []
 
         def on_retry_callback(e, attempt, delay):
-            retry_info.append({
-                "error": str(e),
-                "attempt": attempt,
-                "delay": delay
-            })
+            retry_info.append({"error": str(e), "attempt": attempt, "delay": delay})
 
-        mock_fn = Mock(side_effect=[
-            Exception("Fail 1"),
-            Exception("Fail 2"),
-            "success"
-        ])
+        mock_fn = Mock(side_effect=[Exception("Fail 1"), Exception("Fail 2"), "success"])
 
-        @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=1.0,
-            on_retry=on_retry_callback
-        )
+        @retry_with_exponential_backoff(max_retries=3, base_delay=1.0, on_retry=on_retry_callback)
         def test_function():
             return mock_fn()
 
@@ -219,19 +184,13 @@ class TestRetryWithExponentialBackoff:
 
     def test_on_retry_callback_failure(self, caplog):
         """Test on_retry callback failure doesn't stop retries."""
+
         def failing_callback(e, attempt, delay):
             raise Exception("Callback failed")
 
-        mock_fn = Mock(side_effect=[
-            Exception("Fail 1"),
-            "success"
-        ])
+        mock_fn = Mock(side_effect=[Exception("Fail 1"), "success"])
 
-        @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=0.1,
-            on_retry=failing_callback
-        )
+        @retry_with_exponential_backoff(max_retries=3, base_delay=0.1, on_retry=failing_callback)
         def test_function():
             return mock_fn()
 
@@ -244,6 +203,7 @@ class TestRetryWithExponentialBackoff:
 
     def test_decorator_preserves_function_metadata(self):
         """Test decorator preserves function name and docstring."""
+
         @retry_with_exponential_backoff(max_retries=3)
         def my_function():
             """This is my function."""
@@ -256,15 +216,10 @@ class TestRetryWithExponentialBackoff:
         """Test that actual delays occur (integration test)."""
         start_time = time.time()
 
-        mock_fn = Mock(side_effect=[
-            Exception("Fail"),
-            "success"
-        ])
+        mock_fn = Mock(side_effect=[Exception("Fail"), "success"])
 
         @retry_with_exponential_backoff(
-            max_retries=2,
-            base_delay=0.5,  # 0.5 seconds
-            backoff_factor=2.0
+            max_retries=2, base_delay=0.5, backoff_factor=2.0  # 0.5 seconds
         )
         def test_function():
             return mock_fn()
@@ -280,10 +235,7 @@ class TestRetryWithExponentialBackoff:
 
     def test_api_key_sanitization_in_errors(self, caplog):
         """Test that API keys are sanitized in retry logs."""
-        mock_fn = Mock(side_effect=[
-            Exception("API error: sk-ant-secret123"),
-            "success"
-        ])
+        mock_fn = Mock(side_effect=[Exception("API error: sk-ant-secret123"), "success"])
 
         @retry_with_exponential_backoff(max_retries=2, base_delay=0.1)
         def test_function():
@@ -354,11 +306,7 @@ class TestRetryIntegration:
                 raise Exception("Rate limit exceeded (429)")
             return {"status": "success"}
 
-        @retry_with_exponential_backoff(
-            max_retries=3,
-            base_delay=0.1,
-            exceptions=(Exception,)
-        )
+        @retry_with_exponential_backoff(max_retries=3, base_delay=0.1, exceptions=(Exception,))
         def call_api():
             return api_call_with_rate_limit()
 

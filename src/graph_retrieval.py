@@ -109,11 +109,9 @@ class EntityAwareSearch:
                 # Simple confidence based on match length
                 confidence = len(entity_value_lower) / len(query_lower)
 
-                matched_entities.append({
-                    "entity": entity,
-                    "confidence": min(confidence, 1.0),
-                    "match_type": "exact"
-                })
+                matched_entities.append(
+                    {"entity": entity, "confidence": min(confidence, 1.0), "match_type": "exact"}
+                )
 
         logger.info(f"Extracted {len(matched_entities)} entities from query")
 
@@ -134,11 +132,7 @@ class EntityAwareSearch:
             return set(entity.source_chunk_ids)
         return set()
 
-    def get_related_entity_chunks(
-        self,
-        entity_id: str,
-        max_depth: int = 1
-    ) -> Set[str]:
+    def get_related_entity_chunks(self, entity_id: str, max_depth: int = 1) -> Set[str]:
         """
         Get chunks from related entities (1-hop or 2-hop).
 
@@ -220,10 +214,7 @@ class GraphBooster:
         return centrality
 
     def boost_by_entity_mentions(
-        self,
-        chunk_results: List[Dict],
-        query_entities: List[Dict],
-        boost_weight: float = 0.3
+        self, chunk_results: List[Dict], query_entities: List[Dict], boost_weight: float = 0.3
     ) -> List[Dict]:
         """
         Boost chunks that mention query entities.
@@ -259,7 +250,9 @@ class GraphBooster:
                 boost = boost_weight
                 chunk["graph_boost"] = boost
                 chunk["boosted_score"] = base_score + boost
-                logger.debug(f"Boosting chunk {chunk_id}: {base_score:.4f} → {chunk['boosted_score']:.4f}")
+                logger.debug(
+                    f"Boosting chunk {chunk_id}: {base_score:.4f} → {chunk['boosted_score']:.4f}"
+                )
             else:
                 chunk["graph_boost"] = 0.0
                 chunk["boosted_score"] = base_score
@@ -270,9 +263,7 @@ class GraphBooster:
         return chunk_results
 
     def boost_by_centrality(
-        self,
-        chunk_results: List[Dict],
-        boost_weight: float = 0.2
+        self, chunk_results: List[Dict], boost_weight: float = 0.2
     ) -> List[Dict]:
         """
         Boost chunks connected to high-centrality entities.
@@ -288,20 +279,14 @@ class GraphBooster:
             chunk_id = chunk.get("chunk_id")
 
             # Find entities mentioning this chunk
-            chunk_entities = [
-                e for e in self.kg.entities
-                if chunk_id in e.source_chunk_ids
-            ]
+            chunk_entities = [e for e in self.kg.entities if chunk_id in e.source_chunk_ids]
 
             if not chunk_entities:
                 chunk["centrality_boost"] = 0.0
                 continue
 
             # Get max centrality of entities in this chunk
-            max_centrality = max(
-                self.entity_centrality.get(e.id, 0.0)
-                for e in chunk_entities
-            )
+            max_centrality = max(self.entity_centrality.get(e.id, 0.0) for e in chunk_entities)
 
             # Apply boost
             centrality_boost = max_centrality * boost_weight
@@ -334,7 +319,7 @@ class GraphEnhancedRetriever:
         self,
         vector_store,  # HybridVectorStore or FAISSVectorStore
         knowledge_graph,  # KnowledgeGraph
-        config: Optional[GraphRetrievalConfig] = None
+        config: Optional[GraphRetrievalConfig] = None,
     ):
         """
         Initialize graph-enhanced retriever.
@@ -363,7 +348,7 @@ class GraphEnhancedRetriever:
         query: str,
         query_embedding: np.ndarray,
         k: int = 6,
-        enable_graph_boost: Optional[bool] = None
+        enable_graph_boost: Optional[bool] = None,
     ) -> Dict[str, List[Dict]]:
         """
         Search with graph enhancement.
@@ -377,7 +362,9 @@ class GraphEnhancedRetriever:
         Returns:
             Dict with keys 'layer1', 'layer2', 'layer3' containing enhanced results
         """
-        enable_boost = enable_graph_boost if enable_graph_boost is not None else self.config.enable_graph_boost
+        enable_boost = (
+            enable_graph_boost if enable_graph_boost is not None else self.config.enable_graph_boost
+        )
 
         logger.info(f"Graph-enhanced search: query='{query[:50]}...', k={k}, boost={enable_boost}")
 
@@ -386,9 +373,7 @@ class GraphEnhancedRetriever:
         k_candidates = k * 2  # Retrieve 2x more for graph filtering
 
         results = self.vector_store.hierarchical_search(
-            query_text=query,
-            query_embedding=query_embedding,
-            k_layer3=k_candidates
+            query_text=query, query_embedding=query_embedding, k_layer3=k_candidates
         )
 
         logger.info(f"Vector retrieval: {len(results['layer3'])} candidates")
@@ -411,13 +396,13 @@ class GraphEnhancedRetriever:
             results["layer3"] = self.graph_booster.boost_by_entity_mentions(
                 chunk_results=results["layer3"],
                 query_entities=query_entities,
-                boost_weight=self.config.graph_weight
+                boost_weight=self.config.graph_weight,
             )
 
             # Boost by centrality (optional)
             results["layer3"] = self.graph_booster.boost_by_centrality(
                 chunk_results=results["layer3"],
-                boost_weight=self.config.graph_weight * 0.5  # Half weight for centrality
+                boost_weight=self.config.graph_weight * 0.5,  # Half weight for centrality
             )
 
             logger.info(f"Graph boosting applied: {len(query_entities)} entities")
@@ -434,9 +419,7 @@ class GraphEnhancedRetriever:
         return results
 
     def _expand_multi_hop(
-        self,
-        results: Dict[str, List[Dict]],
-        query_entities: List[Dict]
+        self, results: Dict[str, List[Dict]], query_entities: List[Dict]
     ) -> Dict[str, List[Dict]]:
         """
         Expand results with multi-hop graph traversal.
@@ -460,8 +443,7 @@ class GraphEnhancedRetriever:
 
             # Get chunks from 1-hop and 2-hop neighbors
             neighbors = self.entity_search.get_related_entity_chunks(
-                entity_id,
-                max_depth=self.config.max_hop_depth
+                entity_id, max_depth=self.config.max_hop_depth
             )
 
             related_chunk_ids.update(neighbors)
@@ -483,8 +465,8 @@ class GraphEnhancedRetriever:
                 "graph_boost": self.config.enable_graph_boost,
                 "entity_extraction": self.config.enable_entity_extraction,
                 "multi_hop": self.config.enable_multi_hop,
-                "fusion_mode": self.config.fusion_mode
-            }
+                "fusion_mode": self.config.fusion_mode,
+            },
         }
 
 

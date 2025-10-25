@@ -119,10 +119,7 @@ class AgentValidator:
         if not self.config.embedding_model.startswith("bge-"):
             blocking_names.add("API Key: OPENAI")
 
-        blocking_failures = [
-            r for r in self.results
-            if not r.passed and r.name in blocking_names
-        ]
+        blocking_failures = [r for r in self.results if not r.passed and r.name in blocking_names]
 
         if blocking_failures:
             logger.error(f"❌ {len(blocking_failures)} blocking validation failures detected")
@@ -133,7 +130,9 @@ class AgentValidator:
         # Non-critical failures are warnings (agent can still start)
         warning_count = failed_count - len(critical_failures) - len(blocking_failures)
         if warning_count > 0:
-            logger.warning(f"⚠️  {warning_count} non-critical validation warnings (agent can still start)")
+            logger.warning(
+                f"⚠️  {warning_count} non-critical validation warnings (agent can still start)"
+            )
 
         logger.info("✅ Validation complete - agent ready to start")
         return True
@@ -561,7 +560,10 @@ class AgentValidator:
                         name="Tool Registry",
                         passed=False,
                         message=f"Expected at least {MINIMUM_TOOL_COUNT} tools, found {tool_count}",
-                        details={"registered_tools": tool_count, "minimum_expected": MINIMUM_TOOL_COUNT},
+                        details={
+                            "registered_tools": tool_count,
+                            "minimum_expected": MINIMUM_TOOL_COUNT,
+                        },
                     )
                 )
             else:

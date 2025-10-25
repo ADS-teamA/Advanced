@@ -20,13 +20,7 @@ Usage:
     graph = kg_pipeline.build_from_chunks(chunks)
 """
 
-from .models import (
-    Entity,
-    EntityType,
-    Relationship,
-    RelationshipType,
-    KnowledgeGraph
-)
+from .models import Entity, EntityType, Relationship, RelationshipType, KnowledgeGraph
 from .config import KnowledgeGraphConfig
 from .entity_extractor import EntityExtractor
 from .relationship_extractor import RelationshipExtractor
@@ -40,19 +34,15 @@ __all__ = [
     "Relationship",
     "RelationshipType",
     "KnowledgeGraph",
-
     # Config
     "KnowledgeGraphConfig",
-
     # Extractors
     "EntityExtractor",
     "RelationshipExtractor",
-
     # Builders
     "GraphBuilder",
     "Neo4jGraphBuilder",
     "SimpleGraphBuilder",
-
     # Pipeline
     "KnowledgeGraphPipeline",
 ]

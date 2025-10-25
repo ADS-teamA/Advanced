@@ -49,7 +49,10 @@ env/
 
 # Ignore other outputs
 output/*
-!output/GRI_306__Effluents_and_Waste_2016
+
+CLAUDE.md
+.claude/
+
 
 # Logs
 *.log
