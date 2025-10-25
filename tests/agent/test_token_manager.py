@@ -267,11 +267,11 @@ class TestCriticalEdgeCases:
 
     def test_format_chunks_exceeds_budget_even_after_adjustment(self):
         """
-        Test formatter behavior when budget exceeded even at SUMMARY level.
+        Test formatter caps chunks when budget exceeded even at SUMMARY level.
 
-        NOTE: Current implementation auto-adjusts detail level but doesn't cap chunk count.
-        This is a known limitation - formatter should also limit chunk count when needed.
-        TODO: Enhance formatter to cap chunks when budget still exceeded after adjustment.
+        Formatter should:
+        1. Auto-adjust detail level (FULL → MEDIUM → SUMMARY)
+        2. If still over budget, cap chunk count to fit
         """
         budget = TokenBudget(max_total_tokens=2000, reserved_tokens=1000)  # Only 1000 available
         formatter = AdaptiveFormatter(budget=budget)
@@ -283,13 +283,22 @@ class TestCriticalEdgeCases:
             chunks, detail_level=DetailLevel.FULL, auto_adjust=True
         )
 
-        # Verify auto-adjustment happened (detail level should be reduced)
+        # Verify auto-adjustment happened
         assert metadata["auto_adjusted"] is True, "Should have auto-adjusted detail level"
-        assert metadata["actual_detail_level"] in ["summary", "medium"], "Should reduce to lower detail"
+        assert metadata["actual_detail_level"] in ["medium", "summary"], "Should reduce detail level"
 
-        # Known limitation: doesn't cap chunk count, only reduces detail level
-        # Formatter returns all chunks at reduced detail level, which may still exceed budget
-        assert len(formatted) > 0, "Should return some formatted chunks"
+        # Verify chunks were capped to fit budget
+        assert metadata["chunks_capped"] is True, "Should have capped chunks"
+        assert metadata["original_chunk_count"] == 50, "Original count should be tracked"
+
+        # With 1000 budget and detail level (MEDIUM=300 or SUMMARY=100 tokens/chunk)
+        # MEDIUM: max 3 chunks, SUMMARY: max 10 chunks
+        # We use max(3, ...) so minimum 3
+        assert len(formatted) >= 3, "Should return at least 3 chunks"
+        assert len(formatted) <= 10, "Should cap chunks to fit budget"
+
+        # Total tokens should be within budget (with some margin for metadata)
+        assert metadata["total_tokens"] <= 1200, "Should enforce budget limit (with small margin)"
 
     def test_token_budget_validation(self):
         """Test that TokenBudget validates configuration on creation."""
