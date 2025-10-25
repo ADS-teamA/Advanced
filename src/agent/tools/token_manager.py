@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Token counting
 try:
     import tiktoken
+
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     logger.warning("tiktoken not installed, falling back to char-based estimation")
@@ -31,9 +32,10 @@ except ImportError:
 
 class DetailLevel(Enum):
     """Progressive detail levels for outputs."""
-    SUMMARY = "summary"      # ~100 tokens per item
-    MEDIUM = "medium"        # ~300 tokens per item
-    FULL = "full"           # ~600 tokens per item
+
+    SUMMARY = "summary"  # ~100 tokens per item
+    MEDIUM = "medium"  # ~300 tokens per item
+    FULL = "full"  # ~600 tokens per item
 
 
 @dataclass
@@ -47,19 +49,24 @@ class TokenBudget:
     - max_tokens_per_section=400: Sufficient for section metadata + summary
     - reserved_tokens=1000: Safety buffer for JSON structure, citations, metadata
     """
-    max_total_tokens: int = 8000        # Max tokens for entire tool output
-    max_tokens_per_chunk: int = 600     # Max per chunk (FULL detail)
-    max_tokens_per_section: int = 400   # Max per section metadata
-    reserved_tokens: int = 1000         # Reserved for metadata, citations, etc.
+
+    max_total_tokens: int = 8000  # Max tokens for entire tool output
+    max_tokens_per_chunk: int = 600  # Max per chunk (FULL detail)
+    max_tokens_per_section: int = 400  # Max per section metadata
+    reserved_tokens: int = 1000  # Reserved for metadata, citations, etc.
 
     def __post_init__(self):
         """Validate configuration consistency."""
         if self.max_total_tokens <= 0:
             raise ValueError(f"max_total_tokens must be positive, got {self.max_total_tokens}")
         if self.max_tokens_per_chunk <= 0:
-            raise ValueError(f"max_tokens_per_chunk must be positive, got {self.max_tokens_per_chunk}")
+            raise ValueError(
+                f"max_tokens_per_chunk must be positive, got {self.max_tokens_per_chunk}"
+            )
         if self.max_tokens_per_section <= 0:
-            raise ValueError(f"max_tokens_per_section must be positive, got {self.max_tokens_per_section}")
+            raise ValueError(
+                f"max_tokens_per_section must be positive, got {self.max_tokens_per_section}"
+            )
         if self.reserved_tokens < 0:
             raise ValueError(f"reserved_tokens must be non-negative, got {self.reserved_tokens}")
         if self.reserved_tokens >= self.max_total_tokens:
@@ -145,6 +152,7 @@ class TokenCounter:
         elif isinstance(obj, dict):
             # Convert to JSON string and count
             import json
+
             return self.count_tokens(json.dumps(obj))
         elif isinstance(obj, list):
             return sum(self.estimate_tokens(item) for item in obj)
@@ -160,10 +168,12 @@ class SmartTruncator:
     """
 
     # Sentence boundary patterns (Czech + English)
-    SENTENCE_ENDINGS = re.compile(r'([.!?…][\s\n]+|[.!?…]$)')
+    SENTENCE_ENDINGS = re.compile(r"([.!?…][\s\n]+|[.!?…]$)")
 
     @staticmethod
-    def truncate_at_sentence(text: str, max_tokens: int, token_counter: TokenCounter) -> Tuple[str, bool]:
+    def truncate_at_sentence(
+        text: str, max_tokens: int, token_counter: TokenCounter
+    ) -> Tuple[str, bool]:
         """
         Truncate text at sentence boundary within token limit.
 
@@ -199,7 +209,10 @@ class SmartTruncator:
                 # Current sentence would exceed limit
                 if not result:
                     # First sentence is too long, truncate mid-sentence as fallback
-                    return SmartTruncator._truncate_to_token_limit(text, max_tokens, token_counter), True
+                    return (
+                        SmartTruncator._truncate_to_token_limit(text, max_tokens, token_counter),
+                        True,
+                    )
                 else:
                     # Return accumulated sentences
                     return result.strip(), True
@@ -239,7 +252,9 @@ class SmartTruncator:
         return result + "..."
 
     @staticmethod
-    def truncate_at_word(text: str, max_tokens: int, token_counter: TokenCounter) -> Tuple[str, bool]:
+    def truncate_at_word(
+        text: str, max_tokens: int, token_counter: TokenCounter
+    ) -> Tuple[str, bool]:
         """
         Truncate at word boundary (fallback if sentence truncation too aggressive).
 
@@ -297,7 +312,7 @@ class AdaptiveFormatter:
         chunks: List[Dict[str, Any]],
         detail_level: DetailLevel = DetailLevel.MEDIUM,
         include_score: bool = True,
-        auto_adjust: bool = True
+        auto_adjust: bool = True,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Format chunks with adaptive detail level.
@@ -403,17 +418,13 @@ class AdaptiveFormatter:
             "original_chunk_count": original_chunk_count,
             "truncated_count": truncated_count,
             "auto_adjusted": actual_detail_level != detail_level,
-            "chunks_capped": chunks_capped
+            "chunks_capped": chunks_capped,
         }
 
         return formatted, metadata
 
     def adaptive_k(
-        self,
-        requested_k: int,
-        tokens_per_item: int = None,
-        min_k: int = 3,
-        max_k: int = 50
+        self, requested_k: int, tokens_per_item: int = None, min_k: int = 3, max_k: int = 50
     ) -> Tuple[int, str]:
         """
         Adaptively determine k based on token budget.
@@ -446,9 +457,7 @@ class AdaptiveFormatter:
             return budget_based_k, "budget_limited"
 
     def format_sections_with_budget(
-        self,
-        sections: List[Dict[str, Any]],
-        include_summary: bool = True
+        self, sections: List[Dict[str, Any]], include_summary: bool = True
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Format sections list with dynamic truncation.
@@ -499,7 +508,7 @@ class AdaptiveFormatter:
             "returned_sections": len(formatted),
             "truncated": truncated,
             "total_tokens": total_tokens,
-            "max_sections_allowed": max_sections
+            "max_sections_allowed": max_sections,
         }
 
         return formatted, metadata

@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChunkContext:
     """Generated context for a chunk."""
+
     chunk_text: str
     context: str
     success: bool
@@ -67,9 +68,7 @@ class ContextualRetrieval:
     """
 
     def __init__(
-        self,
-        config: Optional[ContextGenerationConfig] = None,
-        api_key: Optional[str] = None
+        self, config: Optional[ContextGenerationConfig] = None, api_key: Optional[str] = None
     ):
         """
         Initialize contextual retrieval system.
@@ -200,7 +199,7 @@ class ContextualRetrieval:
             self.model,
             torch_dtype=torch.float16,
             device_map="auto",  # Auto-select GPU/CPU
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
         )
 
         self.provider_type = "transformers"
@@ -213,7 +212,7 @@ class ContextualRetrieval:
         section_title: Optional[str] = None,
         section_path: Optional[str] = None,
         preceding_chunk: Optional[str] = None,
-        following_chunk: Optional[str] = None
+        following_chunk: Optional[str] = None,
     ) -> str:
         """
         Generate context for a single chunk.
@@ -235,7 +234,7 @@ class ContextualRetrieval:
             section_title=section_title,
             section_path=section_path,
             preceding_chunk=preceding_chunk,
-            following_chunk=following_chunk
+            following_chunk=following_chunk,
         )
 
         try:
@@ -263,7 +262,7 @@ class ContextualRetrieval:
         section_title: Optional[str],
         section_path: Optional[str],
         preceding_chunk: Optional[str] = None,
-        following_chunk: Optional[str] = None
+        following_chunk: Optional[str] = None,
     ) -> str:
         """
         Build prompt for context generation.
@@ -281,7 +280,9 @@ class ContextualRetrieval:
         elif section_title:
             context_info.append(f"Section: {section_title}")
 
-        context_block = "\n".join(context_info) if context_info else "No additional context available."
+        context_block = (
+            "\n".join(context_info) if context_info else "No additional context available."
+        )
 
         # Escape chunk content to prevent prompt injection
         chunk_escaped = self._escape_xml_tags(chunk)
@@ -292,13 +293,20 @@ class ContextualRetrieval:
             surrounding_parts = []
             if preceding_chunk:
                 preceding_escaped = self._escape_xml_tags(preceding_chunk[:500])
-                surrounding_parts.append(f"<preceding_chunk>\n{preceding_escaped}\n</preceding_chunk>")
+                surrounding_parts.append(
+                    f"<preceding_chunk>\n{preceding_escaped}\n</preceding_chunk>"
+                )
             if following_chunk:
                 following_escaped = self._escape_xml_tags(following_chunk[:500])
-                surrounding_parts.append(f"<following_chunk>\n{following_escaped}\n</following_chunk>")
+                surrounding_parts.append(
+                    f"<following_chunk>\n{following_escaped}\n</following_chunk>"
+                )
 
             if surrounding_parts:
-                surrounding_chunks_block = f"\n\nSurrounding chunks for additional context:\n" + "\n\n".join(surrounding_parts)
+                surrounding_chunks_block = (
+                    f"\n\nSurrounding chunks for additional context:\n"
+                    + "\n\n".join(surrounding_parts)
+                )
 
         # Build prompt (Anthropic format)
         prompt = f"""<document>
@@ -315,9 +323,7 @@ Please give a short succinct context (50-100 words) to situate this chunk within
         return prompt
 
     @retry_with_exponential_backoff(
-        max_retries=3,
-        base_delay=2.0,
-        retry_condition=is_retryable_error
+        max_retries=3, base_delay=2.0, retry_condition=is_retryable_error
     )
     def _generate_with_anthropic(self, prompt: str) -> str:
         """
@@ -329,7 +335,7 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             model=self.model,
             max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         # Track cost
@@ -338,15 +344,13 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             model=self.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
-            operation="context"
+            operation="context",
         )
 
         return response.content[0].text
 
     @retry_with_exponential_backoff(
-        max_retries=3,
-        base_delay=2.0,
-        retry_condition=is_retryable_error
+        max_retries=3, base_delay=2.0, retry_condition=is_retryable_error
     )
     def _generate_with_openai(self, prompt: str) -> str:
         """
@@ -356,19 +360,19 @@ Please give a short succinct context (50-100 words) to situate this chunk within
         """
         # GPT-5 and O-series models use max_completion_tokens instead of max_tokens
         # GPT-5 models only support temperature=1.0 (default)
-        if self.model.startswith(('gpt-5', 'o1', 'o3', 'o4')):
+        if self.model.startswith(("gpt-5", "o1", "o3", "o4")):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=1.0,  # GPT-5 only supports default temperature
-                max_completion_tokens=self.config.max_tokens
+                max_completion_tokens=self.config.max_tokens,
             )
         else:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens
+                max_tokens=self.config.max_tokens,
             )
 
         # Track cost
@@ -377,7 +381,7 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             model=self.model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
-            operation="context"
+            operation="context",
         )
 
         return response.choices[0].message.content
@@ -394,10 +398,10 @@ Please give a short succinct context (50-100 words) to situate this chunk within
                 "stream": False,
                 "options": {
                     "temperature": self.config.temperature,
-                    "num_predict": self.config.max_tokens
-                }
+                    "num_predict": self.config.max_tokens,
+                },
             },
-            timeout=30
+            timeout=30,
         )
 
         if response.status_code == 200:
@@ -419,14 +423,14 @@ Please give a short succinct context (50-100 words) to situate this chunk within
                 max_new_tokens=self.config.max_tokens,
                 temperature=self.config.temperature,
                 do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
+                pad_token_id=self.tokenizer.eos_token_id,
             )
 
         # Decode
         generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
         # Extract only the generated part (after prompt)
-        context = generated[len(prompt):].strip()
+        context = generated[len(prompt) :].strip()
 
         return context
 
@@ -441,28 +445,25 @@ Please give a short succinct context (50-100 words) to situate this chunk within
             Text with XML tags escaped
         """
         # Only escape if text contains problematic tags
-        if '</chunk>' in text or '</document>' in text:
-            text = text.replace('<', '&lt;').replace('>', '&gt;')
+        if "</chunk>" in text or "</document>" in text:
+            text = text.replace("<", "&lt;").replace(">", "&gt;")
         return text
 
     # ===== OpenAI Batch API Methods (50% cost savings) =====
 
-    def _generate_contexts_with_openai_batch(
-        self,
-        chunks: List[Tuple[str, dict]]
-    ) -> dict:
+    def _generate_contexts_with_openai_batch(self, chunks: List[Tuple[str, dict]]) -> dict:
         """
         Generate contexts using OpenAI Batch API (50% cost savings).
 
         Uses centralized BatchAPIClient for all batch processing logic.
         """
-        logger.info(f"Using OpenAI Batch API: {len(chunks)} chunks (50% cost savings, async processing)")
+        logger.info(
+            f"Using OpenAI Batch API: {len(chunks)} chunks (50% cost savings, async processing)"
+        )
 
         # Create batch API client
         batch_client = BatchAPIClient(
-            openai_client=self.client,
-            logger_instance=logger,
-            cost_tracker=self.tracker
+            openai_client=self.client, logger_instance=logger, cost_tracker=self.tracker
         )
 
         # Define request creation function
@@ -492,14 +493,14 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": self.config.max_tokens,
-                    "temperature": self.config.temperature
-                }
+                    "temperature": self.config.temperature,
+                },
             )
 
         # Define response parsing function
         def parse_response(response: dict) -> str:
             """Extract context from API response."""
-            return response['choices'][0]['message']['content'].strip()
+            return response["choices"][0]["message"]["content"].strip()
 
         # Process batch using centralized client
         results_map = batch_client.process_batch(
@@ -509,16 +510,13 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
             poll_interval=self.batch_api_poll_interval,
             timeout_hours=self.batch_api_timeout // 3600,
             operation="context",
-            model=self.model
+            model=self.model,
         )
 
         logger.info(f"✓ Batch API succeeded: {len(results_map)} contexts generated")
         return results_map
 
-    def generate_contexts_batch(
-        self,
-        chunks: List[Tuple[str, dict]]
-    ) -> List[ChunkContext]:
+    def generate_contexts_batch(self, chunks: List[Tuple[str, dict]]) -> List[ChunkContext]:
         """
         Generate contexts for multiple chunks in parallel.
 
@@ -589,12 +587,14 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
             results = []
             for idx, (chunk_text, metadata) in enumerate(chunks):
                 context = contexts_map.get(idx, "")
-                results.append(ChunkContext(
-                    chunk_text=chunk_text,
-                    context=context,
-                    success=bool(context),
-                    error=None if context else "Batch API returned empty context"
-                ))
+                results.append(
+                    ChunkContext(
+                        chunk_text=chunk_text,
+                        context=context,
+                        success=bool(context),
+                        error=None if context else "Batch API returned empty context",
+                    )
+                )
             return results
 
         # Otherwise, use parallel mode (fallback or default)
@@ -609,21 +609,12 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
                     section_title=metadata.get("section_title"),
                     section_path=metadata.get("section_path"),
                     preceding_chunk=metadata.get("preceding_chunk"),
-                    following_chunk=metadata.get("following_chunk")
+                    following_chunk=metadata.get("following_chunk"),
                 )
-                return ChunkContext(
-                    chunk_text=chunk_text,
-                    context=context,
-                    success=True
-                )
+                return ChunkContext(chunk_text=chunk_text, context=context, success=True)
             except Exception as e:
                 logger.error(f"Failed to generate context: {e}")
-                return ChunkContext(
-                    chunk_text=chunk_text,
-                    context="",
-                    success=False,
-                    error=str(e)
-                )
+                return ChunkContext(chunk_text=chunk_text, context="", success=False, error=str(e))
 
         # Generate in parallel
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
@@ -631,7 +622,7 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
             batch_size = self.config.batch_size
 
             for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
+                batch = chunks[i : i + batch_size]
 
                 # Submit all tasks and preserve order
                 futures = [
@@ -646,9 +637,7 @@ Provide a brief context (50-100 words) explaining what this chunk discusses with
                 logger.info(f"Generated contexts for batch {i//batch_size + 1}")
 
         success_count = sum(1 for r in results if r.success)
-        logger.info(
-            f"Context generation complete: {success_count}/{len(chunks)} successful"
-        )
+        logger.info(f"Context generation complete: {success_count}/{len(chunks)} successful")
 
         return results
 
@@ -671,17 +660,14 @@ if __name__ == "__main__":
     test_metadata = {
         "document_summary": "VVER-1200 nuclear reactor safety specification",
         "section_title": "Pressure Limits and Emergency Response",
-        "section_path": "Safety Parameters > Pressure Control > Primary Circuit"
+        "section_path": "Safety Parameters > Pressure Control > Primary Circuit",
     }
 
     for name, config in configs:
         print(f"\n=== Testing {name} ===")
         try:
             retrieval = ContextualRetrieval(config=config)
-            context = retrieval.generate_context(
-                chunk=test_chunk,
-                **test_metadata
-            )
+            context = retrieval.generate_context(chunk=test_chunk, **test_metadata)
             print(f"Context: {context}")
         except Exception as e:
             print(f"Error: {e}")

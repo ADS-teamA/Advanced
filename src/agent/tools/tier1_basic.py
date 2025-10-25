@@ -24,7 +24,7 @@ class SimpleSearchInput(ToolInput):
     """Input for simple_search tool."""
 
     query: str = Field(..., description="Natural language search query")
-    k: int = Field(6, description="Number of results to return", ge=1, le=10)
+    k: int = Field(5, description="Number of results to return (3-5 recommended)", ge=1, le=10)
 
 
 @register_tool
@@ -43,7 +43,7 @@ class SimpleSearchTool(BaseTool):
     input_schema = SimpleSearchInput
     requires_reranker = True
 
-    def execute_impl(self, query: str, k: int = 6) -> ToolResult:
+    def execute_impl(self, query: str, k: int = 5) -> ToolResult:
         k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # Embed query
@@ -134,8 +134,7 @@ class GetDocumentListTool(BaseTool):
 
         # Build list of document objects with id and summary
         document_list = [
-            {"id": doc_id, "summary": summary}
-            for doc_id, summary in sorted(documents_map.items())
+            {"id": doc_id, "summary": summary} for doc_id, summary in sorted(documents_map.items())
         ]
 
         return ToolResult(
@@ -197,12 +196,14 @@ class ListAvailableToolsTool(BaseTool):
                 param_type = param_info.get("type", "unknown")
                 is_required = param_name in required
 
-                parameters.append({
-                    "name": param_name,
-                    "type": param_type,
-                    "description": param_desc,
-                    "required": is_required
-                })
+                parameters.append(
+                    {
+                        "name": param_name,
+                        "type": param_type,
+                        "description": param_desc,
+                        "required": is_required,
+                    }
+                )
 
             # Extract "when to use" from description if present
             # Some tools have "Use for:" or "Use when:" in their docstring
@@ -219,13 +220,15 @@ class ListAvailableToolsTool(BaseTool):
             # Add tier info for context (even though not grouping by tier)
             tier_label = {1: "Basic (fast)", 2: "Advanced (quality)", 3: "Analysis (deep)"}
 
-            tools_list.append({
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": parameters,
-                "when_to_use": when_to_use,
-                "tier": f"Tier {tool.tier} - {tier_label.get(tool.tier, 'Unknown')}",
-            })
+            tools_list.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": parameters,
+                    "when_to_use": when_to_use,
+                    "tier": f"Tier {tool.tier} - {tier_label.get(tool.tier, 'Unknown')}",
+                }
+            )
 
         # Sort by name for consistent ordering
         tools_list.sort(key=lambda t: t["name"])
@@ -240,7 +243,7 @@ class ListAvailableToolsTool(BaseTool):
                         "Start with Tier 1 (fast) tools before escalating to Tier 2/3",
                         "Use simple_search for most queries (hybrid + rerank = best quality)",
                         "For complex queries, decompose into sub-tasks and use multiple tools",
-                        "Try multiple retrieval strategies before giving up"
+                        "Try multiple retrieval strategies before giving up",
                     ],
                     "selection_strategy": {
                         "most_queries": "simple_search",
@@ -248,9 +251,9 @@ class ListAvailableToolsTool(BaseTool):
                         "specific_document": "Use exact_match_search or filtered_search with document_id filter",
                         "multi_hop_reasoning": "multi_hop_search (requires KG)",
                         "comparison": "compare_documents",
-                        "temporal_info": "filtered_search with filter_type='temporal' or timeline_view"
-                    }
-                }
+                        "temporal_info": "filtered_search with filter_type='temporal' or timeline_view",
+                    },
+                },
             },
             metadata={
                 "total_tools": len(tools_list),
@@ -282,9 +285,11 @@ class GetDocumentInfoInput(ToolInput):
     document_id: str = Field(..., description="Document ID")
     info_type: str = Field(
         ...,
-        description="Type of information: 'summary' (high-level overview), 'metadata' (comprehensive stats), 'sections' (list all sections), 'section_details' (specific section info)"
+        description="Type of information: 'summary' (high-level overview), 'metadata' (comprehensive stats), 'sections' (list all sections), 'section_details' (specific section info)",
     )
-    section_id: Optional[str] = Field(None, description="Section ID (required for info_type='section_details')")
+    section_id: Optional[str] = Field(
+        None, description="Section ID (required for info_type='section_details')"
+    )
 
 
 @register_tool
@@ -364,7 +369,9 @@ class GetDocumentInfoTool(BaseTool):
                 metadata["sections"] = sections
 
                 # Layer 3: Chunks
-                chunk_count = sum(1 for meta in layer3_chunks if meta.get("document_id") == document_id)
+                chunk_count = sum(
+                    1 for meta in layer3_chunks if meta.get("document_id") == document_id
+                )
                 metadata["chunk_count"] = chunk_count
 
                 # Estimate document length
@@ -473,7 +480,10 @@ class GetDocumentInfoTool(BaseTool):
                 # Find section in Layer 2
                 section_data = None
                 for meta in layer2_chunks:
-                    if meta.get("document_id") == document_id and meta.get("section_id") == section_id:
+                    if (
+                        meta.get("document_id") == document_id
+                        and meta.get("section_id") == section_id
+                    ):
                         section_data = {
                             "document_id": document_id,
                             "section_id": section_id,
@@ -488,14 +498,19 @@ class GetDocumentInfoTool(BaseTool):
                     return ToolResult(
                         success=True,
                         data=None,
-                        metadata={"document_id": document_id, "section_id": section_id, "found": False},
+                        metadata={
+                            "document_id": document_id,
+                            "section_id": section_id,
+                            "found": False,
+                        },
                     )
 
                 # Get chunk count (Layer 3)
                 chunk_count = sum(
                     1
                     for meta in layer3_chunks
-                    if meta.get("document_id") == document_id and meta.get("section_id") == section_id
+                    if meta.get("document_id") == document_id
+                    and meta.get("section_id") == section_id
                 )
                 section_data["chunk_count"] = chunk_count
 
@@ -527,16 +542,16 @@ class ExactMatchSearchInput(ToolInput):
     query: str = Field(..., description="Search query (keywords or reference text)")
     search_type: Literal["keywords", "cross_references"] = Field(
         ...,
-        description="Search type: 'keywords' (general keyword search), 'cross_references' (find references to specific clauses/articles)"
+        description="Search type: 'keywords' (general keyword search), 'cross_references' (find references to specific clauses/articles)",
     )
     k: int = Field(6, description="Number of results", ge=1, le=10)
     document_id: Optional[str] = Field(
         None,
-        description="Optional: Filter search to specific document (index-level filtering for better performance)"
+        description="Optional: Filter search to specific document (index-level filtering for better performance)",
     )
     section_id: Optional[str] = Field(
         None,
-        description="Optional: Filter results to specific section (requires document_id, uses post-retrieval filtering)"
+        description="Optional: Filter results to specific section (requires document_id, uses post-retrieval filtering)",
     )
 
 
@@ -563,7 +578,7 @@ class ExactMatchSearchTool(BaseTool):
         search_type: str,
         k: int = 6,
         document_id: Optional[str] = None,
-        section_id: Optional[str] = None
+        section_id: Optional[str] = None,
     ) -> ToolResult:
         k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
@@ -588,17 +603,18 @@ class ExactMatchSearchTool(BaseTool):
                     results = self.vector_store.bm25_store.search_layer3(
                         query=query,
                         k=retrieval_k,
-                        document_filter=document_id  # BM25 supports document filtering
+                        document_filter=document_id,  # BM25 supports document filtering
                     )
                 else:
                     # Fallback
                     import numpy as np
+
                     dummy_embedding = np.zeros((1, self.embedder.dimensions))
                     results_dict = self.vector_store.hierarchical_search(
                         query_text=query,
                         query_embedding=dummy_embedding,
                         k_layer3=retrieval_k,
-                        document_filter=document_id
+                        document_filter=document_id,
                     )
                     results = results_dict["layer3"]
 
@@ -611,7 +627,7 @@ class ExactMatchSearchTool(BaseTool):
                     query_text=query,
                     query_embedding=None,
                     k_layer3=retrieval_k * 2,
-                    document_filter=document_id  # Apply document filter
+                    document_filter=document_id,  # Apply document filter
                 )
                 chunks = results_dict.get("layer3", [])
 
@@ -632,10 +648,7 @@ class ExactMatchSearchTool(BaseTool):
 
             # Apply section_id filter if specified
             if section_id:
-                results = [
-                    chunk for chunk in results
-                    if chunk.get("section_id") == section_id
-                ][:k]
+                results = [chunk for chunk in results if chunk.get("section_id") == section_id][:k]
 
             # Determine search scope for metadata
             if section_id:

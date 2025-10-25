@@ -31,7 +31,7 @@ from src.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 def mock_openai_client():
     """Mock OpenAI client for testing without API calls."""
     # OpenAI is imported inside _init_openai_model, so we need to patch it there
-    with patch('openai.OpenAI') as mock_openai:
+    with patch("openai.OpenAI") as mock_openai:
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
 
@@ -58,12 +58,14 @@ def embedder(mock_openai_client):
         batch_size=64,
         normalize=True,
         cache_enabled=True,
-        cache_max_size=3  # Small cache for testing eviction
+        cache_max_size=3,  # Small cache for testing eviction
     )
 
     # Patch OpenAI import and environment
-    with patch('openai.OpenAI', return_value=mock_openai_client), \
-         patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+    with (
+        patch("openai.OpenAI", return_value=mock_openai_client),
+        patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
+    ):
         embedder = EmbeddingGenerator(config)
 
     return embedder
@@ -192,6 +194,7 @@ class TestCacheCollisionDetection:
     def test_cache_collision_detection(self, embedder, caplog):
         """Test that hash collisions are detected via shape[0] mismatch."""
         import logging
+
         caplog.set_level(logging.ERROR)
 
         texts1 = ["Text A", "Text B"]  # 2 texts
@@ -210,7 +213,7 @@ class TestCacheCollisionDetection:
         real_cache_key = embedder._generate_cache_key(texts2)
 
         # Patch _generate_cache_key to return texts1's key for texts2
-        with patch.object(embedder, '_generate_cache_key', return_value=cache_key1):
+        with patch.object(embedder, "_generate_cache_key", return_value=cache_key1):
             embedder.embed_texts(texts2)  # 1 text, but gets texts1's cache key (2 texts)
 
         # Should log error about count mismatch (expected 1 text, got 2 embeddings)
@@ -243,6 +246,7 @@ class TestCacheValidation:
     def test_cache_validation_rejects_wrong_dimensions(self, embedder, caplog):
         """Test that cache rejects entries with wrong embedding dimensions."""
         import logging
+
         caplog.set_level(logging.ERROR)
 
         texts = ["Test text"]
@@ -264,6 +268,7 @@ class TestCacheValidation:
     def test_cache_validation_rejects_non_ndarray(self, embedder, caplog):
         """Test that cache rejects non-numpy array entries."""
         import logging
+
         caplog.set_level(logging.ERROR)
 
         texts = ["Test text"]
@@ -323,7 +328,7 @@ class TestCacheStatistics:
 
         # Force an exception in cache lookup (not validation, but actual exception)
         # Validation failures don't increment _cache_errors, only exceptions do
-        with patch.object(embedder, '_generate_cache_key', side_effect=Exception("Cache error")):
+        with patch.object(embedder, "_generate_cache_key", side_effect=Exception("Cache error")):
             embedder.embed_texts(texts)
 
         stats = embedder.get_cache_stats()
@@ -339,7 +344,7 @@ class TestMemoryErrorHandling:
         texts = ["Test text"]
 
         # Mock _add_to_cache to raise MemoryError
-        with patch.object(embedder, '_add_to_cache', side_effect=MemoryError("Out of memory")):
+        with patch.object(embedder, "_add_to_cache", side_effect=MemoryError("Out of memory")):
             result = embedder.embed_texts(texts)
 
         # Cache should be disabled
@@ -347,7 +352,9 @@ class TestMemoryErrorHandling:
         # Cache should be cleared
         assert len(embedder._embedding_cache) == 0
         # Should log warning
-        assert any("Cache storage failed due to memory" in record.message for record in caplog.records)
+        assert any(
+            "Cache storage failed due to memory" in record.message for record in caplog.records
+        )
         # Error counter should increment
         assert embedder._cache_errors == 1
 
@@ -356,7 +363,7 @@ class TestMemoryErrorHandling:
         texts = ["Test text"]
 
         # Mock _generate_cache_key to raise exception
-        with patch.object(embedder, '_generate_cache_key', side_effect=Exception("Cache error")):
+        with patch.object(embedder, "_generate_cache_key", side_effect=Exception("Cache error")):
             # Trigger 11 errors
             for i in range(11):
                 embedder.embed_texts(texts)
@@ -365,27 +372,31 @@ class TestMemoryErrorHandling:
         assert embedder._cache_enabled is False
         assert embedder._cache_errors >= 10
         # Should log error about disabling cache
-        assert any("Cache disabled due to repeated errors" in record.message for record in caplog.records)
+        assert any(
+            "Cache disabled due to repeated errors" in record.message for record in caplog.records
+        )
 
     def test_cache_storage_error_increments_counter(self, embedder, caplog):
         """Test that cache storage errors increment error counter."""
         texts = ["Test text"]
 
         # Mock _add_to_cache to raise generic exception
-        with patch.object(embedder, '_add_to_cache', side_effect=ValueError("Storage error")):
+        with patch.object(embedder, "_add_to_cache", side_effect=ValueError("Storage error")):
             embedder.embed_texts(texts)
 
         # Error counter should increment
         assert embedder._cache_errors == 1
         # Should log error
-        assert any("Failed to store embeddings in cache" in record.message for record in caplog.records)
+        assert any(
+            "Failed to store embeddings in cache" in record.message for record in caplog.records
+        )
 
     def test_cache_disabled_after_storage_errors(self, embedder, caplog):
         """Test that cache disables after 10 storage errors."""
         texts = ["Test text"]
 
         # Mock _add_to_cache to raise exception
-        with patch.object(embedder, '_add_to_cache', side_effect=ValueError("Error")):
+        with patch.object(embedder, "_add_to_cache", side_effect=ValueError("Error")):
             # Trigger 11 storage errors
             for i in range(11):
                 embedder.embed_texts(texts)
@@ -401,13 +412,13 @@ class TestCacheDisabled:
     def test_cache_disabled_skips_caching(self, mock_openai_client):
         """Test that disabled cache skips all caching logic."""
         config = EmbeddingConfig(
-            provider="openai",
-            model="text-embedding-3-large",
-            cache_enabled=False  # Disabled
+            provider="openai", model="text-embedding-3-large", cache_enabled=False  # Disabled
         )
 
-        with patch('openai.OpenAI', return_value=mock_openai_client), \
-             patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+        with (
+            patch("openai.OpenAI", return_value=mock_openai_client),
+            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
+        ):
             embedder = EmbeddingGenerator(config)
 
         texts = ["Test text"]
@@ -451,8 +462,8 @@ class TestCacheKeyGeneration:
     def test_cache_key_separator_collision_warning(self, embedder):
         """Test that separator collision IS REAL (documented in code line 311)."""
         # These texts have different meanings but produce SAME hash due to "|" separator
-        texts1 = ["a|b", "c"]     # Joins as "a|b|c"
-        texts2 = ["a", "b|c"]     # Joins as "a|b|c" (SAME!)
+        texts1 = ["a|b", "c"]  # Joins as "a|b|c"
+        texts2 = ["a", "b|c"]  # Joins as "a|b|c" (SAME!)
 
         key1 = embedder._generate_cache_key(texts1)
         key2 = embedder._generate_cache_key(texts2)
@@ -496,7 +507,7 @@ class TestCacheIntegration:
         mock_response.data = [
             MagicMock(embedding=[0.1] * 3072),
             MagicMock(embedding=[0.2] * 3072),
-            MagicMock(embedding=[0.3] * 3072)
+            MagicMock(embedding=[0.3] * 3072),
         ]
         mock_openai_client.embeddings.create.return_value = mock_response
 

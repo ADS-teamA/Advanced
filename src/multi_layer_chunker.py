@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChunkMetadata:
     """Metadata for a single chunk."""
+
     chunk_id: str
     layer: int  # 1=document, 2=section, 3=chunk
     document_id: str
@@ -70,6 +71,7 @@ class Chunk:
     For embedding, use 'content'.
     For generation, use 'raw_content' (without SAC summary).
     """
+
     chunk_id: str
     content: str  # For embedding (with SAC if Layer 3)
     raw_content: str  # For generation (without SAC)
@@ -93,8 +95,8 @@ class Chunk:
                 "section_title": self.metadata.section_title,
                 "section_path": self.metadata.section_path,
                 "section_level": self.metadata.section_level,
-                "section_depth": self.metadata.section_depth
-            }
+                "section_depth": self.metadata.section_depth,
+            },
         }
 
 
@@ -113,11 +115,7 @@ class MultiLayerChunker:
     - Multi-Layer Embeddings (Lima, 2024)
     """
 
-    def __init__(
-        self,
-        config: Optional[ChunkingConfig] = None,
-        api_key: Optional[str] = None
-    ):
+    def __init__(self, config: Optional[ChunkingConfig] = None, api_key: Optional[str] = None):
         """
         Initialize multi-layer chunker.
 
@@ -137,7 +135,7 @@ class MultiLayerChunker:
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
             length_function=len,
-            separators=self.config.separators
+            separators=self.config.separators,
         )
 
         # Initialize contextual retrieval if enabled
@@ -145,10 +143,7 @@ class MultiLayerChunker:
         if self.enable_contextual:
             try:
                 context_config = self.config.context_config or ContextGenerationConfig()
-                self.context_generator = ContextualRetrieval(
-                    config=context_config,
-                    api_key=api_key
-                )
+                self.context_generator = ContextualRetrieval(config=context_config, api_key=api_key)
                 logger.info("Contextual Retrieval initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize Contextual Retrieval: {e}")
@@ -164,10 +159,7 @@ class MultiLayerChunker:
             f"mode={chunking_mode}"
         )
 
-    def chunk_document(
-        self,
-        extracted_doc
-    ) -> Dict[str, List[Chunk]]:
+    def chunk_document(self, extracted_doc) -> Dict[str, List[Chunk]]:
         """
         Create multi-layer chunks from ExtractedDocument.
 
@@ -199,7 +191,7 @@ class MultiLayerChunker:
             "layer1": layer1_chunks,
             "layer2": layer2_chunks,
             "layer3": layer3_chunks,
-            "total_chunks": len(layer1_chunks) + len(layer2_chunks) + len(layer3_chunks)
+            "total_chunks": len(layer1_chunks) + len(layer2_chunks) + len(layer3_chunks),
         }
 
     def _create_layer1_document(self, extracted_doc) -> List[Chunk]:
@@ -228,8 +220,8 @@ class MultiLayerChunker:
                 parent_chunk_id=None,
                 page_number=0,
                 char_start=0,
-                char_end=len(content)
-            )
+                char_end=len(content),
+            ),
         )
 
         return [chunk]
@@ -266,8 +258,8 @@ class MultiLayerChunker:
                     section_title=section.title,
                     section_path=section.path,
                     section_level=section.level,
-                    section_depth=section.depth
-                )
+                    section_depth=section.depth,
+                ),
             )
 
             chunks.append(chunk)
@@ -300,10 +292,7 @@ class MultiLayerChunker:
         # CONTEXTUAL RETRIEVAL mode
         if self.enable_contextual and self.context_generator:
             logger.info("Using Contextual Retrieval for Layer 3")
-            chunks = self._create_layer3_contextual(
-                extracted_doc,
-                doc_summary
-            )
+            chunks = self._create_layer3_contextual(extracted_doc, doc_summary)
 
         # Basic mode (no augmentation)
         else:
@@ -312,11 +301,7 @@ class MultiLayerChunker:
 
         return chunks
 
-    def _create_layer3_contextual(
-        self,
-        extracted_doc,
-        doc_summary: str
-    ) -> List[Chunk]:
+    def _create_layer3_contextual(self, extracted_doc, doc_summary: str) -> List[Chunk]:
         """
         Create Layer 3 chunks with Contextual Retrieval.
 
@@ -342,7 +327,10 @@ class MultiLayerChunker:
                 # Get surrounding chunks (if enabled in config)
                 preceding_chunk = None
                 following_chunk = None
-                if self.config.context_config and self.config.context_config.include_surrounding_chunks:
+                if (
+                    self.config.context_config
+                    and self.config.context_config.include_surrounding_chunks
+                ):
                     num_surrounding = self.config.context_config.num_surrounding_chunks
                     # Get preceding chunk(s)
                     if idx > 0:
@@ -360,7 +348,7 @@ class MultiLayerChunker:
                     "following_chunk": following_chunk,
                     "section": section,
                     "idx": idx,
-                    "chunk_id": f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}"
+                    "chunk_id": f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}",
                 }
 
                 chunks_to_contextualize.append((raw_chunk, metadata))
@@ -369,12 +357,12 @@ class MultiLayerChunker:
         logger.info(f"Generating contexts for {len(chunks_to_contextualize)} chunks...")
 
         try:
-            chunk_contexts = self.context_generator.generate_contexts_batch(
-                chunks_to_contextualize
-            )
+            chunk_contexts = self.context_generator.generate_contexts_batch(chunks_to_contextualize)
 
             # Create Chunk objects with contexts
-            for (raw_chunk, metadata), context_result in zip(chunks_to_contextualize, chunk_contexts):
+            for (raw_chunk, metadata), context_result in zip(
+                chunks_to_contextualize, chunk_contexts
+            ):
                 section = metadata["section"]
                 idx = metadata["idx"]
 
@@ -392,7 +380,7 @@ class MultiLayerChunker:
                 chunk = Chunk(
                     chunk_id=metadata["chunk_id"],
                     content=augmented_content,  # For embedding (with context)
-                    raw_content=raw_chunk,      # For generation (without context)
+                    raw_content=raw_chunk,  # For generation (without context)
                     metadata=ChunkMetadata(
                         chunk_id=f"{extracted_doc.document_id}_L3_{section.section_id}_chunk_{idx}",
                         layer=3,
@@ -405,8 +393,8 @@ class MultiLayerChunker:
                         section_title=section.title,
                         section_path=section.path,
                         section_level=section.level,
-                        section_depth=section.depth
-                    )
+                        section_depth=section.depth,
+                    ),
                 )
 
                 chunks.append(chunk)
@@ -455,8 +443,8 @@ class MultiLayerChunker:
                         section_title=section.title,
                         section_path=section.path,
                         section_level=section.level,
-                        section_depth=section.depth
-                    )
+                        section_depth=section.depth,
+                    ),
                 )
 
                 chunks.append(chunk)
@@ -478,7 +466,7 @@ class MultiLayerChunker:
             "layer1_count": len(chunks_dict["layer1"]),
             "layer2_count": len(chunks_dict["layer2"]),
             "layer3_count": len(chunks_dict["layer3"]),
-            "total_chunks": chunks_dict["total_chunks"]
+            "total_chunks": chunks_dict["total_chunks"],
         }
 
         # Layer 3 statistics (PRIMARY layer)
@@ -489,11 +477,10 @@ class MultiLayerChunker:
             stats["layer3_max_size"] = max(layer3_sizes)
 
             # Context augmentation statistics
-            context_sizes = [
-                len(c.content) - len(c.raw_content)
-                for c in chunks_dict["layer3"]
-            ]
-            stats["context_avg_overhead"] = sum(context_sizes) / len(context_sizes) if context_sizes else 0
+            context_sizes = [len(c.content) - len(c.raw_content) for c in chunks_dict["layer3"]]
+            stats["context_avg_overhead"] = (
+                sum(context_sizes) / len(context_sizes) if context_sizes else 0
+            )
 
         return stats
 
@@ -506,8 +493,7 @@ if __name__ == "__main__":
 
     # Extract document
     extraction_config = ExtractionConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=True  # Required for Layer 1 and Layer 2
+        enable_smart_hierarchy=True, generate_summaries=True  # Required for Layer 1 and Layer 2
     )
 
     extractor = DoclingExtractorV2(extraction_config)
@@ -517,12 +503,11 @@ if __name__ == "__main__":
     chunking_config = ChunkingConfig(
         chunk_size=500,
         chunk_overlap=0,
-        enable_contextual=True  # Use Contextual Retrieval (RECOMMENDED)
+        enable_contextual=True,  # Use Contextual Retrieval (RECOMMENDED)
     )
 
     chunker = MultiLayerChunker(
-        config=chunking_config,
-        api_key="your-api-key"  # For Anthropic/OpenAI
+        config=chunking_config, api_key="your-api-key"  # For Anthropic/OpenAI
     )
 
     chunks = chunker.chunk_document(result)

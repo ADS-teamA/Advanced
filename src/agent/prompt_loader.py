@@ -30,8 +30,7 @@ def load_prompt(prompt_name: str) -> str:
     # Check if prompts directory exists
     if not prompt_dir.exists():
         raise FileNotFoundError(
-            f"Prompts directory not found: {prompt_dir}\n"
-            f"Expected location: prompts/"
+            f"Prompts directory not found: {prompt_dir}\n" f"Expected location: prompts/"
         )
 
     prompt_path = prompt_dir / f"{prompt_name}.txt"

@@ -30,7 +30,7 @@ def sample_knowledge_graph():
             normalized_value="GRI 306",
             confidence=0.95,
             source_chunk_ids=["chunk_1", "chunk_3"],
-            first_mention_chunk_id="chunk_1"
+            first_mention_chunk_id="chunk_1",
         ),
         Entity(
             id="e2",
@@ -39,7 +39,7 @@ def sample_knowledge_graph():
             normalized_value="GSSB",
             confidence=0.90,
             source_chunk_ids=["chunk_2"],
-            first_mention_chunk_id="chunk_2"
+            first_mention_chunk_id="chunk_2",
         ),
         Entity(
             id="e3",
@@ -48,7 +48,7 @@ def sample_knowledge_graph():
             normalized_value="waste management",
             confidence=0.85,
             source_chunk_ids=["chunk_1", "chunk_4"],
-            first_mention_chunk_id="chunk_1"
+            first_mention_chunk_id="chunk_1",
         ),
     ]
 
@@ -61,7 +61,7 @@ def sample_knowledge_graph():
             target_entity_id="e2",  # GSSB
             confidence=0.90,
             source_chunk_id="chunk_2",
-            evidence_text="GRI 306 issued by GSSB"
+            evidence_text="GRI 306 issued by GSSB",
         ),
         Relationship(
             id="r2",
@@ -70,7 +70,7 @@ def sample_knowledge_graph():
             target_entity_id="e3",  # waste management
             confidence=0.85,
             source_chunk_id="chunk_1",
-            evidence_text="GRI 306 covers waste management"
+            evidence_text="GRI 306 covers waste management",
         ),
     ]
 
@@ -89,31 +89,31 @@ def sample_hybrid_results():
                 "chunk_id": "chunk_1",
                 "content": "GRI 306 standard covers waste management practices.",
                 "rrf_score": 0.032,
-                "document_id": "doc_1"
+                "document_id": "doc_1",
             },
             {
                 "chunk_id": "chunk_2",
                 "content": "The standard was issued by GSSB in 2020.",
                 "rrf_score": 0.029,
-                "document_id": "doc_1"
+                "document_id": "doc_1",
             },
             {
                 "chunk_id": "chunk_3",
                 "content": "GRI 306 replaces the previous version from 2016.",
                 "rrf_score": 0.027,
-                "document_id": "doc_1"
+                "document_id": "doc_1",
             },
             {
                 "chunk_id": "chunk_4",
                 "content": "Waste management includes disposal and recycling.",
                 "rrf_score": 0.025,
-                "document_id": "doc_1"
+                "document_id": "doc_1",
             },
             {
                 "chunk_id": "chunk_5",
                 "content": "Safety equipment requirements are specified.",
                 "rrf_score": 0.020,
-                "document_id": "doc_1"
+                "document_id": "doc_1",
             },
         ]
     }
@@ -265,18 +265,13 @@ def test_boost_by_entity_mentions(sample_knowledge_graph, sample_hybrid_results)
     booster = GraphBooster(sample_knowledge_graph)
 
     # Extract query entities
-    query_entities = [
-        {
-            "entity": sample_knowledge_graph.entities[0],  # GRI 306
-            "confidence": 0.9
-        }
-    ]
+    query_entities = [{"entity": sample_knowledge_graph.entities[0], "confidence": 0.9}]  # GRI 306
 
     # Boost results
     boosted = booster.boost_by_entity_mentions(
         chunk_results=sample_hybrid_results["layer3"],
         query_entities=query_entities,
-        boost_weight=0.3
+        boost_weight=0.3,
     )
 
     # chunk_1 and chunk_3 mention GRI 306, should be boosted
@@ -297,12 +292,7 @@ def test_boost_by_entity_mentions_reorders_results(sample_knowledge_graph, sampl
     booster = GraphBooster(sample_knowledge_graph)
 
     # Extract GRI 306 entity
-    query_entities = [
-        {
-            "entity": sample_knowledge_graph.entities[0],
-            "confidence": 0.9
-        }
-    ]
+    query_entities = [{"entity": sample_knowledge_graph.entities[0], "confidence": 0.9}]
 
     original_order = [c["chunk_id"] for c in sample_hybrid_results["layer3"]]
 
@@ -310,7 +300,7 @@ def test_boost_by_entity_mentions_reorders_results(sample_knowledge_graph, sampl
     boosted = booster.boost_by_entity_mentions(
         chunk_results=sample_hybrid_results["layer3"],
         query_entities=query_entities,
-        boost_weight=0.3
+        boost_weight=0.3,
     )
 
     new_order = [c["chunk_id"] for c in boosted]
@@ -330,8 +320,7 @@ def test_boost_by_centrality(sample_knowledge_graph, sample_hybrid_results):
     booster = GraphBooster(sample_knowledge_graph)
 
     boosted = booster.boost_by_centrality(
-        chunk_results=sample_hybrid_results["layer3"],
-        boost_weight=0.2
+        chunk_results=sample_hybrid_results["layer3"], boost_weight=0.2
     )
 
     # chunk_1 mentions GRI 306 (centrality 1.0) → boost = 0.2
@@ -347,8 +336,7 @@ def test_graph_enhanced_retriever_initialization(mock_vector_store, sample_knowl
     from src.graph_retrieval import GraphEnhancedRetriever
 
     retriever = GraphEnhancedRetriever(
-        vector_store=mock_vector_store,
-        knowledge_graph=sample_knowledge_graph
+        vector_store=mock_vector_store, knowledge_graph=sample_knowledge_graph
     )
 
     assert retriever.vector_store == mock_vector_store
@@ -362,16 +350,11 @@ def test_graph_enhanced_retriever_with_custom_config(mock_vector_store, sample_k
     from src.graph_retrieval import GraphEnhancedRetriever, GraphRetrievalConfig
 
     config = GraphRetrievalConfig(
-        enable_graph_boost=True,
-        graph_boost_weight=0.5,
-        enable_multi_hop=True,
-        max_hop_depth=2
+        enable_graph_boost=True, graph_boost_weight=0.5, enable_multi_hop=True, max_hop_depth=2
     )
 
     retriever = GraphEnhancedRetriever(
-        vector_store=mock_vector_store,
-        knowledge_graph=sample_knowledge_graph,
-        config=config
+        vector_store=mock_vector_store, knowledge_graph=sample_knowledge_graph, config=config
     )
 
     assert retriever.config.graph_boost_weight == 0.5
@@ -380,7 +363,9 @@ def test_graph_enhanced_retriever_with_custom_config(mock_vector_store, sample_k
 
 
 # Test: Graph-Enhanced Search
-def test_graph_enhanced_search_without_boost(mock_vector_store, sample_knowledge_graph, sample_hybrid_results):
+def test_graph_enhanced_search_without_boost(
+    mock_vector_store, sample_knowledge_graph, sample_hybrid_results
+):
     """Test search without graph boosting (baseline)."""
     from src.graph_retrieval import GraphEnhancedRetriever
 
@@ -388,18 +373,14 @@ def test_graph_enhanced_search_without_boost(mock_vector_store, sample_knowledge
     mock_vector_store.hierarchical_search.return_value = sample_hybrid_results
 
     retriever = GraphEnhancedRetriever(
-        vector_store=mock_vector_store,
-        knowledge_graph=sample_knowledge_graph
+        vector_store=mock_vector_store, knowledge_graph=sample_knowledge_graph
     )
 
     query = "GRI 306 requirements"
     query_embedding = np.array([0.1] * 3072)
 
     results = retriever.search(
-        query=query,
-        query_embedding=query_embedding,
-        k=3,
-        enable_graph_boost=False
+        query=query, query_embedding=query_embedding, k=3, enable_graph_boost=False
     )
 
     # Should just return vector results truncated to k
@@ -409,7 +390,9 @@ def test_graph_enhanced_search_without_boost(mock_vector_store, sample_knowledge
     mock_vector_store.hierarchical_search.assert_called_once()
 
 
-def test_graph_enhanced_search_with_boost(mock_vector_store, sample_knowledge_graph, sample_hybrid_results):
+def test_graph_enhanced_search_with_boost(
+    mock_vector_store, sample_knowledge_graph, sample_hybrid_results
+):
     """Test search with graph boosting enabled."""
     from src.graph_retrieval import GraphEnhancedRetriever
 
@@ -417,18 +400,14 @@ def test_graph_enhanced_search_with_boost(mock_vector_store, sample_knowledge_gr
     mock_vector_store.hierarchical_search.return_value = sample_hybrid_results
 
     retriever = GraphEnhancedRetriever(
-        vector_store=mock_vector_store,
-        knowledge_graph=sample_knowledge_graph
+        vector_store=mock_vector_store, knowledge_graph=sample_knowledge_graph
     )
 
     query = "GRI 306 requirements"
     query_embedding = np.array([0.1] * 3072)
 
     results = retriever.search(
-        query=query,
-        query_embedding=query_embedding,
-        k=3,
-        enable_graph_boost=True
+        query=query, query_embedding=query_embedding, k=3, enable_graph_boost=True
     )
 
     # Should apply graph boosting
@@ -445,8 +424,7 @@ def test_get_stats(mock_vector_store, sample_knowledge_graph):
     from src.graph_retrieval import GraphEnhancedRetriever
 
     retriever = GraphEnhancedRetriever(
-        vector_store=mock_vector_store,
-        knowledge_graph=sample_knowledge_graph
+        vector_store=mock_vector_store, knowledge_graph=sample_knowledge_graph
     )
 
     stats = retriever.get_stats()
@@ -462,27 +440,19 @@ def test_multi_hop_expansion(mock_vector_store, sample_knowledge_graph, sample_h
     """Test multi-hop graph traversal (placeholder test)."""
     from src.graph_retrieval import GraphEnhancedRetriever, GraphRetrievalConfig
 
-    config = GraphRetrievalConfig(
-        enable_multi_hop=True,
-        max_hop_depth=2
-    )
+    config = GraphRetrievalConfig(enable_multi_hop=True, max_hop_depth=2)
 
     mock_vector_store.hierarchical_search.return_value = sample_hybrid_results
 
     retriever = GraphEnhancedRetriever(
-        vector_store=mock_vector_store,
-        knowledge_graph=sample_knowledge_graph,
-        config=config
+        vector_store=mock_vector_store, knowledge_graph=sample_knowledge_graph, config=config
     )
 
     query = "What topics are covered by standards issued by GSSB?"
     query_embedding = np.array([0.1] * 3072)
 
     results = retriever.search(
-        query=query,
-        query_embedding=query_embedding,
-        k=3,
-        enable_graph_boost=True
+        query=query, query_embedding=query_embedding, k=3, enable_graph_boost=True
     )
 
     # Multi-hop expansion is implemented (logged but not yet affecting results)

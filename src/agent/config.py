@@ -19,6 +19,7 @@ def _load_agent_system_prompt() -> str:
     """Load agent system prompt from prompts/ directory."""
     try:
         from .prompt_loader import load_prompt
+
         return load_prompt("agent_system_prompt")
     except Exception as e:
         logger.error(f"Failed to load agent system prompt: {e}")
@@ -53,13 +54,16 @@ def _detect_optimal_embedding_model() -> str:
 
         # Check for GPU acceleration (Apple Silicon MPS or Linux CUDA)
         has_gpu = (
-            (system == "Darwin" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) or
-            (system == "Linux" and torch.cuda.is_available())
-        )
+            system == "Darwin"
+            and hasattr(torch.backends, "mps")
+            and torch.backends.mps.is_available()
+        ) or (system == "Linux" and torch.cuda.is_available())
 
         if has_gpu:
             gpu_type = "MPS" if system == "Darwin" else "CUDA"
-            logger.info(f"Detected {system} with {gpu_type} - using bge-m3 (local, GPU-accelerated)")
+            logger.info(
+                f"Detected {system} with {gpu_type} - using bge-m3 (local, GPU-accelerated)"
+            )
             return "bge-m3"
 
     except ImportError:
@@ -108,13 +112,15 @@ class ToolConfig:
         if not 0.0 <= self.graph_boost_weight <= 1.0:
             raise ValueError(f"graph_boost_weight must be in [0, 1], got {self.graph_boost_weight}")
         if not 0.0 <= self.compliance_threshold <= 1.0:
-            raise ValueError(f"compliance_threshold must be in [0, 1], got {self.compliance_threshold}")
+            raise ValueError(
+                f"compliance_threshold must be in [0, 1], got {self.compliance_threshold}"
+            )
         if self.max_document_compare <= 0:
-            raise ValueError(f"max_document_compare must be positive, got {self.max_document_compare}")
+            raise ValueError(
+                f"max_document_compare must be positive, got {self.max_document_compare}"
+            )
         if self.context_window < 0:
             raise ValueError(f"context_window must be non-negative, got {self.context_window}")
-
-
 
 
 @dataclass

@@ -23,8 +23,7 @@ try:
     import faiss
 except ImportError:
     raise ImportError(
-        "FAISS required for vector store. "
-        "Install with: uv pip install faiss-cpu (or faiss-gpu)"
+        "FAISS required for vector store. " "Install with: uv pip install faiss-cpu (or faiss-gpu)"
     )
 
 # Import utilities
@@ -71,16 +70,12 @@ class FAISSVectorStore:
         self.doc_id_to_indices = {
             1: {},  # Layer 1: doc_id -> [indices]
             2: {},  # Layer 2: doc_id -> [indices]
-            3: {}   # Layer 3: doc_id -> [indices]
+            3: {},  # Layer 3: doc_id -> [indices]
         }
 
         logger.info(f"FAISSVectorStore initialized: {dimensions}D, 3 layers")
 
-    def add_chunks(
-        self,
-        chunks_dict: Dict[str, List],
-        embeddings_dict: Dict[str, np.ndarray]
-    ):
+    def add_chunks(self, chunks_dict: Dict[str, List], embeddings_dict: Dict[str, np.ndarray]):
         """
         Add chunks and embeddings to appropriate layers.
 
@@ -91,25 +86,13 @@ class FAISSVectorStore:
         logger.info("Adding chunks to FAISS indexes...")
 
         # Add Layer 1 (Document level)
-        self._add_layer(
-            layer=1,
-            chunks=chunks_dict["layer1"],
-            embeddings=embeddings_dict["layer1"]
-        )
+        self._add_layer(layer=1, chunks=chunks_dict["layer1"], embeddings=embeddings_dict["layer1"])
 
         # Add Layer 2 (Section level)
-        self._add_layer(
-            layer=2,
-            chunks=chunks_dict["layer2"],
-            embeddings=embeddings_dict["layer2"]
-        )
+        self._add_layer(layer=2, chunks=chunks_dict["layer2"], embeddings=embeddings_dict["layer2"])
 
         # Add Layer 3 (Chunk level - PRIMARY)
-        self._add_layer(
-            layer=3,
-            chunks=chunks_dict["layer3"],
-            embeddings=embeddings_dict["layer3"]
-        )
+        self._add_layer(layer=3, chunks=chunks_dict["layer3"], embeddings=embeddings_dict["layer3"])
 
         logger.info(
             f"Chunks added: "
@@ -158,7 +141,7 @@ class FAISSVectorStore:
                 "page_number": chunk.metadata.page_number,
                 "layer": layer,
                 # Store raw_content for generation (without SAC)
-                "content": chunk.raw_content
+                "content": chunk.raw_content,
             }
             metadata.append(chunk_meta)
 
@@ -175,7 +158,7 @@ class FAISSVectorStore:
         query_embedding: np.ndarray,
         k: int = 6,
         document_filter: Optional[str] = None,
-        similarity_threshold: Optional[float] = None
+        similarity_threshold: Optional[float] = None,
     ) -> List[Dict]:
         """
         Search Layer 3 (PRIMARY retrieval layer).
@@ -194,34 +177,20 @@ class FAISSVectorStore:
             query_embedding=query_embedding,
             k=k,
             document_filter=document_filter,
-            similarity_threshold=similarity_threshold
+            similarity_threshold=similarity_threshold,
         )
 
     def search_layer2(
-        self,
-        query_embedding: np.ndarray,
-        k: int = 3,
-        document_filter: Optional[str] = None
+        self, query_embedding: np.ndarray, k: int = 3, document_filter: Optional[str] = None
     ) -> List[Dict]:
         """Search Layer 2 (Section level)."""
         return self._search_layer(
-            layer=2,
-            query_embedding=query_embedding,
-            k=k,
-            document_filter=document_filter
+            layer=2, query_embedding=query_embedding, k=k, document_filter=document_filter
         )
 
-    def search_layer1(
-        self,
-        query_embedding: np.ndarray,
-        k: int = 1
-    ) -> List[Dict]:
+    def search_layer1(self, query_embedding: np.ndarray, k: int = 1) -> List[Dict]:
         """Search Layer 1 (Document level)."""
-        return self._search_layer(
-            layer=1,
-            query_embedding=query_embedding,
-            k=k
-        )
+        return self._search_layer(layer=1, query_embedding=query_embedding, k=k)
 
     def _search_layer(
         self,
@@ -229,7 +198,7 @@ class FAISSVectorStore:
         query_embedding: np.ndarray,
         k: int,
         document_filter: Optional[str] = None,
-        similarity_threshold: Optional[float] = None
+        similarity_threshold: Optional[float] = None,
     ) -> List[Dict]:
         """Search a specific layer."""
         # Select index and metadata
@@ -309,7 +278,7 @@ class FAISSVectorStore:
         query_embedding: np.ndarray,
         k_layer3: int = 6,
         use_doc_filtering: bool = True,
-        similarity_threshold_offset: float = 0.25
+        similarity_threshold_offset: float = 0.25,
     ) -> Dict[str, List[Dict]]:
         """
         Hierarchical search across all layers with DRM prevention.
@@ -345,9 +314,7 @@ class FAISSVectorStore:
 
         # Step 2: Search Layer 3 (PRIMARY - Chunk level)
         layer3_results = self.search_layer3(
-            query_embedding=query_embedding,
-            k=k_layer3,
-            document_filter=document_filter
+            query_embedding=query_embedding, k=k_layer3, document_filter=document_filter
         )
 
         # Apply similarity threshold (top_score - 25%)
@@ -364,9 +331,7 @@ class FAISSVectorStore:
 
         # Step 3: Optional Layer 2 (Section context)
         layer2_results = self.search_layer2(
-            query_embedding=query_embedding,
-            k=3,
-            document_filter=document_filter
+            query_embedding=query_embedding, k=3, document_filter=document_filter
         )
         results["layer2"] = layer2_results
 
@@ -411,9 +376,7 @@ class FAISSVectorStore:
 
             # Update doc_id_to_indices using centralized utility
             PersistenceManager.update_doc_id_indices(
-                self.doc_id_to_indices[1],
-                other.doc_id_to_indices[1],
-                base_idx
+                self.doc_id_to_indices[1], other.doc_id_to_indices[1], base_idx
             )
 
         # Merge Layer 2
@@ -427,9 +390,7 @@ class FAISSVectorStore:
 
             # Update doc_id_to_indices using centralized utility
             PersistenceManager.update_doc_id_indices(
-                self.doc_id_to_indices[2],
-                other.doc_id_to_indices[2],
-                base_idx
+                self.doc_id_to_indices[2], other.doc_id_to_indices[2], base_idx
             )
 
         # Merge Layer 3
@@ -443,13 +404,13 @@ class FAISSVectorStore:
 
             # Update doc_id_to_indices using centralized utility
             PersistenceManager.update_doc_id_indices(
-                self.doc_id_to_indices[3],
-                other.doc_id_to_indices[3],
-                base_idx
+                self.doc_id_to_indices[3], other.doc_id_to_indices[3], base_idx
             )
 
         stats = self.get_stats()
-        logger.info(f"Merge complete: {stats['documents']} total documents, {stats['total_vectors']} vectors")
+        logger.info(
+            f"Merge complete: {stats['documents']} total documents, {stats['total_vectors']} vectors"
+        )
 
     def get_stats(self) -> Dict:
         """Get statistics about the vector store."""
@@ -459,14 +420,14 @@ class FAISSVectorStore:
             "layer2_count": self.index_layer2.ntotal,
             "layer3_count": self.index_layer3.ntotal,
             "total_vectors": (
-                self.index_layer1.ntotal +
-                self.index_layer2.ntotal +
-                self.index_layer3.ntotal
+                self.index_layer1.ntotal + self.index_layer2.ntotal + self.index_layer3.ntotal
             ),
-            "documents": len(set(
-                m["document_id"] for m in
-                self.metadata_layer1 + self.metadata_layer2 + self.metadata_layer3
-            ))
+            "documents": len(
+                set(
+                    m["document_id"]
+                    for m in self.metadata_layer1 + self.metadata_layer2 + self.metadata_layer3
+                )
+            ),
         }
 
     def save(self, output_dir: Path):
@@ -496,7 +457,7 @@ class FAISSVectorStore:
             "layer1_count": self.index_layer1.ntotal,
             "layer2_count": self.index_layer2.ntotal,
             "layer3_count": self.index_layer3.ntotal,
-            "format_version": "1.0"
+            "format_version": "1.0",
         }
         PersistenceManager.save_json(output_dir / "faiss_metadata.json", config)
 
@@ -505,7 +466,7 @@ class FAISSVectorStore:
             "metadata_layer1": self.metadata_layer1,
             "metadata_layer2": self.metadata_layer2,
             "metadata_layer3": self.metadata_layer3,
-            "doc_id_to_indices": self.doc_id_to_indices
+            "doc_id_to_indices": self.doc_id_to_indices,
         }
         PersistenceManager.save_pickle(output_dir / "faiss_arrays.pkl", arrays)
 
@@ -592,10 +553,7 @@ if __name__ == "__main__":
     from embedding_generator import EmbeddingGenerator, EmbeddingConfig
 
     # Extract and chunk
-    config = ExtractionConfig(
-        enable_smart_hierarchy=True,
-        generate_summaries=True
-    )
+    config = ExtractionConfig(enable_smart_hierarchy=True, generate_summaries=True)
 
     extractor = DoclingExtractorV2(config)
     result = extractor.extract("document.pdf")
@@ -609,7 +567,7 @@ if __name__ == "__main__":
     embeddings = {
         "layer1": embedder.embed_chunks(chunks["layer1"], layer=1),
         "layer2": embedder.embed_chunks(chunks["layer2"], layer=2),
-        "layer3": embedder.embed_chunks(chunks["layer3"], layer=3)
+        "layer3": embedder.embed_chunks(chunks["layer3"], layer=3),
     }
 
     # Create vector store

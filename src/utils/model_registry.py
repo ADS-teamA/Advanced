@@ -48,23 +48,18 @@ class ModelRegistry:
         "haiku": "claude-haiku-4-5-20251001",
         "claude-haiku": "claude-haiku-4-5-20251001",
         "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-
         "sonnet": "claude-sonnet-4-5-20250929",
         "claude-sonnet": "claude-sonnet-4-5-20250929",
         "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
-
         "opus": "claude-opus-4",
         "claude-opus": "claude-opus-4",
-
         # OpenAI models
         "gpt-4o": "gpt-4o",
         "gpt-4o-mini": "gpt-4o-mini",
-
         # O-series reasoning models
         "o1": "o1",
         "o1-mini": "o1-mini",
         "o3-mini": "o3-mini",
-
         # Local models
         "saul-7b": "Equall/Saul-7B-Instruct-v1",
         "saul": "Equall/Saul-7B-Instruct-v1",
@@ -79,19 +74,16 @@ class ModelRegistry:
         "text-embedding-3-large": "text-embedding-3-large",
         "text-embedding-3-small": "text-embedding-3-small",
         "text-embedding-ada-002": "text-embedding-ada-002",
-
         # Voyage AI embeddings
         "voyage-3-large": "voyage-3-large",
         "voyage-3": "voyage-3",
         "voyage-3-lite": "voyage-3-lite",
         "voyage-law-2": "voyage-law-2",
-
         # HuggingFace embeddings (local)
         "bge-m3": "BAAI/bge-m3",
         "bge-large": "BAAI/bge-large-en-v1.5",
         "bge-base": "BAAI/bge-base-en-v1.5",
         "bge-small": "BAAI/bge-small-en-v1.5",
-
         # Aliases
         "default": "BAAI/bge-m3",  # Default to local model (free)
     }
@@ -104,12 +96,10 @@ class ModelRegistry:
         # MS MARCO models (cross-encoders)
         "ms-marco-mini": "cross-encoder/ms-marco-MiniLM-L-6-v2",
         "ms-marco-base": "cross-encoder/ms-marco-MiniLM-L-12-v2",
-
         # BAAI rerankers
         "bge-reranker-base": "BAAI/bge-reranker-base",
         "bge-reranker-large": "BAAI/bge-reranker-large",
         "bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
-
         # Aliases
         "default": "cross-encoder/ms-marco-MiniLM-L-6-v2",
         "fast": "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -258,7 +248,11 @@ class ModelRegistry:
             resolved = model
 
         # Detect provider by model name pattern
-        if "claude" in resolved.lower() or "haiku" in resolved.lower() or "sonnet" in resolved.lower():
+        if (
+            "claude" in resolved.lower()
+            or "haiku" in resolved.lower()
+            or "sonnet" in resolved.lower()
+        ):
             return "anthropic"
         elif "gpt-" in resolved.lower() or "o1" in resolved.lower() or "o3" in resolved.lower():
             return "openai"

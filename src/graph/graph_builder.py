@@ -114,7 +114,9 @@ class SimpleGraphBuilder(GraphBuilder):
                 self.relationships_by_target[rel.target_entity_id] = set()
             self.relationships_by_target[rel.target_entity_id].add(rel.id)
 
-        logger.info(f"Added {len(relationships)} relationships to graph (total: {len(self.relationships)})")
+        logger.info(
+            f"Added {len(relationships)} relationships to graph (total: {len(self.relationships)})"
+        )
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Get entity by ID."""
@@ -139,7 +141,9 @@ class SimpleGraphBuilder(GraphBuilder):
 
         return [self.relationships[rid] for rid in rel_ids]
 
-    def get_outgoing_relationships(self, entity_id: str, rel_type: Optional[RelationshipType] = None) -> List[Relationship]:
+    def get_outgoing_relationships(
+        self, entity_id: str, rel_type: Optional[RelationshipType] = None
+    ) -> List[Relationship]:
         """Get outgoing relationships from an entity."""
         rel_ids = self.relationships_by_source.get(entity_id, set())
         rels = [self.relationships[rid] for rid in rel_ids]
@@ -149,7 +153,9 @@ class SimpleGraphBuilder(GraphBuilder):
 
         return rels
 
-    def get_incoming_relationships(self, entity_id: str, rel_type: Optional[RelationshipType] = None) -> List[Relationship]:
+    def get_incoming_relationships(
+        self, entity_id: str, rel_type: Optional[RelationshipType] = None
+    ) -> List[Relationship]:
         """Get incoming relationships to an entity."""
         rel_ids = self.relationships_by_target.get(entity_id, set())
         rels = [self.relationships[rid] for rid in rel_ids]
@@ -159,7 +165,9 @@ class SimpleGraphBuilder(GraphBuilder):
 
         return rels
 
-    def get_neighbors(self, entity_id: str, rel_type: Optional[RelationshipType] = None) -> List[Entity]:
+    def get_neighbors(
+        self, entity_id: str, rel_type: Optional[RelationshipType] = None
+    ) -> List[Entity]:
         """Get neighbor entities connected by relationships."""
         neighbors = []
 
@@ -244,6 +252,7 @@ class Neo4jGraphBuilder(GraphBuilder):
         # Initialize Neo4j driver
         try:
             from neo4j import GraphDatabase
+
             self.driver = GraphDatabase.driver(
                 self.neo4j_config.uri,
                 auth=(self.neo4j_config.username, self.neo4j_config.password),
@@ -269,10 +278,7 @@ class Neo4jGraphBuilder(GraphBuilder):
             )
 
             # Create indexes on Entity properties
-            session.run(
-                "CREATE INDEX entity_type_idx IF NOT EXISTS "
-                "FOR (e:Entity) ON (e.type)"
-            )
+            session.run("CREATE INDEX entity_type_idx IF NOT EXISTS " "FOR (e:Entity) ON (e.type)")
 
             session.run(
                 "CREATE INDEX entity_normalized_value_idx IF NOT EXISTS "
@@ -460,6 +466,7 @@ class NetworkXGraphBuilder(GraphBuilder):
 
         try:
             import networkx as nx
+
             self.nx = nx
             self.graph = nx.DiGraph()
         except ImportError:
@@ -519,7 +526,9 @@ class NetworkXGraphBuilder(GraphBuilder):
 
     def export_to_knowledge_graph(self) -> KnowledgeGraph:
         """Export to KnowledgeGraph object."""
-        entities = [data["entity_obj"] for _, data in self.graph.nodes(data=True) if "entity_obj" in data]
+        entities = [
+            data["entity_obj"] for _, data in self.graph.nodes(data=True) if "entity_obj" in data
+        ]
 
         relationships = []
         for _, _, data in self.graph.edges(data=True):

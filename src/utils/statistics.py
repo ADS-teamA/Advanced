@@ -296,8 +296,7 @@ if __name__ == "__main__":
     # Example 4: OperationStats with metadata
     print("\n4. OperationStats with custom metadata...")
     stats_with_meta = OperationStats(
-        operation_name="embedding",
-        metadata={"model": "bge-m3", "dimensions": 1024}
+        operation_name="embedding", metadata={"model": "bge-m3", "dimensions": 1024}
     )
     stats_with_meta.total_calls = 100
     stats_with_meta.success_count = 95

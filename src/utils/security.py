@@ -59,57 +59,31 @@ def sanitize_error(error: Union[str, Exception]) -> str:
 
     # Anthropic API keys (sk-ant-api03-...)
     # Pattern: sk-ant- followed by 32+ alphanumeric/dash/underscore characters
-    message = re.sub(
-        r'sk-ant-[a-zA-Z0-9_-]{32,}',
-        'sk-ant-***',
-        message,
-        flags=re.IGNORECASE
-    )
+    message = re.sub(r"sk-ant-[a-zA-Z0-9_-]{32,}", "sk-ant-***", message, flags=re.IGNORECASE)
 
     # OpenAI API keys (sk-proj-..., sk-...)
     # Pattern: sk- followed by 32+ alphanumeric characters
     # Note: This must come AFTER sk-ant- to avoid partial masking
-    message = re.sub(
-        r'sk-[a-zA-Z0-9]{32,}',
-        'sk-***',
-        message,
-        flags=re.IGNORECASE
-    )
+    message = re.sub(r"sk-[a-zA-Z0-9]{32,}", "sk-***", message, flags=re.IGNORECASE)
 
     # Voyage AI keys (pa-...)
     # Pattern: pa- followed by 32+ alphanumeric/dash/underscore characters
-    message = re.sub(
-        r'pa-[a-zA-Z0-9_-]{32,}',
-        'pa-***',
-        message,
-        flags=re.IGNORECASE
-    )
+    message = re.sub(r"pa-[a-zA-Z0-9_-]{32,}", "pa-***", message, flags=re.IGNORECASE)
 
     # Generic API keys (api_key=xxx, apikey:xxx, api-key=xxx)
     # Pattern: api[_-]?key followed by = or : and 20+ characters
     message = re.sub(
-        r'api[_-]?key[=:]\s*[a-zA-Z0-9_-]{20,}',
-        'api_key=***',
-        message,
-        flags=re.IGNORECASE
+        r"api[_-]?key[=:]\s*[a-zA-Z0-9_-]{20,}", "api_key=***", message, flags=re.IGNORECASE
     )
 
     # Bearer tokens (Bearer xxx)
     # Pattern: Bearer followed by 20+ alphanumeric/dash/underscore characters
-    message = re.sub(
-        r'Bearer\s+[a-zA-Z0-9_-]{20,}',
-        'Bearer ***',
-        message,
-        flags=re.IGNORECASE
-    )
+    message = re.sub(r"Bearer\s+[a-zA-Z0-9_-]{20,}", "Bearer ***", message, flags=re.IGNORECASE)
 
     # Password fields (password=xxx, pwd=xxx)
     # Pattern: password or pwd followed by = or : and 8+ characters
     message = re.sub(
-        r'(password|pwd)[=:]\s*[a-zA-Z0-9_-]{8,}',
-        r'\1=***',
-        message,
-        flags=re.IGNORECASE
+        r"(password|pwd)[=:]\s*[a-zA-Z0-9_-]{8,}", r"\1=***", message, flags=re.IGNORECASE
     )
 
     return message

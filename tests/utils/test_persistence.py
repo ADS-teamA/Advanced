@@ -284,11 +284,7 @@ class TestPersistenceIntegration:
 
         # Merge layer 1 with offset 5 (store1 has 5 chunks)
         offset = 5
-        PersistenceManager.update_doc_id_indices(
-            store1_indices[1],
-            store2_indices[1],
-            offset
-        )
+        PersistenceManager.update_doc_id_indices(store1_indices[1], store2_indices[1], offset)
 
         # Verify merge
         assert store1_indices[1]["doc1"] == [0, 1]  # Unchanged

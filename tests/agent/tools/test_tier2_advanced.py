@@ -290,6 +290,7 @@ class TestCompareDocumentsTool:
 
     def test_compare_documents_basic(self, tool_dependencies, mock_vector_store):
         """Test basic document comparison."""
+
         # Setup mock to return different results for each document
         def custom_search(**kwargs):
             doc_filter = kwargs.get("document_filter")
@@ -333,11 +334,7 @@ class TestCompareDocumentsTool:
         """Test document comparison with specific aspect."""
         tool = CompareDocumentsTool(**tool_dependencies)
 
-        result = tool.execute(
-            doc_id_1="doc1",
-            doc_id_2="doc2",
-            comparison_aspect="requirements"
-        )
+        result = tool.execute(doc_id_1="doc1", doc_id_2="doc2", comparison_aspect="requirements")
 
         assert result.success is True
         assert result.data["comparison_aspect"] == "requirements"
@@ -460,11 +457,7 @@ class TestTemporalSearchTool:
         """Test temporal search with start date filter."""
         tool = TemporalSearchTool(**tool_dependencies)
 
-        result = tool.execute(
-            query="regulations",
-            start_date="2023-01-01",
-            k=6
-        )
+        result = tool.execute(query="regulations", start_date="2023-01-01", k=6)
 
         assert result.success is True
         assert result.metadata["start_date"] == "2023-01-01"
@@ -474,10 +467,7 @@ class TestTemporalSearchTool:
         tool = TemporalSearchTool(**tool_dependencies)
 
         result = tool.execute(
-            query="regulations",
-            start_date="2023-01-01",
-            end_date="2023-12-31",
-            k=6
+            query="regulations", start_date="2023-01-01", end_date="2023-12-31", k=6
         )
 
         assert result.success is True
@@ -523,12 +513,7 @@ class TestTemporalSearchTool:
         tool_dependencies["reranker"] = mock_reranker
 
         tool = TemporalSearchTool(**tool_dependencies)
-        result = tool.execute(
-            query="test",
-            start_date="2023-01-01",
-            end_date="2023-12-31",
-            k=6
-        )
+        result = tool.execute(query="test", start_date="2023-01-01", end_date="2023-12-31", k=6)
 
         assert result.success is True
         # Only chunk with date 2023-05-15 should pass filter
@@ -555,12 +540,7 @@ class TestTemporalSearchTool:
         tool_dependencies["vector_store"] = mock_vs
 
         tool = TemporalSearchTool(**tool_dependencies)
-        result = tool.execute(
-            query="test",
-            start_date="2023-01-01",
-            end_date="2023-12-31",
-            k=6
-        )
+        result = tool.execute(query="test", start_date="2023-01-01", end_date="2023-12-31", k=6)
 
         assert result.success is True
         assert isinstance(result.data, list)
@@ -691,10 +671,7 @@ class TestHybridSearchWithFiltersTool:
 
         tool = HybridSearchWithFiltersTool(**tool_dependencies)
         result = tool.execute(
-            query="test",
-            document_type="regulation",
-            section_type="requirements",
-            k=6
+            query="test", document_type="regulation", section_type="requirements", k=6
         )
 
         assert result.success is True
@@ -833,11 +810,7 @@ class TestExpandSearchContextTool:
         """Test section-based expansion."""
         tool = ExpandSearchContextTool(**tool_dependencies)
 
-        result = tool.execute(
-            chunk_ids=["doc1:sec1:0"],
-            expansion_strategy="section",
-            k=3
-        )
+        result = tool.execute(chunk_ids=["doc1:sec1:0"], expansion_strategy="section", k=3)
 
         assert result.success is True
         assert "expansions" in result.data
@@ -847,11 +820,7 @@ class TestExpandSearchContextTool:
         """Test similarity-based expansion."""
         tool = ExpandSearchContextTool(**tool_dependencies)
 
-        result = tool.execute(
-            chunk_ids=["doc1:sec1:0"],
-            expansion_strategy="similarity",
-            k=3
-        )
+        result = tool.execute(chunk_ids=["doc1:sec1:0"], expansion_strategy="similarity", k=3)
 
         assert result.success is True
         assert result.data["expansion_strategy"] == "similarity"
@@ -860,11 +829,7 @@ class TestExpandSearchContextTool:
         """Test hybrid expansion (section + similarity)."""
         tool = ExpandSearchContextTool(**tool_dependencies)
 
-        result = tool.execute(
-            chunk_ids=["doc1:sec1:0"],
-            expansion_strategy="hybrid",
-            k=4
-        )
+        result = tool.execute(chunk_ids=["doc1:sec1:0"], expansion_strategy="hybrid", k=4)
 
         assert result.success is True
         assert result.data["expansion_strategy"] == "hybrid"
@@ -884,9 +849,7 @@ class TestExpandSearchContextTool:
         tool = ExpandSearchContextTool(**tool_dependencies)
 
         result = tool.execute(
-            chunk_ids=["doc1:sec1:0", "doc1:sec1:1"],
-            expansion_strategy="section",
-            k=2
+            chunk_ids=["doc1:sec1:0", "doc1:sec1:1"], expansion_strategy="section", k=2
         )
 
         assert result.success is True
@@ -896,11 +859,7 @@ class TestExpandSearchContextTool:
         """Test that duplicate chunks are removed."""
         tool = ExpandSearchContextTool(**tool_dependencies)
 
-        result = tool.execute(
-            chunk_ids=["doc1:sec1:0"],
-            expansion_strategy="hybrid",
-            k=3
-        )
+        result = tool.execute(chunk_ids=["doc1:sec1:0"], expansion_strategy="hybrid", k=3)
 
         # Check that target chunk is not in expanded_chunks
         if result.success and result.data["expansions"]:
@@ -939,10 +898,7 @@ class TestChunkSimilaritySearchTool:
         assert result.metadata["cross_document"] is False
         # All similar chunks should be from same document
         if result.data["similar_chunks"]:
-            assert all(
-                c["document_id"] == "doc1"
-                for c in result.data["similar_chunks"]
-            )
+            assert all(c["document_id"] == "doc1" for c in result.data["similar_chunks"])
 
     def test_chunk_similarity_search_chunk_not_found(self, tool_dependencies, mock_vector_store):
         """Test when chunk ID not found."""
@@ -1116,9 +1072,7 @@ class TestEdgeCasesAndErrors:
 
     def test_invalid_k_parameter(self, tool_dependencies):
         """Test that invalid k values are caught by validation."""
-        tool = MultiHopSearchTool(
-            **{**tool_dependencies, "graph_retriever": Mock()}
-        )
+        tool = MultiHopSearchTool(**{**tool_dependencies, "graph_retriever": Mock()})
 
         # k=0 should fail validation
         result = tool.execute(query="test", k=0)

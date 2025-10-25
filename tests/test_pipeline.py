@@ -93,6 +93,7 @@ class TestPipelineIntegration:
         """Create test configuration."""
         import os
         from dotenv import load_dotenv
+
         load_dotenv()
 
         config = PipelineConfig()
@@ -147,21 +148,24 @@ class TestPipelineIntegration:
         if config.chunking.enable_sac:
             for chunk in text_chunks:
                 # Content should be augmented (longer than raw)
-                assert len(chunk.content) > len(chunk.raw_content), \
-                    "SAC should augment content with summary"
+                assert len(chunk.content) > len(
+                    chunk.raw_content
+                ), "SAC should augment content with summary"
 
                 # Summary should be in augmented content
-                assert result.summary.text in chunk.content, \
-                    "Summary should be prepended to chunk content"
+                assert (
+                    result.summary.text in chunk.content
+                ), "Summary should be prepended to chunk content"
 
                 # Raw content should not contain summary
-                assert result.summary.text not in chunk.raw_content, \
-                    "Raw content should not contain summary"
+                assert (
+                    result.summary.text not in chunk.raw_content
+                ), "Raw content should not contain summary"
 
         # Verify metrics
-        assert result.metrics['total_chunks'] == len(result.chunks)
-        assert result.metrics['sac_enabled'] == config.chunking.enable_sac
-        assert result.metrics['multi_layer_enabled'] == config.chunking.enable_multi_layer
+        assert result.metrics["total_chunks"] == len(result.chunks)
+        assert result.metrics["sac_enabled"] == config.chunking.enable_sac
+        assert result.metrics["multi_layer_enabled"] == config.chunking.enable_multi_layer
 
     def test_pipeline_with_sac_disabled(self, config, sample_pdf_path):
         """Test pipeline with SAC disabled."""
@@ -173,8 +177,9 @@ class TestPipelineIntegration:
         # With SAC disabled, content should equal raw_content
         text_chunks = result.get_text_chunks()
         for chunk in text_chunks:
-            assert chunk.content == chunk.raw_content, \
-                "Without SAC, content should equal raw_content"
+            assert (
+                chunk.content == chunk.raw_content
+            ), "Without SAC, content should equal raw_content"
 
     def test_save_results(self, config, sample_pdf_path, tmp_path):
         """Test saving results to disk."""
