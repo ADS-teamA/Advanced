@@ -548,9 +548,12 @@ class AgentValidator:
             registry = get_registry()
             tool_count = len(registry._tool_classes)
 
-            # Minimum expected tools (Tier 1: 6, Tier 2: 6, Tier 3: 5 = 17 total)
+            # Minimum expected tools (Tier 1: 5, Tier 2: 7, Tier 3: 3 = 15 total)
+            # Tier 1: simple_search, get_document_list, list_available_tools, get_document_info, exact_match_search
+            # Tier 2: multi_hop_search, compare_documents, explain_search_results, filtered_search, similarity_search, get_chunk_context, expand_search_context
+            # Tier 3: timeline_view, summarize_section, get_stats
             # Update this count when adding new tools to the registry
-            MINIMUM_TOOL_COUNT = 17
+            MINIMUM_TOOL_COUNT = 15
 
             if tool_count < MINIMUM_TOOL_COUNT:
                 self.results.append(

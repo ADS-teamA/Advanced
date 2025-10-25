@@ -33,28 +33,24 @@ Interactive CLI agent powered by Claude SDK for legal and technical document ret
 ### Basic Usage
 
 ```bash
-# Start agent with hybrid vector store
-python run_agent.py --store output/hybrid_store
+# Start agent with default vector store (vector_db/)
+./run_cli.sh
 
-# With knowledge graph
-python run_agent.py --store output/hybrid_store --kg output/knowledge_graph.json
+# Or with custom vector store
+./run_cli.sh output/my_doc/phase4_vector_store
+
+# Or using Python directly
+uv run python -m src.agent.cli --vector-store vector_db
 
 # Custom model
-python run_agent.py --store output/hybrid_store --model claude-sonnet-4-5-20250929
+uv run python -m src.agent.cli --vector-store vector_db --model claude-sonnet-4-5-20250929
 
-# Enable HyDE for better retrieval
-python run_agent.py --store output/hybrid_store --enable-hyde
+# Debug mode
+./run_cli.sh --debug
+uv run python -m src.agent.cli --vector-store vector_db --debug
 
-# Enable query decomposition
-python run_agent.py --store output/hybrid_store --enable-decomposition
-
-# Full-featured mode
-python run_agent.py \
-  --store output/hybrid_store \
-  --kg output/knowledge_graph.json \
-  --enable-hyde \
-  --enable-decomposition \
-  --model claude-sonnet-4-5-20250929
+# Disable streaming
+uv run python -m src.agent.cli --vector-store vector_db --no-streaming
 ```
 
 ### Interactive Session
@@ -150,28 +146,17 @@ Interactive commands available in the agent CLI:
 ### CLI Arguments
 
 ```bash
-python run_agent.py [OPTIONS]
+# Using shell script (recommended)
+./run_cli.sh [vector_store_path] [--debug]
 
-Required:
-  --store PATH              Path to hybrid vector store directory
+# Using Python directly
+uv run python -m src.agent.cli [OPTIONS]
 
-Optional:
-  --kg, --knowledge-graph PATH   Path to knowledge graph JSON
-  --model TEXT              Claude model (default: claude-sonnet-4-5-20250929)
-  --max-tokens INT          Max response tokens (default: 4096)
-  --temperature FLOAT       Model temperature (default: 0.3)
-
-Features:
-  --enable-hyde             Enable HyDE (Hypothetical Document Embeddings)
-  --enable-decomposition    Enable query decomposition
-  --no-reranking            Disable cross-encoder reranking
-  --no-stream               Disable streaming responses
-
-Display:
-  --citation-format [inline|detailed|footnote]
-                            Citation format (default: inline)
-  --hide-tool-calls         Don't show tool execution messages
-  -v, --verbose             Enable verbose logging
+Options:
+  --vector-store PATH      Path to vector store directory (default: vector_db)
+  --model TEXT             Claude model (default: claude-haiku-4-5)
+  --debug                  Enable debug mode with detailed logging
+  --no-streaming           Disable streaming responses
 ```
 
 ### Environment Variables
@@ -206,64 +191,48 @@ class AgentConfig:
     enable_query_decomposition: bool = False
 ```
 
-## 🔬 Query Optimization
+## 🔬 Advanced Features
 
-### HyDE (Hypothetical Document Embeddings)
+The agent includes several advanced features that are built into the tool system:
 
-**What it does:** Generates hypothetical answers to your query, then searches using those instead of the original query.
+### Hybrid Search
 
-**When to enable:** Improves retrieval quality when:
-- Questions are abstract or conceptual
-- Queries don't use document-specific terminology
-- You want to find semantically similar content
+**Automatic:** The agent uses hybrid search (BM25 + Dense + RRF + Cross-encoder reranking) for all queries.
 
-**Example:**
-```bash
-python run_agent.py --store output/hybrid_store --enable-hyde
+**What it does:** Combines keyword matching with semantic search for best results.
 
-> What are best practices for waste management?
+**Research:** Based on LegalBench-RAG and Multi-Layer Embeddings research.
 
-# Agent generates hypothetical document like:
-# "Organizations should implement waste segregation systems,
-#  track waste generation metrics, and document disposal methods..."
-# Then searches using this hypothetical document
-```
+### Knowledge Graph Integration
 
-**Research:** Based on Gao et al. (2022) "Precise Zero-Shot Dense Retrieval"
+**Automatic:** If knowledge graph exists in vector store, it's automatically loaded.
 
-### Query Decomposition
+**What it does:** Enables entity-aware search and relationship queries through specialized tools:
+- `explain_entity` - Get comprehensive entity information
+- `multi_hop_search` - Multi-hop graph traversal
+- `get_entity_relationships` - Query entity relationships
 
-**What it does:** Breaks complex multi-part queries into simpler sub-queries that are answered independently.
+### Tool-Based Optimization
 
-**When to enable:** Useful for:
-- Complex queries with multiple parts ("Find X and check if Y")
-- Comparison tasks ("Compare A and B")
-- Multi-step reasoning ("Find X, then analyze Y")
+**Automatic:** The agent autonomously selects the best tools for each query.
+
+**How it works:**
+- Claude analyzes your question
+- Selects appropriate tools from 27 available
+- Executes tools in optimal sequence
+- Combines results into comprehensive answer
 
 **Example:**
 ```bash
-python run_agent.py --store output/hybrid_store --enable-decomposition
+./run_cli.sh
 
 > Find waste requirements in GRI 306 and check if our contract complies
 
-# Agent decomposes into:
-# 1. What are the waste disposal requirements in GRI 306?
-# 2. What waste disposal provisions are in our contract?
-# 3. Do the contract provisions comply with GRI 306 requirements?
-```
-
-**Research:** Based on "Least-to-Most Prompting" (Zhou et al., 2022)
-
-### Combining Both
-
-```bash
-python run_agent.py --store output/hybrid_store --enable-hyde --enable-decomposition
-
-# Agent will:
-# 1. Decompose complex queries into sub-queries
-# 2. Apply HyDE to each sub-query
-# 3. Search with optimized queries
-# 4. Combine results into comprehensive answer
+# Agent automatically:
+# 1. Uses document_search for GRI 306 requirements
+# 2. Uses section_search for contract provisions
+# 3. Uses compare_documents to check compliance
+# 4. Synthesizes answer with citations
 ```
 
 ## 💡 Example Queries
@@ -330,7 +299,8 @@ python run_agent.py --store output/hybrid_store --enable-hyde --enable-decomposi
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    RAG Agent CLI (run_agent.py)             │
+│                    RAG Agent CLI                            │
+│              (./run_cli.sh or python -m src.agent.cli)     │
 ├─────────────────────────────────────────────────────────────┤
 │  CLI Interface (cli.py)                                     │
 │  ├─ Startup validation                                      │
@@ -387,7 +357,7 @@ python run_agent.py --store output/hybrid_store --enable-hyde --enable-decomposi
 python run_pipeline.py data/your_documents/
 
 # Then specify correct path
-python run_agent.py --store output/hybrid_store
+./run_cli.sh output/hybrid_store
 ```
 
 ### "Knowledge graph not available"
@@ -402,7 +372,7 @@ python run_agent.py --store output/hybrid_store
 
 2. **Specify KG path:**
    ```bash
-   python run_agent.py --store output/hybrid_store --kg output/knowledge_graph.json
+   ./run_cli.sh output/hybrid_store --kg output/knowledge_graph.json
    ```
 
 3. **Use non-KG alternatives:**
@@ -416,7 +386,7 @@ python run_agent.py --store output/hybrid_store
 **Solutions:**
 1. **Disable reranking:**
    ```bash
-   python run_agent.py --store output/hybrid_store --no-reranking
+   ./run_cli.sh output/hybrid_store --no-reranking
    ```
 
 2. **Use lazy loading (default):**
@@ -431,11 +401,11 @@ python run_agent.py --store output/hybrid_store
 1. **Use simpler queries** - Avoid complex multi-part questions
 2. **Disable optimization temporarily:**
    ```bash
-   python run_agent.py --store output/hybrid_store  # No --enable-hyde/decomposition
+   ./run_cli.sh output/hybrid_store  # No --enable-hyde/decomposition
    ```
 3. **Use faster model:**
    ```bash
-   python run_agent.py --store output/hybrid_store --model claude-haiku-4-5
+   ./run_cli.sh output/hybrid_store --model claude-haiku-4-5
    ```
 
 ### "Streaming not working"
@@ -446,7 +416,7 @@ python run_agent.py --store output/hybrid_store
 1. Streaming enabled? (default: yes)
 2. Try forcing streaming mode:
    ```bash
-   python run_agent.py --store output/hybrid_store  # Don't use --no-stream
+   ./run_cli.sh output/hybrid_store  # Don't use --no-stream
    ```
 
 ### "Tool execution errors"
@@ -456,7 +426,7 @@ python run_agent.py --store output/hybrid_store
 **Debug steps:**
 1. **Enable verbose logging:**
    ```bash
-   python run_agent.py --store output/hybrid_store -v
+   ./run_cli.sh output/hybrid_store -v
    ```
 
 2. **Check logs:**
@@ -477,25 +447,25 @@ python run_agent.py --store output/hybrid_store
 
 1. **Disable reranking** for faster responses:
    ```bash
-   python run_agent.py --store output/hybrid_store --no-reranking
+   ./run_cli.sh output/hybrid_store --no-reranking
    ```
 
 2. **Use Haiku model** (5x faster):
    ```bash
-   python run_agent.py --store output/hybrid_store --model claude-haiku-4-5
+   ./run_cli.sh output/hybrid_store --model claude-haiku-4-5
    ```
 
 3. **Disable query optimization**:
    ```bash
    # Don't use --enable-hyde or --enable-decomposition
-   python run_agent.py --store output/hybrid_store
+   ./run_cli.sh output/hybrid_store
    ```
 
 ### Quality Optimization
 
 1. **Enable all features**:
    ```bash
-   python run_agent.py --store output/hybrid_store \
+   ./run_cli.sh output/hybrid_store \
      --kg output/knowledge_graph.json \
      --enable-hyde \
      --enable-decomposition
@@ -503,7 +473,7 @@ python run_agent.py --store output/hybrid_store
 
 2. **Use Sonnet model** (better reasoning):
    ```bash
-   python run_agent.py --store output/hybrid_store --model claude-sonnet-4-5-20250929
+   ./run_cli.sh output/hybrid_store --model claude-sonnet-4-5-20250929
    ```
 
 3. **Keep reranking enabled** (default)
@@ -512,7 +482,7 @@ python run_agent.py --store output/hybrid_store
 
 ```bash
 # Good balance of speed and quality
-python run_agent.py --store output/hybrid_store \
+./run_cli.sh output/hybrid_store \
   --model claude-sonnet-4-5-20250929 \
   --enable-hyde
   # Reranking: enabled (default)
@@ -557,7 +527,7 @@ pytest tests/test_agent_tools.py::test_my_tool -v
 
 ```bash
 # Test with example indexed data
-python run_agent.py --store tests/fixtures/test_store
+uv run python -m src.agent.cli --vector-store tests/fixtures/test_store
 
 # Unit tests
 pytest tests/test_agent_tools.py -v
@@ -599,7 +569,7 @@ The agent includes comprehensive debugging capabilities to help diagnose issues.
 
 ```bash
 # Enable debug mode with --debug flag
-python run_agent.py --store output/hybrid_store --debug
+./run_cli.sh output/hybrid_store --debug
 
 # Debug mode features:
 # - Detailed logging to agent.log
@@ -633,7 +603,7 @@ Debug mode creates `agent.log` with detailed format:
 Debug mode runs comprehensive validation on startup:
 
 ```bash
-python run_agent.py --store output/hybrid_store --debug
+./run_cli.sh output/hybrid_store --debug
 
 # Checks performed:
 # ✅ Python version compatibility (3.10+)
@@ -671,7 +641,7 @@ python test_agent_integration.py
 
 **Debug:**
 ```bash
-python run_agent.py --store output/hybrid_store --debug
+./run_cli.sh output/hybrid_store --debug
 
 # Check log for:
 # - Path resolution
@@ -685,7 +655,7 @@ python run_agent.py --store output/hybrid_store --debug
 
 **Debug:**
 ```bash
-python run_agent.py --store output/hybrid_store --debug
+./run_cli.sh output/hybrid_store --debug
 
 # Watch console for:
 # - Tool call details
@@ -700,7 +670,7 @@ python run_agent.py --store output/hybrid_store --debug
 
 **Debug:**
 ```bash
-python run_agent.py --store output/hybrid_store --debug
+./run_cli.sh output/hybrid_store --debug
 
 # Check for:
 # - API key validation
@@ -717,13 +687,13 @@ Different verbosity levels:
 
 ```bash
 # Normal mode: No console logging, warnings to agent.log
-python run_agent.py --store output/hybrid_store
+./run_cli.sh output/hybrid_store
 
 # Verbose mode: INFO level to console and file
-python run_agent.py --store output/hybrid_store -v
+./run_cli.sh output/hybrid_store -v
 
 # Debug mode: DEBUG level to console and file
-python run_agent.py --store output/hybrid_store --debug
+./run_cli.sh output/hybrid_store --debug
 ```
 
 ### Performance Impact
@@ -738,7 +708,7 @@ Debug mode has minimal performance impact:
 ### Example Debug Session
 
 ```bash
-$ python run_agent.py --store output/hybrid_store --debug
+$ ./run_cli.sh output/hybrid_store --debug
 
 2025-01-15 10:23:45 | root                         | INFO     | main                  | ================================================================================
 2025-01-15 10:23:45 | root                         | INFO     | main                  | RAG AGENT DEBUG MODE ENABLED
