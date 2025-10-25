@@ -256,6 +256,9 @@ class ExtractionConfig:
     enable_smart_hierarchy: bool = True  # Font-size based classification
     hierarchy_tolerance: float = 0.8  # BBox height clustering tolerance (pixels, lower = stricter)
 
+    # Summary generation (PHASE 2 integration)
+    generate_summaries: bool = True  # Generate document/section summaries
+
     # Output formats
     generate_markdown: bool = True
     generate_json: bool = True
