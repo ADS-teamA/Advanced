@@ -26,6 +26,28 @@ class ProviderResponse:
     usage: Dict[str, int]  # {input_tokens, output_tokens, cache_read, cache_creation}
     model: str
 
+    def __post_init__(self):
+        """Validate response structure at construction time."""
+        # Validate content blocks have 'type' key
+        for i, block in enumerate(self.content):
+            if not isinstance(block, dict):
+                raise ValueError(f"Content block {i} must be a dict, got {type(block)}")
+            if "type" not in block:
+                raise ValueError(f"Content block {i} missing 'type' key: {block}")
+
+        # Validate required usage keys
+        required_usage_keys = ["input_tokens", "output_tokens"]
+        for key in required_usage_keys:
+            if key not in self.usage:
+                raise ValueError(f"Usage dict missing required key '{key}': {self.usage}")
+
+        # Validate token counts are non-negative integers
+        for key, value in self.usage.items():
+            if not isinstance(value, int):
+                raise ValueError(f"Usage {key} must be an integer, got {type(value)}: {value}")
+            if value < 0:
+                raise ValueError(f"Usage {key} must be non-negative, got {value}")
+
     @property
     def text(self) -> str:
         """

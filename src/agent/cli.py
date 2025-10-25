@@ -125,7 +125,28 @@ class AgentCLI:
                 f"   Please run the indexing pipeline first:\n"
                 f"   python run_pipeline.py data/your_documents/"
             )
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.error(f"Missing dependency for vector store: {e}", exc_info=True)
+            raise RuntimeError(
+                f"❌ Vector store dependency missing: {e}\n"
+                f"   Install required libraries:\n"
+                f"   uv sync\n"
+                f"   Or manually: pip install faiss-cpu (or faiss-gpu)"
+            )
+        except MemoryError as e:
+            logger.error(f"Insufficient memory to load vector store: {e}", exc_info=True)
+            raise RuntimeError(
+                f"❌ Insufficient memory to load vector store\n"
+                f"   Try closing other applications or using a machine with more RAM"
+            )
+        except (OSError, PermissionError) as e:
+            logger.error(f"File system error loading vector store: {e}", exc_info=True)
+            raise RuntimeError(
+                f"❌ File system error: {e}\n"
+                f"   Check file permissions and disk space"
+            )
         except Exception as e:
+            # Catch remaining errors (corrupted files, version mismatches, etc.)
             logger.error(f"Failed to load vector store: {e}", exc_info=True)
             raise RuntimeError(
                 f"❌ Vector store loading failed: {e}\n"
@@ -139,22 +160,42 @@ class AgentCLI:
             embedder = EmbeddingGenerator(
                 EmbeddingConfig(model=self.config.embedding_model, batch_size=100, normalize=True)
             )
-        except Exception as e:
-            logger.error(f"Failed to initialize embedder: {e}", exc_info=True)
-            # Check if it's an API key issue
-            if "api" in str(e).lower() or "key" in str(e).lower():
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.error(f"Missing embedder dependency: {e}", exc_info=True)
+            raise RuntimeError(
+                f"❌ Missing dependency for {self.config.embedding_model}: {e}\n"
+                f"   Install required libraries:\n"
+                f"   uv sync"
+            )
+        except ConnectionError as e:
+            logger.error(f"Network error initializing embedder: {e}", exc_info=True)
+            raise RuntimeError(
+                f"❌ Network error: {e}\n"
+                f"   Check your internet connection (required for cloud models)"
+            )
+        except (ValueError, KeyError) as e:
+            # Check for API authentication errors
+            error_str = str(e).lower()
+            if "api" in error_str or "key" in error_str or "auth" in error_str:
+                logger.error(f"Embedder API authentication failed: {e}", exc_info=True)
                 raise RuntimeError(
-                    f"❌ Embedder initialization failed: {e}\n"
-                    f"   Model: {self.config.embedding_model}\n"
-                    f"   This model requires an API key. Please set:\n"
+                    f"❌ API authentication failed for {self.config.embedding_model}: {e}\n"
+                    f"   Please set the appropriate API key:\n"
                     f"   export OPENAI_API_KEY=your_key_here  # For OpenAI models\n"
-                    f"   Or use a local model by setting:\n"
+                    f"   Or use a local model:\n"
                     f"   export EMBEDDING_MODEL=bge-m3"
                 )
+            else:
+                raise RuntimeError(
+                    f"❌ Invalid configuration for {self.config.embedding_model}: {e}\n"
+                    f"   Check that the model name is correct"
+                )
+        except Exception as e:
+            logger.error(f"Failed to initialize embedder: {e}", exc_info=True)
             raise RuntimeError(
                 f"❌ Embedder initialization failed: {e}\n"
                 f"   Model: {self.config.embedding_model}\n"
-                f"   Check that the model is supported and dependencies are installed."
+                f"   Check logs for details and verify model is supported"
             )
 
         # Initialize reranker (optional, lazy load)
@@ -577,7 +618,6 @@ class AgentCLI:
         claude_models = [
             ("haiku", "claude-haiku-4-5-20251001", "Fast & cost-effective"),
             ("sonnet", "claude-sonnet-4-5-20250929", "Balanced performance"),
-            ("opus", "claude-opus-4", "Most capable"),
         ]
 
         for alias, full_name, desc in claude_models:

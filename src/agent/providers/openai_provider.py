@@ -47,12 +47,12 @@ class OpenAIProvider(BaseProvider):
         Raises:
             ValueError: If API key is invalid
         """
-        if not api_key or not api_key.startswith("sk-"):
-            raise ValueError("Invalid OpenAI API key format (should start with sk-)")
+        if not api_key or not (api_key.startswith("sk-") or api_key.startswith("sk-proj-")):
+            raise ValueError("Invalid OpenAI API key format (should start with sk- or sk-proj-)")
 
-        self.client = openai.OpenAI(api_key=api_key)
+        self._client = openai.OpenAI(api_key=api_key)
         self.model = model
-        self.translator = ToolSchemaTranslator()
+        self._translator = ToolSchemaTranslator()
 
         logger.info(f"OpenAIProvider initialized: model={model}")
 
@@ -83,7 +83,7 @@ class OpenAIProvider(BaseProvider):
         """
         # Translate formats
         openai_messages = self._convert_messages_to_openai(messages, system)
-        openai_tools = self.translator.to_openai(tools) if tools else None
+        openai_tools = self._translator.to_openai(tools) if tools else None
 
         # Prepare API parameters (GPT-5 has specific requirements)
         api_params = {
@@ -104,7 +104,7 @@ class OpenAIProvider(BaseProvider):
             api_params["max_tokens"] = max_tokens
 
         # Call OpenAI API
-        response = self.client.chat.completions.create(**api_params)
+        response = self._client.chat.completions.create(**api_params)
 
         # Convert back to Anthropic format
         content = self._convert_response_to_anthropic(response)
@@ -149,7 +149,7 @@ class OpenAIProvider(BaseProvider):
             OpenAI stream iterator
         """
         openai_messages = self._convert_messages_to_openai(messages, system)
-        openai_tools = self.translator.to_openai(tools) if tools else None
+        openai_tools = self._translator.to_openai(tools) if tools else None
 
         # Prepare API parameters (GPT-5 has specific requirements)
         api_params = {
@@ -170,7 +170,7 @@ class OpenAIProvider(BaseProvider):
         else:
             api_params["max_tokens"] = max_tokens
 
-        return self.client.chat.completions.create(**api_params)
+        return self._client.chat.completions.create(**api_params)
 
     def _convert_messages_to_openai(
         self, messages: List[Dict[str, Any]], system: List[Dict[str, Any]] | str
@@ -277,7 +277,14 @@ class OpenAIProvider(BaseProvider):
 
         Returns:
             Anthropic content blocks
+
+        Raises:
+            ValueError: If response structure is invalid
         """
+        if not response.choices:
+            logger.error(f"OpenAI response has no choices: {response}")
+            raise ValueError("Invalid OpenAI response: no choices returned")
+
         choice = response.choices[0]
         message = choice.message
         content = []
@@ -289,14 +296,28 @@ class OpenAIProvider(BaseProvider):
         # Tool calls
         if message.tool_calls:
             for tool_call in message.tool_calls:
-                content.append(
-                    {
-                        "type": "tool_use",
-                        "id": tool_call.id,
-                        "name": tool_call.function.name,
-                        "input": json.loads(tool_call.function.arguments),
-                    }
-                )
+                try:
+                    if not tool_call.function:
+                        logger.warning(f"Tool call missing function: {tool_call}")
+                        continue
+
+                    parsed_args = json.loads(tool_call.function.arguments)
+
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": tool_call.id,
+                            "name": tool_call.function.name,
+                            "input": parsed_args,
+                        }
+                    )
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        f"Failed to parse tool arguments: {e}. "
+                        f"Tool: {tool_call.function.name}, Args: {tool_call.function.arguments[:200]}"
+                    )
+                    # Skip malformed tool call
+                    continue
 
         return content
 

@@ -33,7 +33,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Configuration constants
-MAX_HISTORY_MESSAGES = 15  # Keep last 15 messages to prevent unbounded memory growth
+MAX_HISTORY_MESSAGES = 50  # Keep last 50 messages to maintain conversation context
 MAX_QUERY_LENGTH = 10000  # Maximum characters in a single query
 
 # ANSI color codes for terminal output
@@ -257,18 +257,17 @@ class AgentCore:
 
     def _prune_tool_results(self, keep_last_n: int = 3):
         """
-        Remove tool calls and results from old messages, keeping only Q&A text.
+        Remove tool calls, intermediate messages, and results from old messages.
+        Keep only user questions and final assistant answers.
 
         This prevents quadratic cost growth by removing the bulk of tokens
-        (tool results) from older messages while preserving conversation flow.
+        (tool results and intermediate reasoning) from older messages.
 
         Strategy:
         - Keep last N messages intact (with all tool calls/results)
-        - For older messages: Remove tool_use/tool_result pairs to maintain API validity
-        - Preserve all user question text and assistant response text
-
-        CRITICAL: Each tool_result must have corresponding tool_use in previous message.
-        We must remove tool_use and tool_result as pairs, not independently.
+        - For older messages: Remove entire tool exchanges (assistant tool_use + user tool_result)
+        - Keep only substantial assistant responses (final answers with text > 50 chars)
+        - Preserve all user question text
 
         Args:
             keep_last_n: Number of recent messages to keep with full tool context
@@ -281,7 +280,8 @@ class AgentCore:
         tokens_saved_estimate = 0
         removed_tool_use_ids = set()
 
-        # Pass 1: Remove tool_use blocks from assistant messages and track IDs
+        # Pass 1: Identify and prune assistant messages with tools
+        # Remove tool_use blocks and track IDs for corresponding tool_result removal
         for i in range(cutoff_idx):
             msg = self.conversation_history[i]
 
@@ -289,30 +289,38 @@ class AgentCore:
             if not isinstance(msg.get("content"), list):
                 continue
 
-            # Prune assistant messages: keep only text blocks, remove tool_use
+            # Prune assistant messages
             if msg["role"] == "assistant":
                 text_blocks = []
                 tool_blocks = []
+                total_text_length = 0
 
                 for block in msg["content"]:
                     if block.get("type") == "text":
                         text_blocks.append(block)
+                        total_text_length += len(block.get("text", ""))
                     elif block.get("type") == "tool_use":
                         tool_blocks.append(block)
                         # Track removed tool_use ID
                         removed_tool_use_ids.add(block.get("id"))
 
                 if tool_blocks:
-                    # Estimate tokens saved (rough: 50 tokens per tool_use block)
+                    # Estimate tokens saved
                     tokens_saved_estimate += len(tool_blocks) * 50
-                    # If no text blocks remain, add a placeholder to avoid empty content
-                    if not text_blocks:
-                        text_blocks = [{"type": "text", "text": "[Tool execution removed]"}]
-                    msg["content"] = text_blocks
+
+                    # If this is an intermediate message (minimal text), remove text too
+                    if total_text_length < 50:  # Threshold for "substantial" text
+                        # Replace with minimal placeholder
+                        msg["content"] = [{"type": "text", "text": "[Intermediate reasoning removed]"}]
+                        tokens_saved_estimate += total_text_length // 4  # Estimate tokens
+                    else:
+                        # Keep substantial text, remove only tool_use blocks
+                        if not text_blocks:
+                            text_blocks = [{"type": "text", "text": "[Tool execution removed]"}]
+                        msg["content"] = text_blocks
 
         # Pass 2: Remove corresponding tool_result blocks from ALL user messages
-        # CRITICAL: Must scan entire history, not just < cutoff_idx
-        # Reason: tool_result in message N may reference tool_use in message N-1 (which was removed)
+        # (must scan entire history because tool_result may be after cutoff)
         for i in range(len(self.conversation_history)):
             msg = self.conversation_history[i]
 
@@ -320,7 +328,7 @@ class AgentCore:
             if not isinstance(msg.get("content"), list):
                 continue
 
-            # Prune user messages: remove tool_result blocks that match removed tool_use IDs
+            # Prune user messages: remove tool_result blocks
             if msg["role"] == "user":
                 text_blocks = []
                 tool_result_blocks = []
@@ -340,14 +348,17 @@ class AgentCore:
                 if tool_result_blocks:
                     # Estimate tokens saved (rough: 500 tokens per tool_result)
                     tokens_saved_estimate += len(tool_result_blocks) * 500
-                    # If no text blocks remain, add a placeholder to avoid empty content
+                    # If no text blocks remain after removing tool_results, add placeholder
                     if not text_blocks:
                         text_blocks = [{"type": "text", "text": "[Tool results removed]"}]
                     msg["content"] = text_blocks
 
+        # Clear the removed_tool_use_ids set to prevent memory leak
+        removed_tool_use_ids.clear()
+
         if tokens_saved_estimate > 0:
             logger.info(
-                f"Tool pruning: Removed {len(removed_tool_use_ids)} tool exchange pairs from {cutoff_idx} messages "
+                f"Tool pruning: Removed tool exchanges and intermediate messages from {cutoff_idx} messages "
                 f"(~{tokens_saved_estimate:,} tokens saved, keeping last {keep_last_n} messages intact)"
             )
 
@@ -577,17 +588,34 @@ class AgentCore:
                         temperature=self.config.temperature,
                     )
                 except openai.BadRequestError as e:
-                    # Check if this is the organization verification error
+                    # Check if this is the organization verification error for streaming
+                    # Use error code if available, otherwise fall back to message checking
                     error_message = str(e)
-                    if "must be verified to stream" in error_message or "unsupported_value" in error_message:
-                        logger.warning(f"Streaming not available for {self.provider.get_model_name()}, falling back to non-streaming mode")
-                        yield "[⚠️  Streaming not available for this model - using non-streaming mode]\n\n"
+                    error_code = getattr(e, 'code', None)
+
+                    # Only fallback for known streaming verification errors
+                    is_verification_error = (
+                        error_code == "organization_not_verified" or
+                        ("organization" in error_message.lower() and "verified" in error_message.lower() and "stream" in error_message.lower())
+                    )
+
+                    if is_verification_error:
+                        logger.warning(
+                            f"OpenAI organization not verified for streaming. Falling back to non-streaming mode. "
+                            f"Error: {error_message[:200]}"
+                        )
+                        yield "[⚠️  Your OpenAI organization needs verification to use streaming. Using non-streaming mode.]\n\n"
 
                         # Fallback to non-streaming for this request
                         result = self._process_non_streaming(tools)
                         yield result
                         return
                     else:
+                        # Log the actual error before re-raising
+                        logger.error(
+                            f"OpenAI API error during streaming initialization: {error_message[:200]}",
+                            exc_info=True
+                        )
                         # Re-raise if it's a different error
                         raise
 
@@ -706,6 +734,19 @@ class AgentCore:
                         if tool_call_data["name"]:
                             import json
 
+                            # Parse tool arguments with error handling
+                            try:
+                                parsed_input = json.loads(tool_call_data["arguments"])
+                            except json.JSONDecodeError as e:
+                                logger.error(
+                                    f"Failed to parse tool arguments for {tool_call_data['name']}: {e}. "
+                                    f"Raw arguments: {tool_call_data['arguments'][:200]}"
+                                )
+                                # Use empty dict as fallback (tool will fail gracefully)
+                                parsed_input = {}
+                                # Notify user
+                                yield f"\n[⚠️  Warning: Malformed tool call from API - tool may fail]\n"
+
                             tool_uses.append(
                                 type(
                                     "ToolUse",
@@ -713,7 +754,7 @@ class AgentCore:
                                     {
                                         "id": tool_call_data["id"],
                                         "name": tool_call_data["name"],
-                                        "input": json.loads(tool_call_data["arguments"]),
+                                        "input": parsed_input,
                                     },
                                 )()
                             )
@@ -722,7 +763,7 @@ class AgentCore:
                                     "type": "tool_use",
                                     "id": tool_call_data["id"],
                                     "name": tool_call_data["name"],
-                                    "input": json.loads(tool_call_data["arguments"]),
+                                    "input": parsed_input,
                                 }
                             )
 

@@ -64,13 +64,30 @@ class ToolSchemaTranslator:
         Returns:
             List of tools in OpenAI function calling format
 
+        Raises:
+            ValueError: If tool structure is invalid
+
         Example:
             >>> translator = ToolSchemaTranslator()
             >>> openai_tools = translator.to_openai(anthropic_tools)
         """
         openai_tools = []
 
-        for tool in anthropic_tools:
+        for i, tool in enumerate(anthropic_tools):
+            # Validate required fields
+            if "name" not in tool:
+                raise ValueError(f"Tool {i} missing 'name' field: {tool}")
+            if "description" not in tool:
+                raise ValueError(f"Tool {i} missing 'description' field: {tool}")
+            if "input_schema" not in tool:
+                raise ValueError(f"Tool {i} missing 'input_schema' field: {tool}")
+
+            # Validate input_schema is a dict
+            if not isinstance(tool["input_schema"], dict):
+                raise ValueError(
+                    f"Tool {i} input_schema must be dict, got {type(tool['input_schema'])}"
+                )
+
             # Remove Anthropic-specific fields
             input_schema = tool["input_schema"].copy()
 

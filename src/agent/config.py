@@ -241,8 +241,8 @@ class AgentConfig:
         if self.anthropic_api_key and not self.anthropic_api_key.startswith("sk-ant-"):
             raise ValueError("Anthropic API key has invalid format (should start with sk-ant-)")
 
-        if self.openai_api_key and not self.openai_api_key.startswith("sk-"):
-            raise ValueError("OpenAI API key has invalid format (should start with sk-)")
+        if self.openai_api_key and not (self.openai_api_key.startswith("sk-") or self.openai_api_key.startswith("sk-proj-")):
+            raise ValueError("OpenAI API key has invalid format (should start with sk- or sk-proj-)")
 
         # Numeric range validation
         if self.max_tokens <= 0:

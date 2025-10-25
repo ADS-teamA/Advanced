@@ -43,12 +43,16 @@ class AnthropicProvider(BaseProvider):
             model: Model name (e.g., "claude-haiku-4-5-20251001")
 
         Raises:
-            ValueError: If API key is invalid
+            ValueError: If API key or model is invalid
         """
         if not api_key or not api_key.startswith("sk-ant-"):
             raise ValueError("Invalid Anthropic API key format (should start with sk-ant-)")
 
-        self.client = anthropic.Anthropic(api_key=api_key)
+        # Validate model name before creating client
+        if not any(pattern in model.lower() for pattern in ["claude", "haiku", "sonnet"]):
+            raise ValueError(f"Invalid Claude model: {model}")
+
+        self._client = anthropic.Anthropic(api_key=api_key)
         self.model = model
 
         logger.info(f"AnthropicProvider initialized: model={model}")
@@ -78,7 +82,7 @@ class AnthropicProvider(BaseProvider):
         Returns:
             ProviderResponse with content, usage, etc.
         """
-        response = self.client.messages.create(
+        response = self._client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -134,7 +138,7 @@ class AnthropicProvider(BaseProvider):
             >>>         if event.type == "content_block_delta":
             >>>             print(event.delta.text)
         """
-        return self.client.messages.stream(
+        return self._client.messages.stream(
             model=self.model,
             max_tokens=max_tokens,
             temperature=temperature,
