@@ -468,12 +468,14 @@ class AgentCore:
             # Import anthropic for error handling
             import anthropic
 
-            # Prepare cached system prompt, tools, and messages
+            # Prepare cached system prompt and tools (static)
             system_prompt = self._prepare_system_prompt_with_cache()
             cached_tools = self._prepare_tools_with_cache(tools)
-            cached_messages = self._add_cache_control_to_messages(self.conversation_history)
 
             while True:
+                # Update cached messages with latest conversation history (includes tool results)
+                cached_messages = self._add_cache_control_to_messages(self.conversation_history)
+
                 with self.client.messages.stream(
                     model=self.config.model,
                     max_tokens=self.config.max_tokens,
@@ -633,13 +635,15 @@ class AgentCore:
         """
         full_response_text = ""
 
-        # Prepare cached system prompt, tools, and messages
+        # Prepare cached system prompt and tools (static)
         system_prompt = self._prepare_system_prompt_with_cache()
         cached_tools = self._prepare_tools_with_cache(tools)
-        cached_messages = self._add_cache_control_to_messages(self.conversation_history)
 
         try:
             while True:
+                # Update cached messages with latest conversation history (includes tool results)
+                cached_messages = self._add_cache_control_to_messages(self.conversation_history)
+
                 response = self.client.messages.create(
                     model=self.config.model,
                     max_tokens=self.config.max_tokens,
