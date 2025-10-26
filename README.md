@@ -1,8 +1,17 @@
-# MY_SUJBOT - Production RAG System for Legal/Technical Documents
+# SUJBOT2 - Production RAG System for Legal/Technical Documents
 
 Research-based RAG system optimized for legal and technical documentation with 7-phase pipeline and interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 27-Tool Agent + Query Expansion)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 16-Tool Agent + Query Expansion)
+
+## 📚 Interactive Documentation
+
+**🌐 Live Documentation:** [https://ads-teama.github.io/Advanced/](https://ads-teama.github.io/Advanced/)
+
+Explore our visual, interactive pipeline documentation:
+- 📥 **[Indexing Pipeline](https://ads-teama.github.io/Advanced/indexing_pipeline.html)** - Phase 1-5: Document → Vector Store
+- 💬 **[User Search Pipeline](https://ads-teama.github.io/Advanced/user_search_pipeline.html)** - Phase 7: Query → AI Answer (16 Tools)
+- 🗓️ **[4-Week Roadmap](https://ads-teama.github.io/Advanced/roadmap.html)** - Team plans for pipeline optimization
 
 ---
 
@@ -26,10 +35,10 @@ Production-ready RAG system based on 4 research papers implementing state-of-the
 
 **Agent (PHASE 7):**
 - **Interactive CLI** powered by Claude SDK
-- **27 specialized tools** (12 basic + 9 advanced + 6 analysis)
-- **Query expansion** with multi-query generation (research-based +15-25% recall improvement)
+- **16 specialized tools** (6 basic + 7 advanced + 3 analysis)
+- **Query expansion** with multi-query generation (+15-25% recall improvement)
 - **Cost tracking** with prompt caching (90% savings on cached tokens)
-- **Conversation management** (/help, /stats, /config, /clear)
+- **Conversation management** (/help, /model, /stats, /config, /clear)
 
 ---
 
@@ -108,7 +117,7 @@ uv run python run_pipeline.py data/document.pdf
 ### 2. Run RAG Agent
 
 ```bash
-# Launch interactive agent (27 tools)
+# Launch interactive agent (16 tools)
 uv run python -m src.agent.cli
 
 # With specific vector store
@@ -127,7 +136,7 @@ uv run python -m src.agent.cli --debug
 
 **Example Session:**
 ```
-🤖 RAG Agent CLI (27 tools, Claude SDK)
+🤖 RAG Agent CLI (16 tools, Claude SDK)
 📚 Loaded vector store: output/safety_manual/phase4_vector_store
 💰 Session cost: $0.0000 (0 tokens)
 

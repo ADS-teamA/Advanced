@@ -1406,7 +1406,7 @@ VOYAGE_API_KEY=your-voyage-key
 
 ### 3.1 Agentic RAG - Multi-Agent Collaboration
 
-**Co máte:** Single-agent (1 Claude, 27 tools)
+**Co máte:** Single-agent (1 Claude, 16 tools)
 
 **SOTA 2025:** Multi-agent agentic RAG
 
