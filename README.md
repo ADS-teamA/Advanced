@@ -9,9 +9,9 @@ Research-based RAG system optimized for legal and technical documentation with 7
 **🌐 Live Documentation:** [https://ads-teama.github.io/SUJBOT2/](https://ads-teama.github.io/SUJBOT2/)
 
 Explore our visual, interactive pipeline documentation:
-- 📥 **[Indexing Pipeline](https://ads-teama.github.io/Advanced/indexing_pipeline.html)** - Phase 1-5: Document → Vector Store
-- 💬 **[User Search Pipeline](https://ads-teama.github.io/Advanced/user_search_pipeline.html)** - Phase 7: Query → AI Answer (16 Tools)
-- 🗓️ **[4-Week Roadmap](https://ads-teama.github.io/Advanced/roadmap.html)** - Team plans for pipeline optimization
+- 📥 **[Indexing Pipeline](https://ads-teama.github.io/SUJBOT2/indexing_pipeline.html)** - Phase 1-5: Document → Vector Store
+- 💬 **[User Search Pipeline](https://ads-teama.github.io/SUJBOT2/user_search_pipeline.html)** - Phase 7: Query → AI Answer (16 Tools)
+- 🗓️ **[4-Week Roadmap](https://ads-teama.github.io/SUJBOT2/roadmap.html)** - Team plans for pipeline optimization
 
 ---
 
