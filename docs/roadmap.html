@@ -44,6 +44,32 @@
             margin-bottom: 10px;
         }
 
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            margin-bottom: 30px;
+        }
+
+        .back-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+        }
+
+        .back-button::before {
+            content: '←';
+            font-size: 1.3em;
+        }
+
         .timeline-info {
             color: #4a5568;
             font-size: 1.1em;
@@ -274,6 +300,7 @@
 </head>
 <body>
     <div class="container">
+        <a href="index.html" class="back-button">Back to Home</a>
         <div class="header">
             <h1>🗓️ SUJBOT2 Roadmap</h1>
             <p class="subtitle">4-týdenní plán vylepšení RAG systému</p>
