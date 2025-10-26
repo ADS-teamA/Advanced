@@ -27,7 +27,7 @@ Production-ready RAG system based on 4 research papers implementing state-of-the
 **Agent (PHASE 7):**
 - **Interactive CLI** powered by Claude SDK
 - **27 specialized tools** (12 basic + 9 advanced + 6 analysis)
-- **Query expansion** with multi-query generation (+18% recall)
+- **Query expansion** with multi-query generation (research-based +15-25% recall improvement)
 - **Cost tracking** with prompt caching (90% savings on cached tokens)
 - **Conversation management** (/help, /stats, /config, /clear)
 

@@ -133,11 +133,15 @@ QUERY_EXPANSION_PROVIDER=openai  # or "anthropic"
 QUERY_EXPANSION_MODEL=gpt-5-nano  # Fast & cheap for expansion
 ```
 
-**Měřený dopad (na testovacím datasetu):**
-- **Recall@10:** +18% (baseline: 65% → expansion: 83%)
-- **Precision@5:** +7% (baseline: 75% → expansion: 82%)
-- **Average latency:** +350ms per query (num_expands=1)
-- **Cost:** +$0.0008 per query (gpt-5-nano)
+**Očekávaný dopad (na základě research):**
+- **Recall improvement:** +15-25% (research-based estimate from multi-query studies)
+- **Precision:** Maintained or slightly improved due to reranking stage
+- **Latency:** +350-400ms per query (num_expands=1, varies by LLM provider)
+- **Cost:** ~$0.0008 per query (gpt-5-nano; varies by model)
+
+⚠️ **Note:** These are theoretical estimates from research papers (Wang et al., Ma et al.).
+Actual performance will vary by document corpus, query types, and configuration.
+The project currently has no evaluation infrastructure (see Section 1.2 - Retrieval Evaluation).
 
 ---
 
@@ -1549,7 +1553,7 @@ class DocumentCache:
 - [x] GPT-5 compatibility
 - [x] Cost tracking integration
 - [x] Comprehensive tests
-- **Achieved:** +18% recall@10, +7% precision@5
+- **Expected impact:** Research suggests +15-25% recall improvement
 
 ### Phase 1 (Měsíc 1-2): CRITICAL IMPROVEMENTS
 
@@ -1617,7 +1621,7 @@ class DocumentCache:
 **Status:** ✅ Již implementováno (2025-10-26)
 - Dostupné jako `search` tool s `num_expands` parametrem
 - Použití: `search(query="...", k=5, num_expands=1)` v agentovi
-- **Dosaženo:** +18% recall@10, +7% precision@5
+- **Očekávaný efekt:** Research naznačuje +15-25% zlepšení recall
 
 ---
 
