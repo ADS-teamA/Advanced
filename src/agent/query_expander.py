@@ -178,20 +178,21 @@ class QueryExpander:
 
         # Call LLM based on provider
         if self.provider == "openai":
-            # GPT-5 models (gpt-5-*, o-series) use max_completion_tokens
-            # GPT-4 and earlier use max_tokens
-            token_param = {}
-            if self.model.startswith(("gpt-5", "o1-", "o3-")):
-                token_param["max_completion_tokens"] = 300
-            else:
-                token_param["max_tokens"] = 300
+            # GPT-5 models (gpt-5-*, o-series) have special requirements:
+            # - Use max_completion_tokens instead of max_tokens
+            # - Don't support custom temperature (only default 1.0)
+            params = {"model": self.model, "messages": [{"role": "user", "content": prompt}]}
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,  # Higher temperature for diversity
-                **token_param,
-            )
+            if self.model.startswith(("gpt-5", "o1-", "o3-")):
+                # GPT-5/o-series models
+                params["max_completion_tokens"] = 300
+                # Don't set temperature (only default 1.0 is supported)
+            else:
+                # GPT-4 and earlier models
+                params["max_tokens"] = 300
+                params["temperature"] = 0.7  # Higher temperature for diversity
+
+            response = self.client.chat.completions.create(**params)
 
             expanded_text = response.choices[0].message.content
             input_tokens = response.usage.prompt_tokens
