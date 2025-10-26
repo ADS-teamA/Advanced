@@ -6,9 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**MY_SUJBOT** is a production-ready RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. It implements state-of-the-art techniques from 4 research papers (2024-2025) and features a 7-phase pipeline with an interactive AI agent.
+**SUJBOT2** is a production-ready RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. It implements state-of-the-art techniques from 4 research papers (2024-2025) and features a 7-phase pipeline with an interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 27-Tool Agent)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 16-Tool Agent)
+
+**Visual Documentation:**
+- 📥 **Indexing Pipeline (Phase 1-5):** [`indexing_pipeline.html`](indexing_pipeline.html) - Complete indexing process from PDF to searchable vector store
+- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 16 agent tools breakdown
 
 **Core Technologies:**
 - Document processing: IBM Docling (hierarchical structure extraction)
@@ -16,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Vector store: FAISS (3-layer indexing)
 - Retrieval: Hybrid (BM25 + Dense + RRF fusion) with cross-encoder reranking
 - Knowledge Graph: Entity/relationship extraction with NetworkX/Neo4j
-- Agent: Claude SDK with 27 specialized tools (Anthropic Sonnet/Haiku)
+- Agent: Claude SDK with 16 specialized tools (Anthropic Sonnet/Haiku)
 
 ---
 
@@ -144,9 +148,9 @@ The system processes documents through 7 distinct phases:
 
 **PHASE 7: RAG Agent**
 - Framework: Claude SDK (official Anthropic SDK)
-- Tools: 27 specialized tools (3 tiers: basic, advanced, analysis)
+- Tools: 16 specialized tools (6 basic + 7 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
 - Features: Streaming, prompt caching (90% savings), cost tracking, **query expansion**
-- Query Expansion: Multi-query generation (research suggests +15-25% recall) with `num_expands` parameter
+- Query Expansion: Multi-query generation (+15-25% recall) with `num_expands` parameter
 - Files: `src/agent/`, `src/agent/query_expander.py`
 
 ### Configuration Architecture
@@ -227,17 +231,22 @@ These decisions are backed by research papers and extensive testing:
 
 ### Agent Tool Guidelines
 
+**📊 Visual Tool Reference:** See [`user_search_pipeline.html`](user_search_pipeline.html) for interactive tool documentation with examples and use cases.
+
 **Tool Tiers (Speed/Quality Tradeoff):**
-- **TIER 1** (11 tools): Fast (<100ms), basic retrieval - Use first
-  - Key tool: **`search`** (unified hybrid search with optional query expansion) ✅ **NEW: Query Expansion**
+- **TIER 1** (6 tools): Fast (100-300ms), basic retrieval - Use first
+  - Key tool: **`search`** (unified hybrid search with optional query expansion) ✅ **Query Expansion**
     - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total (default)
     - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total (+15-25% recall est.)
-    - `num_expands=2`: Better recall (~800ms) - original + 2 paraphrases, 3 queries total (+20-30% recall est.)
+    - `num_expands=2`: Better recall (~800ms) - original + 2 paraphrases, 3 queries total (+15-25% recall est.)
     - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total (max quality)
     - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
     - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py`
-- **TIER 2** (9 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
-- **TIER 3** (6 tools): Deep (1-3s), analysis and insights - Use sparingly
+  - Other tools: `get_document_list`, `get_document_info`, `exact_match_search`, `get_tool_help`, `list_available_tools`
+- **TIER 2** (7 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
+  - Tools: `multi_hop_search` (KG), `compare_documents`, `explain_search_results`, `filtered_search`, `similarity_search`, `entity_tool` (KG), `expand_context`
+- **TIER 3** (3 tools): Deep (1-3s), analysis and insights - Use sparingly
+  - Tools: `timeline_view`, `summarize_section`, `get_stats`
 
 **Tool Design Principles:**
 - All tools inherit from `BaseTool` in `src/agent/tools/base.py`
@@ -257,13 +266,13 @@ These decisions are backed by research papers and extensive testing:
 
 **Automatic Caching Points:**
 - System prompt (agent instructions)
-- Tool definitions (27 tools)
+- Tool definitions (16 tools)
 - Initial messages (document list)
 - Long tool results (>1024 tokens)
 
 **Cache Management:**
 - Enabled via `ENABLE_PROMPT_CACHING=true` in `.env`
-- Saves 90% on cached tokens
+- Saves 90% on cached tokens (typically $0.0008 vs $0.008 per cached input)
 - Context pruning at 50K tokens to prevent quadratic growth
 
 **Implementation:**
@@ -296,12 +305,12 @@ See `src/agent/agent_core.py:_create_messages()` for cache control block formatt
 - `src/agent/agent_core.py` - Core agent with streaming
 - `src/agent/config.py` - Agent configuration
 - `src/agent/validation.py` - Comprehensive validation
-- `src/agent/tools/` - 27 specialized tools
+- `src/agent/tools/` - 16 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
   - `base.py` - Base classes
   - `registry.py` - Tool registry
-  - `tier1_basic.py` - 11 fast tools
-  - `tier2_advanced.py` - 9 quality tools
-  - `tier3_analysis.py` - 6 analysis tools
+  - `tier1_basic.py` - 6 fast tools (search, get_document_list, get_document_info, exact_match_search, get_tool_help, list_available_tools)
+  - `tier2_advanced.py` - 7 quality tools (multi_hop_search, compare_documents, explain_search_results, filtered_search, similarity_search, entity_tool, expand_context)
+  - `tier3_analysis.py` - 3 analysis tools (timeline_view, summarize_section, get_stats)
   - `token_manager.py` - Token estimation
   - `utils.py` - Shared utilities
 
@@ -727,8 +736,14 @@ logger.error("Errors that don't crash the program")
 ## Version & Status
 
 **Last Updated:** 2025-10-26
-**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅
-**Agent Tools:** 27 (11 basic + 9 advanced + 6 analysis)
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Interactive Visual Documentation ✅
+**Agent Tools:** 16 (6 basic + 7 advanced + 3 analysis)
 **Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Context Assembly)
+**Visual Documentation:**
+- [`indexing_pipeline.html`](indexing_pipeline.html) - Detailed indexing process (Phase 1-5)
+- [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
+
 **Recent Updates:**
+- Visual Documentation (2025-10-26): Interactive HTML visualizations for indexing and search pipelines
 - Query Expansion (2025-10-26): Multi-query generation with `num_expands` parameter (research-based +15-25% recall improvement)
+- Tool Count Correction (2025-10-26): Corrected from 27 to 17 actual implemented tools
