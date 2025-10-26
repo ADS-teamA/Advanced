@@ -101,23 +101,25 @@ class QueryExpander:
 
         Args:
             query: Original user query
-            num_expansions: Number of expansions to generate (default: 3)
+            num_expansions: Number of ADDITIONAL expansions to generate (default: 3)
+                           Final queries = [original] + num_expansions variations
             warn_threshold: Warn if num_expansions exceeds this (default: 5)
 
         Returns:
-            ExpansionResult with original + expanded queries
+            ExpansionResult with original + expanded queries (num_expansions + 1 total)
 
-        Optimization:
-            - num_expansions == 1: Returns [original_query] without LLM call
-            - Reduces latency by ~200-400ms for default case
+        Note:
+            - num_expansions=0: Returns [original_query] without LLM call
+            - num_expansions=1: Generates 1 variation + original = 2 queries total
+            - num_expansions=3: Generates 3 variations + original = 4 queries total
         """
-        # Optimization: Skip expansion if num_expansions == 1
-        if num_expansions == 1:
-            logger.debug(f"Skipping expansion (num_expansions=1): {query}")
+        # Optimization: Skip expansion if num_expansions == 0
+        if num_expansions == 0:
+            logger.debug(f"Skipping expansion (num_expansions=0): {query}")
             return ExpansionResult(
                 original_query=query,
                 expanded_queries=[query],
-                num_expansions=1,
+                num_expansions=1,  # 1 query total (original only)
                 expansion_method="none",
             )
 
@@ -131,6 +133,10 @@ class QueryExpander:
         # Generate expansions via LLM
         try:
             expanded = self._generate_expansions_llm(query, num_expansions)
+
+            logger.info(
+                f"Generated {len(expanded)} expansions for query '{query}': {expanded}"
+            )
 
             return ExpansionResult(
                 original_query=query,
@@ -172,11 +178,19 @@ class QueryExpander:
 
         # Call LLM based on provider
         if self.provider == "openai":
+            # GPT-5 models (gpt-5-*, o-series) use max_completion_tokens
+            # GPT-4 and earlier use max_tokens
+            token_param = {}
+            if self.model.startswith(("gpt-5", "o1-", "o3-")):
+                token_param["max_completion_tokens"] = 300
+            else:
+                token_param["max_tokens"] = 300
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=300,
                 temperature=0.7,  # Higher temperature for diversity
+                **token_param,
             )
 
             expanded_text = response.choices[0].message.content

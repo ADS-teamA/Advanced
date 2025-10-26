@@ -234,7 +234,10 @@ class SearchTool(BaseTool):
                         "model_used": expansion_result.model_used,
                         "queries_generated": len(queries),
                     })
-                    logger.debug(f"Query expanded to {len(queries)} queries: {queries}")
+                    logger.info(
+                        f"Query expansion: original='{query}' → {len(queries)} queries: "
+                        f"{queries}"
+                    )
                 except Exception as e:
                     logger.warning(f"Query expansion failed: {e}. Using original query only.")
                     # Fallback to original query
@@ -243,14 +246,19 @@ class SearchTool(BaseTool):
             else:
                 logger.warning("QueryExpander not available. Using original query only.")
                 expansion_metadata["expansion_method"] = "unavailable"
+        else:
+            logger.debug(f"No expansion (num_expands=1): using original query only")
 
         # === STEP 2: Hybrid Search for Each Query ===
         # Retrieve more candidates for reranking
         candidates_k = k * 3 if self.reranker else k
 
         all_chunks = []  # All chunks from all queries (with their original scores)
+        search_metadata = []  # Track metadata for each query search
 
-        for q in queries:
+        for idx, q in enumerate(queries, 1):
+            logger.info(f"Searching with query {idx}/{len(queries)}: '{q}'")
+
             # Embed query
             query_embedding = self.embedder.embed_texts([q])
 
@@ -268,48 +276,101 @@ class SearchTool(BaseTool):
 
             all_chunks.extend(chunks)
 
+            # Track search metadata
+            search_metadata.append({
+                "query": q,
+                "chunks_retrieved": len(chunks),
+            })
+
+            logger.info(
+                f"Query {idx} retrieved {len(chunks)} chunks from layer3"
+            )
+
+        # Log total candidates before fusion/reranking
+        logger.info(
+            f"Total candidates from all queries: {len(all_chunks)} chunks "
+            f"(from {len(queries)} queries)"
+        )
+
         # === STEP 3: RRF Fusion (if multiple queries) ===
         if len(queries) > 1:
             # Use RRF to combine results from multiple queries
+            chunks_before_fusion = len(all_chunks)
             chunks = self._rrf_fusion(all_chunks, k=candidates_k)
             fusion_method = "rrf"
+            logger.info(
+                f"RRF fusion: {chunks_before_fusion} candidates → {len(chunks)} "
+                f"unique chunks (deduped and reranked by RRF)"
+            )
         else:
             # Single query: use chunks as-is
             chunks = all_chunks[:candidates_k]
             fusion_method = "none"
 
+        # Get document filter info (if available)
+        document_filter = "none"
+        if chunks and "document_id" in chunks[0]:
+            # Check if results are filtered to specific documents
+            unique_docs = set(c.get("document_id") for c in chunks)
+            if len(unique_docs) == 1:
+                document_filter = list(unique_docs)[0]
+            elif len(unique_docs) <= 3:
+                document_filter = ", ".join(sorted(unique_docs))
+
         # === STEP 4: Reranking ===
+        chunks_before_rerank = len(chunks)
         if self.reranker and len(chunks) > k:
-            logger.debug(f"Reranking {len(chunks)} candidates to top {k}")
+            logger.info(f"Reranking {len(chunks)} candidates to top {k}...")
             chunks = self.reranker.rerank(query=query, candidates=chunks, top_k=k)
             reranking_applied = True
+            logger.info(
+                f"Reranking complete: {chunks_before_rerank} → {len(chunks)} chunks"
+            )
         else:
             chunks = chunks[:k]
             reranking_applied = False
+            logger.debug(f"No reranking applied, using top {len(chunks)} chunks")
 
         # === STEP 5: Format Results ===
         formatted = [format_chunk_result(c) for c in chunks]
+        final_count = len(formatted)
 
         # Generate citations
         citations = [
             f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
+        # Enhanced metadata with debug info
+        result_metadata = {
+            "query": query,
+            "k": k,
+            "num_expands": num_expands,
+            "expansion_metadata": expansion_metadata,
+            "fusion_method": fusion_method,
+            "reranking_applied": reranking_applied,
+            "method": "hybrid+expansion+rerank" if num_expands > 1 and self.reranker else "hybrid+rerank" if self.reranker else "hybrid",
+            "candidates_retrieved": len(all_chunks),
+            "chunks_before_rerank": chunks_before_rerank,
+            "chunks_after_rerank": final_count,
+            "final_count": final_count,
+            "document_filter": document_filter,
+            "queries_used": queries,
+            "search_metadata": search_metadata,
+        }
+
+        # Log final summary
+        logger.info(
+            f"Search complete: expanded to {len(queries)} queries, "
+            f"{len(all_chunks)} total candidates, "
+            f"{chunks_before_rerank} before rerank, "
+            f"{final_count} final chunks returned"
+        )
+
         return ToolResult(
             success=True,
             data=formatted,
             citations=citations,
-            metadata={
-                "query": query,
-                "k": k,
-                "num_expands": num_expands,
-                "expansion_metadata": expansion_metadata,
-                "fusion_method": fusion_method,
-                "reranking_applied": reranking_applied,
-                "method": "hybrid+expansion+rerank" if num_expands > 1 and self.reranker else "hybrid+rerank" if self.reranker else "hybrid",
-                "candidates_retrieved": len(all_chunks),
-                "final_count": len(formatted),
-            },
+            metadata=result_metadata,
         )
 
     def _rrf_fusion(self, chunks: List[dict], k: int = 60) -> List[dict]:

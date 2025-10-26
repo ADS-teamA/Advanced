@@ -18,7 +18,7 @@ class TestQueryExpanderInitialization:
 
     def test_init_openai_success(self):
         """Test successful initialization with OpenAI provider."""
-        with patch("src.agent.query_expander.OpenAI") as mock_openai:
+        with patch("openai.OpenAI") as mock_openai:
             expander = QueryExpander(
                 provider="openai",
                 model="gpt-5-nano",
@@ -31,7 +31,7 @@ class TestQueryExpanderInitialization:
 
     def test_init_anthropic_success(self):
         """Test successful initialization with Anthropic provider."""
-        with patch("src.agent.query_expander.Anthropic") as mock_anthropic:
+        with patch("anthropic.Anthropic") as mock_anthropic:
             expander = QueryExpander(
                 provider="anthropic",
                 model="claude-haiku-4-5",
@@ -63,23 +63,23 @@ class TestQueryExpanderInitialization:
 
     def test_init_missing_openai_package(self):
         """Test initialization fails gracefully when openai package is missing."""
-        with patch("src.agent.query_expander.OpenAI", side_effect=ImportError):
+        with patch("openai.OpenAI", side_effect=ImportError):
             with pytest.raises(ImportError, match="openai package required"):
                 QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
 
 
 class TestQueryExpansionOptimization:
-    """Test query expansion optimization (skip LLM when num_expands=1)."""
+    """Test query expansion optimization (skip LLM when num_expansions=0)."""
 
-    def test_skip_expansion_when_num_expands_1(self):
-        """Test that expansion is skipped when num_expands=1 (optimization)."""
-        with patch("src.agent.query_expander.OpenAI"):
+    def test_skip_expansion_when_num_expands_0(self):
+        """Test that expansion is skipped when num_expansions=0 (optimization)."""
+        with patch("openai.OpenAI"):
             expander = QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
 
             # Mock the LLM call to ensure it's NOT called
             expander._generate_expansions_llm = Mock()
 
-            result = expander.expand("test query", num_expansions=1)
+            result = expander.expand("test query", num_expansions=0)
 
             # Verify no LLM call
             expander._generate_expansions_llm.assert_not_called()
@@ -87,9 +87,38 @@ class TestQueryExpansionOptimization:
             # Verify result
             assert result.original_query == "test query"
             assert result.expanded_queries == ["test query"]
-            assert result.num_expansions == 1
+            assert result.num_expansions == 1  # 1 query total (original only)
             assert result.expansion_method == "none"
             assert result.model_used is None
+
+    def test_expansion_when_num_expands_1(self):
+        """Test that expansion DOES happen when num_expansions=1 (generates 1 variation)."""
+        with patch("openai.OpenAI") as mock_openai_class:
+            mock_client = Mock()
+            mock_openai_class.return_value = mock_client
+
+            expander = QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
+            expander.client = mock_client
+
+            # Mock OpenAI response
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=Mock(content="Query variation 1"))]
+            mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+            mock_client.chat.completions.create.return_value = mock_response
+
+            result = expander.expand("test query", num_expansions=1)
+
+            # Verify LLM WAS called
+            mock_client.chat.completions.create.assert_called_once()
+
+            # Verify result: original + 1 expansion = 2 queries total
+            assert result.original_query == "test query"
+            assert len(result.expanded_queries) == 2
+            assert "test query" in result.expanded_queries
+            assert "Query variation 1" in result.expanded_queries
+            assert result.num_expansions == 2  # 2 queries total
+            assert result.expansion_method == "llm"
+            assert result.model_used == "gpt-5-nano"
 
 
 class TestQueryExpansionBasic:
@@ -98,7 +127,7 @@ class TestQueryExpansionBasic:
     @pytest.fixture
     def mock_openai_expander(self):
         """Create QueryExpander with mocked OpenAI client."""
-        with patch("src.agent.query_expander.OpenAI") as mock_openai_class:
+        with patch("openai.OpenAI") as mock_openai_class:
             mock_client = Mock()
             mock_openai_class.return_value = mock_client
 
@@ -154,7 +183,7 @@ class TestQueryExpansionWarnings:
 
     def test_warning_logged_when_num_expands_exceeds_threshold(self, caplog):
         """Test warning is logged when num_expands > warn_threshold."""
-        with patch("src.agent.query_expander.OpenAI"):
+        with patch("openai.OpenAI"):
             expander = QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
 
             # Mock LLM to return immediately
@@ -174,7 +203,7 @@ class TestQueryExpansionErrorHandling:
     @pytest.fixture
     def mock_openai_expander(self):
         """Create QueryExpander with mocked OpenAI client."""
-        with patch("src.agent.query_expander.OpenAI") as mock_openai_class:
+        with patch("openai.OpenAI") as mock_openai_class:
             mock_client = Mock()
             mock_openai_class.return_value = mock_client
 
@@ -206,7 +235,7 @@ class TestPromptConstruction:
 
     def test_prompt_includes_num_expansions(self):
         """Test that prompt includes correct num_expansions count."""
-        with patch("src.agent.query_expander.OpenAI"):
+        with patch("openai.OpenAI"):
             expander = QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
 
             prompt = expander._build_expansion_prompt("test query", num_expansions=5)
@@ -216,7 +245,7 @@ class TestPromptConstruction:
 
     def test_prompt_uses_multi_question_strategy(self):
         """Test that prompt uses multi-question generation strategy."""
-        with patch("src.agent.query_expander.OpenAI"):
+        with patch("openai.OpenAI"):
             expander = QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
 
             prompt = expander._build_expansion_prompt("test", num_expansions=3)
@@ -229,6 +258,22 @@ class TestPromptConstruction:
 class TestCostTracking:
     """Test cost tracking integration."""
 
+    @pytest.fixture
+    def mock_openai_expander(self):
+        """Create QueryExpander with mocked OpenAI client."""
+        with patch("openai.OpenAI") as mock_openai_class:
+            mock_client = Mock()
+            mock_openai_class.return_value = mock_client
+
+            expander = QueryExpander(
+                provider="openai",
+                model="gpt-5-nano",
+                openai_api_key="sk-test"
+            )
+            expander.client = mock_client
+
+            yield expander, mock_client
+
     def test_cost_tracking_called(self, mock_openai_expander):
         """Test that cost tracking is called with correct parameters."""
         expander, mock_client = mock_openai_expander
@@ -240,7 +285,7 @@ class TestCostTracking:
         mock_client.chat.completions.create.return_value = mock_response
 
         # Mock cost tracker
-        with patch("src.agent.query_expander.get_global_tracker") as mock_tracker_getter:
+        with patch("src.cost_tracker.get_global_tracker") as mock_tracker_getter:
             mock_tracker = Mock()
             mock_tracker_getter.return_value = mock_tracker
 
@@ -262,7 +307,7 @@ class TestCostTracking:
         mock_client.chat.completions.create.return_value = mock_response
 
         # Mock cost tracker to raise error
-        with patch("src.agent.query_expander.get_global_tracker", side_effect=Exception("Tracker error")):
+        with patch("src.cost_tracker.get_global_tracker", side_effect=Exception("Tracker error")):
             # Should not raise, just log
             result = expander.expand("test", num_expansions=2)
 
