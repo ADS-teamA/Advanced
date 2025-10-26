@@ -71,6 +71,90 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def check_existing_components(document_id: str, vector_db_path: str = "vector_db") -> Dict:
+    """
+    Check what components already exist in vector_db for this document.
+
+    Args:
+        document_id: Document ID to check
+        vector_db_path: Path to vector database directory
+
+    Returns:
+        Dict with:
+            - exists: bool - Whether document exists in any component
+            - has_dense: bool - Has FAISS embeddings
+            - has_bm25: bool - Has BM25 index
+            - has_kg: bool - Has Knowledge Graph
+            - existing_doc_id: str - Actual doc_id found (may differ slightly)
+    """
+    import pickle
+
+    result = {
+        "exists": False,
+        "has_dense": False,
+        "has_bm25": False,
+        "has_kg": False,
+        "existing_doc_id": None,
+    }
+
+    vector_db_path = Path(vector_db_path)
+
+    # Check if vector_db exists
+    if not vector_db_path.exists():
+        return result
+
+    # Check FAISS metadata
+    metadata_file = vector_db_path / "metadata.pkl"
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, "rb") as f:
+                metadata = pickle.load(f)
+
+            # Check all layers for document_id match
+            for layer in ["metadata_layer1", "metadata_layer2", "metadata_layer3"]:
+                if layer in metadata:
+                    for chunk_meta in metadata[layer]:
+                        chunk_doc_id = chunk_meta.get("document_id", "")
+                        # Match exact or prefix (e.g., "BZ_VR1" matches "BZ_VR1_sample")
+                        if chunk_doc_id == document_id or chunk_doc_id.startswith(document_id):
+                            result["exists"] = True
+                            result["has_dense"] = True
+                            result["existing_doc_id"] = chunk_doc_id
+                            break
+
+                if result["exists"]:
+                    break
+
+        except Exception as e:
+            logger.warning(f"Failed to read metadata.pkl: {e}")
+
+    # Check BM25 indexes
+    bm25_files = [
+        vector_db_path / "bm25_layer1.pkl",
+        vector_db_path / "bm25_layer2.pkl",
+        vector_db_path / "bm25_layer3.pkl",
+    ]
+
+    if all(f.exists() for f in bm25_files):
+        try:
+            # Check if BM25 has documents
+            with open(bm25_files[0], "rb") as f:
+                bm25_data = pickle.load(f)
+                if hasattr(bm25_data, "corpus") and len(bm25_data.corpus) > 0:
+                    result["has_bm25"] = True
+        except Exception as e:
+            logger.warning(f"Failed to read BM25 index: {e}")
+
+    # Check Knowledge Graph (in output directory)
+    if result["existing_doc_id"]:
+        output_dir = Path("output")
+        kg_files = list(output_dir.glob(f"{result['existing_doc_id']}*/*/knowledge_graph.json"))
+        if kg_files:
+            result["has_kg"] = True
+
+    return result
+
+
 @dataclass
 class IndexingConfig:
     """
@@ -332,6 +416,33 @@ class IndexingPipeline:
             f"✓ Extracted: {result.num_sections} sections, " f"depth={result.hierarchy_depth}"
         )
 
+        # Check existing components in vector_db AFTER extraction
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("Checking existing components in vector_db/...")
+        logger.info("=" * 80)
+
+        existing = check_existing_components(result.document_id)
+
+        if existing["exists"]:
+            logger.info(f"✓ Document '{existing['existing_doc_id']}' found in vector_db:")
+            logger.info(f"  - Dense embeddings (FAISS): {'✓ EXISTS' if existing['has_dense'] else '✗ MISSING'}")
+            logger.info(f"  - BM25 index: {'✓ EXISTS' if existing['has_bm25'] else '✗ MISSING'}")
+            logger.info(f"  - Knowledge Graph: {'✓ EXISTS' if existing['has_kg'] else '✗ MISSING'}")
+            logger.info("")
+            logger.info("Will skip existing components and add only missing ones...")
+        else:
+            logger.info(f"✓ Document '{result.document_id}' NOT found in vector_db")
+            logger.info("Will create all components...")
+
+        logger.info("=" * 80)
+        logger.info("")
+
+        # Determine what to skip
+        skip_dense = existing["has_dense"]
+        skip_bm25 = existing["has_bm25"]
+        skip_kg = existing["has_kg"]
+
         # PHASE 3: Multi-layer chunking + SAC
         logger.info("PHASE 3: Multi-Layer Chunking + SAC")
         chunks = self.chunker.chunk_document(result)
@@ -342,108 +453,148 @@ class IndexingPipeline:
             f"L3={chunking_stats['layer3_count']} (PRIMARY)"
         )
 
-        # PHASE 4: Embedding
-        logger.info("PHASE 4: Embedding Generation")
-        embeddings = {
-            "layer1": self.embedder.embed_chunks(chunks["layer1"], layer=1),
-            "layer2": self.embedder.embed_chunks(chunks["layer2"], layer=2),
-            "layer3": self.embedder.embed_chunks(chunks["layer3"], layer=3),
-        }
-        logger.info(
-            f"✓ Embedded: {self.embedder.dimensions}D vectors, "
-            f"{embeddings['layer3'].shape[0]} Layer 3 chunks"
-        )
+        # PHASE 4: Embedding & FAISS (skip if exists)
+        vector_store = None
 
-        # PHASE 4: FAISS Indexing
-        logger.info("PHASE 4: FAISS Indexing")
-        vector_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
-        vector_store.add_chunks(chunks, embeddings)
-        store_stats = vector_store.get_stats()
-        logger.info(
-            f"✓ Indexed: {store_stats['total_vectors']} vectors "
-            f"({store_stats['documents']} documents)"
-        )
-
-        # PHASE 5B: Hybrid Search (optional)
-        if self.config.enable_hybrid_search:
-            logger.info("PHASE 5B: Hybrid Search (BM25 + Dense + RRF)")
-
+        if skip_dense:
+            logger.info("PHASE 4: ⏭️  SKIPPING - Dense embeddings already exist")
+            # Load existing vector store
             try:
-                from src.hybrid_search import BM25Store, HybridVectorStore
-
-                # Build BM25 indexes for all 3 layers
-                bm25_store = BM25Store()
-                bm25_store.build_from_chunks(chunks)
-
-                logger.info(
-                    f"✓ BM25 Indexed: "
-                    f"L1={len(bm25_store.index_layer1.corpus)}, "
-                    f"L2={len(bm25_store.index_layer2.corpus)}, "
-                    f"L3={len(bm25_store.index_layer3.corpus)}"
-                )
-
-                # Wrap FAISS + BM25 into HybridVectorStore
-                hybrid_store = HybridVectorStore(
-                    faiss_store=vector_store,
-                    bm25_store=bm25_store,
-                    fusion_k=self.config.hybrid_fusion_k,
-                )
-
-                # Replace vector_store with hybrid_store for return
-                vector_store = hybrid_store
+                vector_store = FAISSVectorStore.load("vector_db")
                 store_stats = vector_store.get_stats()
-
-                logger.info(f"✓ Hybrid Search enabled: RRF k={self.config.hybrid_fusion_k}")
-
+                logger.info(
+                    f"✓ Loaded existing: {store_stats['total_vectors']} vectors "
+                    f"({store_stats['documents']} documents)"
+                )
             except Exception as e:
-                logger.error(f"✗ Hybrid Search failed: {e}")
-                logger.warning("Continuing with dense-only retrieval...")
-                import traceback
+                logger.error(f"✗ Failed to load existing vector_db: {e}")
+                logger.info("Falling back to creating new embeddings...")
+                skip_dense = False
 
-                logger.debug(traceback.format_exc())
+        if not skip_dense:
+            logger.info("PHASE 4: Embedding Generation")
+            embeddings = {
+                "layer1": self.embedder.embed_chunks(chunks["layer1"], layer=1),
+                "layer2": self.embedder.embed_chunks(chunks["layer2"], layer=2),
+                "layer3": self.embedder.embed_chunks(chunks["layer3"], layer=3),
+            }
+            logger.info(
+                f"✓ Embedded: {self.embedder.dimensions}D vectors, "
+                f"{embeddings['layer3'].shape[0]} Layer 3 chunks"
+            )
 
-        # PHASE 5A: Knowledge Graph (optional)
+            # PHASE 4: FAISS Indexing
+            logger.info("PHASE 4: FAISS Indexing")
+            vector_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
+            vector_store.add_chunks(chunks, embeddings)
+            store_stats = vector_store.get_stats()
+            logger.info(
+                f"✓ Indexed: {store_stats['total_vectors']} vectors "
+                f"({store_stats['documents']} documents)"
+            )
+
+        # PHASE 5B: Hybrid Search (optional, skip if exists)
+        if self.config.enable_hybrid_search:
+            if skip_bm25 and existing["has_dense"]:
+                logger.info("PHASE 5B: ⏭️  SKIPPING - BM25 index already exists")
+                # vector_store should already be HybridVectorStore from loading
+            else:
+                logger.info("PHASE 5B: Hybrid Search (BM25 + Dense + RRF)")
+
+                try:
+                    from src.hybrid_search import BM25Store, HybridVectorStore
+
+                    # Build BM25 indexes for all 3 layers
+                    bm25_store = BM25Store()
+                    bm25_store.build_from_chunks(chunks)
+
+                    logger.info(
+                        f"✓ BM25 Indexed: "
+                        f"L1={len(bm25_store.index_layer1.corpus)}, "
+                        f"L2={len(bm25_store.index_layer2.corpus)}, "
+                        f"L3={len(bm25_store.index_layer3.corpus)}"
+                    )
+
+                    # Wrap FAISS + BM25 into HybridVectorStore
+                    hybrid_store = HybridVectorStore(
+                        faiss_store=vector_store,
+                        bm25_store=bm25_store,
+                        fusion_k=self.config.hybrid_fusion_k,
+                    )
+
+                    # Replace vector_store with hybrid_store for return
+                    vector_store = hybrid_store
+                    store_stats = vector_store.get_stats()
+
+                    logger.info(f"✓ Hybrid Search enabled: RRF k={self.config.hybrid_fusion_k}")
+
+                except Exception as e:
+                    logger.error(f"✗ Hybrid Search failed: {e}")
+                    logger.warning("Continuing with dense-only retrieval...")
+                    import traceback
+
+                    logger.debug(traceback.format_exc())
+
+        # PHASE 5A: Knowledge Graph (optional, skip if exists)
         knowledge_graph = None
         kg_error = None
+
         if self.kg_pipeline:
-            logger.info("PHASE 5A: Knowledge Graph Construction")
+            if skip_kg:
+                logger.info("PHASE 5A: ⏭️  SKIPPING - Knowledge Graph already exists")
+                # Try to load existing KG for stats
+                try:
+                    output_dir = Path("output")
+                    kg_files = list(output_dir.glob(f"{existing['existing_doc_id']}*/*/knowledge_graph.json"))
+                    if kg_files:
+                        import json
+                        with open(kg_files[0], 'r') as f:
+                            kg_data = json.load(f)
+                        logger.info(
+                            f"✓ Loaded existing KG: {len(kg_data.get('entities', []))} entities, "
+                            f"{len(kg_data.get('relationships', []))} relationships"
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not load existing KG stats: {e}")
+            else:
+                logger.info("PHASE 5A: Knowledge Graph Construction")
 
-            try:
-                # Prepare chunks for KG (use Layer 3 primary chunks)
-                kg_chunks = [
-                    {
-                        "id": chunk.id,
-                        "content": chunk.content,
-                        "raw_content": chunk.raw_content,
-                        "metadata": {
-                            "document_id": chunk.metadata.document_id,
-                            "section_path": chunk.metadata.section_path,
-                            "section_title": chunk.metadata.section_title,
-                        },
-                    }
-                    for chunk in chunks["layer3"]
-                ]
+                try:
+                    # Prepare chunks for KG (use Layer 3 primary chunks)
+                    kg_chunks = [
+                        {
+                            "id": chunk.id,
+                            "content": chunk.content,
+                            "raw_content": chunk.raw_content,
+                            "metadata": {
+                                "document_id": chunk.metadata.document_id,
+                                "section_path": chunk.metadata.section_path,
+                                "section_title": chunk.metadata.section_title,
+                            },
+                        }
+                        for chunk in chunks["layer3"]
+                    ]
 
-                # Build knowledge graph
-                knowledge_graph = self.kg_pipeline.build_from_chunks(
-                    chunks=kg_chunks, document_id=result.document_id
-                )
-
-                logger.info(
-                    f"✓ Knowledge Graph: {len(knowledge_graph.entities)} entities, "
-                    f"{len(knowledge_graph.relationships)} relationships"
-                )
-
-            except Exception as e:
-                logger.error(f"✗ Knowledge Graph construction failed: {e}", exc_info=True)
-                if self.config.enable_knowledge_graph:
-                    logger.error(
-                        f"ERROR: Knowledge Graph was enabled in config but construction failed.\n"
-                        f"Error: {e}\n"
-                        f"To disable KG: Set ENABLE_KNOWLEDGE_GRAPH=false in .env"
+                    # Build knowledge graph
+                    knowledge_graph = self.kg_pipeline.build_from_chunks(
+                        chunks=kg_chunks, document_id=result.document_id
                     )
-                knowledge_graph = None
-                kg_error = str(e)
+
+                    logger.info(
+                        f"✓ Knowledge Graph: {len(knowledge_graph.entities)} entities, "
+                        f"{len(knowledge_graph.relationships)} relationships"
+                    )
+
+                except Exception as e:
+                    logger.error(f"✗ Knowledge Graph construction failed: {e}", exc_info=True)
+                    if self.config.enable_knowledge_graph:
+                        logger.error(
+                            f"ERROR: Knowledge Graph was enabled in config but construction failed.\n"
+                            f"Error: {e}\n"
+                            f"To disable KG: Set ENABLE_KNOWLEDGE_GRAPH=false in .env"
+                        )
+                    knowledge_graph = None
+                    kg_error = str(e)
 
         # Save intermediate results
         if save_intermediate and output_dir:

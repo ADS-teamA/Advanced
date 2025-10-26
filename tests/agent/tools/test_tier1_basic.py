@@ -13,7 +13,7 @@ from unittest.mock import Mock, MagicMock
 import numpy as np
 
 from src.agent.tools.tier1_basic import (
-    SimpleSearchTool,
+    SearchTool,
     EntitySearchTool,
     DocumentSearchTool,
     SectionSearchTool,
@@ -180,21 +180,33 @@ def mock_config():
     return config
 
 
-# ===== Tool 1: SimpleSearchTool =====
+# ===== Tool 1: SearchTool =====
 
 
-class TestSimpleSearchTool:
-    """Test SimpleSearchTool (hybrid search with reranking)."""
+class TestSearchTool:
+    """Test SearchTool (unified hybrid search with optional query expansion)."""
 
-    def test_simple_search_with_reranker(self, mock_vector_store, mock_embedder, mock_reranker):
-        """Test simple search with reranker enabled."""
-        tool = SimpleSearchTool(
+    @pytest.fixture
+    def mock_config(self):
+        """Create mock AgentConfig."""
+        config = Mock()
+        config.tool_config = Mock()
+        config.tool_config.query_expansion_provider = "openai"
+        config.tool_config.query_expansion_model = "gpt-5-nano"
+        config.anthropic_api_key = None
+        config.openai_api_key = "sk-test-key"
+        return config
+
+    def test_search_without_expansion_with_reranker(self, mock_vector_store, mock_embedder, mock_reranker, mock_config):
+        """Test search without expansion (num_expands=1) with reranker."""
+        tool = SearchTool(
             vector_store=mock_vector_store,
             embedder=mock_embedder,
             reranker=mock_reranker,
+            config=mock_config,
         )
 
-        result = tool.execute(query="waste disposal requirements", k=2)
+        result = tool.execute(query="waste disposal requirements", k=2, num_expands=1)
 
         assert result.success is True
         assert isinstance(result.data, list)
@@ -204,35 +216,96 @@ class TestSimpleSearchTool:
         assert len(result.citations) == 2
         assert result.metadata["method"] == "hybrid+rerank"
         assert result.metadata["k"] == 2
+        assert result.metadata["num_expands"] == 1
+        assert result.metadata["expansion_metadata"]["expansion_method"] == "none"
 
-    def test_simple_search_without_reranker(self, mock_vector_store, mock_embedder):
-        """Test simple search without reranker."""
-        tool = SimpleSearchTool(
+    def test_search_with_expansion(self, mock_vector_store, mock_embedder, mock_reranker, mock_config):
+        """Test search with query expansion (num_expands=3)."""
+        from unittest.mock import patch
+
+        tool = SearchTool(
+            vector_store=mock_vector_store,
+            embedder=mock_embedder,
+            reranker=mock_reranker,
+            config=mock_config,
+        )
+
+        # Mock QueryExpander
+        with patch.object(tool, '_get_query_expander') as mock_get_expander:
+            mock_expander = Mock()
+            mock_expansion_result = Mock()
+            mock_expansion_result.expanded_queries = [
+                "waste disposal requirements",
+                "requirements for waste management",
+                "disposal of waste regulations"
+            ]
+            mock_expansion_result.expansion_method = "llm"
+            mock_expansion_result.model_used = "gpt-5-nano"
+            mock_expander.expand.return_value = mock_expansion_result
+            mock_get_expander.return_value = mock_expander
+
+            result = tool.execute(query="waste disposal requirements", k=2, num_expands=3)
+
+            assert result.success is True
+            assert result.metadata["num_expands"] == 3
+            assert result.metadata["expansion_metadata"]["expansion_method"] == "llm"
+            assert result.metadata["expansion_metadata"]["model_used"] == "gpt-5-nano"
+            assert result.metadata["expansion_metadata"]["queries_generated"] == 3
+            assert result.metadata["fusion_method"] == "rrf"
+
+    def test_search_expansion_fallback_on_error(self, mock_vector_store, mock_embedder, mock_config):
+        """Test search falls back to original query when expansion fails."""
+        from unittest.mock import patch
+
+        tool = SearchTool(
             vector_store=mock_vector_store,
             embedder=mock_embedder,
             reranker=None,
+            config=mock_config,
         )
 
-        result = tool.execute(query="waste disposal", k=6)
+        # Mock QueryExpander to raise error
+        with patch.object(tool, '_get_query_expander') as mock_get_expander:
+            mock_expander = Mock()
+            mock_expander.expand.side_effect = Exception("Expansion failed")
+            mock_get_expander.return_value = mock_expander
+
+            result = tool.execute(query="test query", k=5, num_expands=3)
+
+            # Should still succeed with fallback
+            assert result.success is True
+            assert result.metadata["expansion_metadata"]["expansion_method"] == "failed"
+
+    def test_search_without_reranker(self, mock_vector_store, mock_embedder, mock_config):
+        """Test search without reranker."""
+        tool = SearchTool(
+            vector_store=mock_vector_store,
+            embedder=mock_embedder,
+            reranker=None,
+            config=mock_config,
+        )
+
+        result = tool.execute(query="waste disposal", k=6, num_expands=1)
 
         assert result.success is True
         assert result.metadata["method"] == "hybrid"
         assert len(result.data) <= 6
 
-    def test_simple_search_empty_results(self, mock_embedder):
-        """Test simple search with no results."""
+    def test_search_empty_results(self, mock_embedder, mock_config):
+        """Test search with no results."""
         empty_store = Mock()
         empty_store.hierarchical_search = Mock(
             return_value={"layer1": [], "layer2": [], "layer3": []}
         )
 
-        tool = SimpleSearchTool(
+        tool = SearchTool(
             vector_store=empty_store,
             embedder=mock_embedder,
             reranker=None,
+            config=mock_config,
         )
 
-        result = tool.execute(query="nonexistent query", k=6)
+        result = tool.execute(query="nonexistent query", k=6, num_expands=1)
 
         assert result.success is True
         assert result.data == []
@@ -1009,27 +1082,39 @@ class TestListAvailableToolsTool:
 class TestInputValidation:
     """Test Pydantic input validation for all tools."""
 
-    def test_simple_search_invalid_k(self, mock_vector_store, mock_embedder):
+    def test_search_invalid_k(self, mock_vector_store, mock_embedder):
         """Test that invalid k parameter is rejected."""
-        tool = SimpleSearchTool(
+        mock_config = Mock()
+        mock_config.tool_config = Mock()
+        mock_config.tool_config.query_expansion_provider = "openai"
+        mock_config.tool_config.query_expansion_model = "gpt-5-nano"
+
+        tool = SearchTool(
             vector_store=mock_vector_store,
             embedder=mock_embedder,
+            config=mock_config,
         )
 
         # k too small (< 1)
-        result = tool.execute(query="test", k=0)
+        result = tool.execute(query="test", k=0, num_expands=1)
         assert result.success is False
         assert "Invalid input" in result.error
 
-    def test_simple_search_missing_query(self, mock_vector_store, mock_embedder):
+    def test_search_missing_query(self, mock_vector_store, mock_embedder):
         """Test that missing required parameter is rejected."""
-        tool = SimpleSearchTool(
+        mock_config = Mock()
+        mock_config.tool_config = Mock()
+        mock_config.tool_config.query_expansion_provider = "openai"
+        mock_config.tool_config.query_expansion_model = "gpt-5-nano"
+
+        tool = SearchTool(
             vector_store=mock_vector_store,
             embedder=mock_embedder,
+            config=mock_config,
         )
 
         # Missing required 'query' parameter
-        result = tool.execute(k=6)
+        result = tool.execute(k=6, num_expands=1)
         assert result.success is False
         assert "Invalid input" in result.error
 

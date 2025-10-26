@@ -96,6 +96,10 @@ class ToolConfig:
     # Context expansion settings (for get_chunk_context tool)
     context_window: int = 2  # Number of chunks before/after for context expansion
 
+    # Query expansion settings (for unified search tool)
+    query_expansion_provider: str = "openai"  # "openai" or "anthropic"
+    query_expansion_model: str = "gpt-5-nano"  # Fast, cheap model for expansion
+
     # Performance
     lazy_load_reranker: bool = False  # Load reranker at startup for better tool availability
     lazy_load_graph: bool = True
@@ -121,6 +125,10 @@ class ToolConfig:
             )
         if self.context_window < 0:
             raise ValueError(f"context_window must be non-negative, got {self.context_window}")
+        if self.query_expansion_provider.lower() not in ["openai", "anthropic"]:
+            raise ValueError(
+                f"query_expansion_provider must be 'openai' or 'anthropic', got '{self.query_expansion_provider}'"
+            )
 
 
 @dataclass
@@ -293,6 +301,7 @@ class AgentConfig:
         - AGENT_MODEL: Model to use (default: claude-sonnet-4-5-20250929)
         - VECTOR_STORE_PATH: Path to hybrid store
         - KNOWLEDGE_GRAPH_PATH: Path to KG JSON (optional)
+        - QUERY_EXPANSION_MODEL: LLM model for query expansion (default: gpt-5-nano)
 
         Args:
             **overrides: Override specific config values
@@ -300,10 +309,24 @@ class AgentConfig:
         Returns:
             AgentConfig instance
         """
+        # Create ToolConfig with environment variable support
+        query_expansion_model_env = os.getenv("QUERY_EXPANSION_MODEL", "gpt-5-nano")
+
+        # Detect provider from model name
+        query_expansion_provider = "openai"
+        if "claude" in query_expansion_model_env.lower() or "haiku" in query_expansion_model_env.lower() or "sonnet" in query_expansion_model_env.lower():
+            query_expansion_provider = "anthropic"
+
+        tool_config = ToolConfig(
+            query_expansion_provider=query_expansion_provider,
+            query_expansion_model=query_expansion_model_env,
+        )
+
         config = cls(
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             model=os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929"),
             vector_store_path=Path(os.getenv("VECTOR_STORE_PATH", "vector_db")),
+            tool_config=tool_config,
         )
 
         # Apply overrides

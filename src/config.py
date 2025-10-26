@@ -240,8 +240,11 @@ class ExtractionConfig:
         )
     """
 
-    # OCR settings - Tesseract engine (best for Czech)
+    # OCR settings - Choice of OCR engine
     enable_ocr: bool = True
+    # OCR engine: "tesseract" (best Czech support) or "rapidocr" (3-5× faster)
+    # To use RapidOCR: pip install rapidocr_onnxruntime
+    ocr_engine: str = "tesseract"  # "tesseract" or "rapidocr"
     # Tesseract language codes: ces=Czech, eng=English, deu=German, etc.
     # Use ["auto"] for automatic language detection
     ocr_language: List[str] = field(default_factory=lambda: ["ces", "eng"])
