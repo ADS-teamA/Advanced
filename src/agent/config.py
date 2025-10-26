@@ -98,7 +98,7 @@ class ToolConfig:
 
     # Query expansion settings (for unified search tool)
     query_expansion_provider: str = "openai"  # "openai" or "anthropic"
-    query_expansion_model: str = "gpt-5-nano"  # Fast, cheap model for expansion
+    query_expansion_model: str = "gpt-4o-mini"  # Stable, fast model for expansion
 
     # Performance
     lazy_load_reranker: bool = False  # Load reranker at startup for better tool availability
@@ -310,7 +310,7 @@ class AgentConfig:
             AgentConfig instance
         """
         # Create ToolConfig with environment variable support
-        query_expansion_model_env = os.getenv("QUERY_EXPANSION_MODEL", "gpt-5-nano")
+        query_expansion_model_env = os.getenv("QUERY_EXPANSION_MODEL", "gpt-4o-mini")
 
         # Detect provider from model name
         query_expansion_provider = "openai"
