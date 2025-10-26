@@ -211,25 +211,31 @@ class SearchTool(BaseTool):
                 )
                 logger.info(f"QueryExpander initialized: provider={provider}, model={model}")
             except ValueError as e:
-                # Configuration error (missing API key, invalid provider, etc.)
+                # Configuration error: missing API key OR invalid provider
+                # (QueryExpander __init__ validates both)
                 logger.warning(
                     f"QueryExpander configuration error: {e}. "
-                    f"Query expansion will be disabled. Check your API keys and provider settings."
+                    f"Query expansion will be disabled. "
+                    f"Common causes: missing API key (ANTHROPIC_API_KEY or OPENAI_API_KEY), "
+                    f"or unsupported provider (only 'openai' and 'anthropic' supported)."
                 )
                 self._query_expander = None
             except ImportError as e:
-                # Missing package (openai or anthropic)
+                # Missing package: openai (for provider='openai') or anthropic (for provider='anthropic')
+                package_name = "openai" if provider == "openai" else "anthropic"
                 logger.warning(
                     f"QueryExpander package missing: {e}. "
                     f"Query expansion will be disabled. Install required package: "
-                    f"'pip install openai' or 'pip install anthropic'"
+                    f"'uv pip install {package_name}' (for provider='{provider}')"
                 )
                 self._query_expander = None
             except Exception as e:
-                # Unexpected error
+                # Unexpected error: any exception OTHER than ValueError (config) or ImportError (missing package)
+                # Examples: network errors, attribute errors from malformed config, type errors
+                # This catch-all prevents SearchTool from crashing if QueryExpander has bugs
                 logger.error(
                     f"Unexpected error initializing QueryExpander ({type(e).__name__}): {e}. "
-                    f"Query expansion will be disabled. This may indicate a bug."
+                    f"Query expansion will be disabled. This may indicate a bug in QueryExpander or SearchTool."
                 )
                 self._query_expander = None
 
