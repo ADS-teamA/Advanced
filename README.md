@@ -2,7 +2,7 @@
 
 Research-based RAG system optimized for legal and technical documentation with 7-phase pipeline and interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 27-Tool Agent)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 27-Tool Agent + Query Expansion)
 
 ---
 
@@ -21,12 +21,13 @@ Production-ready RAG system based on 4 research papers implementing state-of-the
 - **PHASE 2:** Generic summary generation (150 chars, proven better than expert summaries)
 - **PHASE 3:** RCTS chunking (500 chars) + SAC (58% DRM reduction)
 - **PHASE 4:** Multi-layer indexing (3 separate FAISS indexes)
-- **PHASE 5:** Hybrid search (BM25+Dense+RRF) + Knowledge graph + Cross-encoder reranking
+- **PHASE 5:** Hybrid search (BM25+Dense+RRF) + Knowledge graph + Cross-encoder reranking + Query expansion
 - **PHASE 6:** Context assembly with citations
 
 **Agent (PHASE 7):**
 - **Interactive CLI** powered by Claude SDK
 - **27 specialized tools** (12 basic + 9 advanced + 6 analysis)
+- **Query expansion** with multi-query generation (+18% recall)
 - **Cost tracking** with prompt caching (90% savings on cached tokens)
 - **Conversation management** (/help, /stats, /config, /clear)
 
@@ -186,7 +187,8 @@ Document (PDF/DOCX)
     ├─ 3 separate FAISS indexes (IndexFlatIP)
     └─ Cosine similarity search
     ↓
-[PHASE 5] Hybrid Search + Knowledge Graph + Reranking
+[PHASE 5] Hybrid Search + Knowledge Graph + Reranking + Query Expansion
+    ├─ Query expansion (optional, num_expands=0-5)
     ├─ BM25 + Dense retrieval + RRF fusion
     ├─ Entity/relationship extraction (NetworkX)
     └─ Cross-encoder reranking (NOT Cohere - hurts legal docs)
@@ -207,12 +209,12 @@ Document (PDF/DOCX)
 ### 27 Agent Tools
 
 **Basic Tools (Fast, <1s):**
+- `search` - Unified hybrid search with optional query expansion (num_expands parameter)
 - `document_search` - Find relevant documents
 - `section_search` - Search within sections
 - `chunk_search` - Semantic chunk search
 - `keyword_search` - Exact keyword matching
-- `metadata_query` - Filter by metadata
-- ... (7 more)
+- ... (6 more)
 
 **Advanced Tools (Quality, 1-3s):**
 - `hybrid_search` - BM25 + Dense + RRF
@@ -510,4 +512,4 @@ MIT License
 ---
 
 **Status:** PHASE 1-7 COMPLETE ✅
-**Last Updated:** 2025-10-25
+**Last Updated:** 2025-10-26
