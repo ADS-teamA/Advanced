@@ -104,10 +104,11 @@ else
 fi
 
 echo ""
-print_info "Starting indexing pipeline..."
+print_info "Starting intelligent indexing pipeline..."
+print_info "(Pipeline will auto-detect existing components and skip them)"
 echo ""
 
-# Run pipeline
+# Run pipeline (with intelligent component detection)
 uv run python run_pipeline.py "$INPUT_PATH"
 
 # Check if pipeline succeeded
