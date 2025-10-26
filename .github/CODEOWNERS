@@ -1,0 +1,19 @@
+# CODEOWNERS
+#
+# Defines code ownership for automatic reviewer assignment and required approvals.
+#
+# When branch protection is enabled on main:
+# - All pull requests require approval from @michalprusek
+# - Direct pushes to main are blocked
+# - Only approved PRs can be merged
+#
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+# All changes require approval from @michalprusek
+* @michalprusek
+
+# Specific rules for critical files (optional - can be added later)
+# /.github/workflows/ @michalprusek
+# /src/agent/ @michalprusek
+# /CLAUDE.md @michalprusek
