@@ -6,7 +6,7 @@ Research-based RAG system optimized for legal and technical documentation with 7
 
 ## 📚 Interactive Documentation
 
-**🌐 Live Documentation:** [https://ads-teama.github.io/Advanced/](https://ads-teama.github.io/Advanced/)
+**🌐 Live Documentation:** [https://ads-teama.github.io/Advanced/]([https://ads-teama.github.io/Advanced/](https://ads-teama.github.io/SUJBOT2/))
 
 Explore our visual, interactive pipeline documentation:
 - 📥 **[Indexing Pipeline](https://ads-teama.github.io/Advanced/indexing_pipeline.html)** - Phase 1-5: Document → Vector Store
