@@ -145,8 +145,9 @@ The system processes documents through 7 distinct phases:
 **PHASE 7: RAG Agent**
 - Framework: Claude SDK (official Anthropic SDK)
 - Tools: 27 specialized tools (3 tiers: basic, advanced, analysis)
-- Features: Streaming, prompt caching (90% savings), cost tracking
-- Files: `src/agent/`
+- Features: Streaming, prompt caching (90% savings), cost tracking, **query expansion**
+- Query Expansion: Multi-query generation (research suggests +15-25% recall) with `num_expands` parameter
+- Files: `src/agent/`, `src/agent/query_expander.py`
 
 ### Configuration Architecture
 
@@ -228,12 +229,13 @@ These decisions are backed by research papers and extensive testing:
 
 **Tool Tiers (Speed/Quality Tradeoff):**
 - **TIER 1** (11 tools): Fast (<100ms), basic retrieval - Use first
-  - Key tool: **`search`** (unified hybrid search with optional query expansion)
-    - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total
-    - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total
-    - `num_expands=2`: Better recall (~800ms) - original + 2 paraphrases, 3 queries total
-    - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total
-    - Replaces deprecated `simple_search` tool
+  - Key tool: **`search`** (unified hybrid search with optional query expansion) ✅ **NEW: Query Expansion**
+    - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total (default)
+    - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total (+15-25% recall est.)
+    - `num_expands=2`: Better recall (~800ms) - original + 2 paraphrases, 3 queries total (+20-30% recall est.)
+    - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total (max quality)
+    - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
+    - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py`
 - **TIER 2** (9 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
 - **TIER 3** (6 tools): Deep (1-3s), analysis and insights - Use sparingly
 
@@ -724,7 +726,9 @@ logger.error("Errors that don't crash the program")
 
 ## Version & Status
 
-**Last Updated:** 2025-10-25
-**Status:** PHASE 1-7 COMPLETE ✅
+**Last Updated:** 2025-10-26
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅
 **Agent Tools:** 27 (11 basic + 9 advanced + 6 analysis)
-**Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Context Assembly)
+**Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Context Assembly)
+**Recent Updates:**
+- Query Expansion (2025-10-26): Multi-query generation with `num_expands` parameter (research-based +15-25% recall improvement)
