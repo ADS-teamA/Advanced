@@ -25,6 +25,13 @@ from docling.datamodel.pipeline_options import (
     TesseractCliOcrOptions,
     LayoutOptions,
 )
+
+# Try to import RapidOCR (faster alternative)
+try:
+    from docling.datamodel.pipeline_options import RapidOcrOptions
+    RAPIDOCR_AVAILABLE = True
+except ImportError:
+    RAPIDOCR_AVAILABLE = False
 from docling.datamodel.layout_model_specs import (
     DOCLING_LAYOUT_HERON,
     DOCLING_LAYOUT_EGRET_LARGE,
@@ -317,13 +324,25 @@ class DoclingExtractorV2:
         """
         Setup document converter with optimal settings.
 
-        Uses Tesseract OCR for best Czech language support (90%+ accuracy).
-        Tesseract language codes: ces=Czech, eng=English
-        """
+        OCR Options (in order of preference):
+        1. RapidOCR: 3-5× faster than Tesseract (if available)
+        2. Tesseract: Best Czech language support (90%+ accuracy)
 
-        # Configure OCR - Use Tesseract for best Czech support
-        # lang parameter: ["ces", "eng"] for Czech+English, or ["auto"] for automatic
-        ocr_options = TesseractCliOcrOptions(lang=self.config.ocr_language)  # e.g., ["ces", "eng"]
+        To install RapidOCR: pip install rapidocr_onnxruntime
+        """
+        # Configure OCR - Try RapidOCR first (faster), fallback to Tesseract
+        if RAPIDOCR_AVAILABLE and self.config.ocr_engine == "rapidocr":
+            logger.info("Using RapidOCR (3-5× faster than Tesseract)")
+            ocr_options = RapidOcrOptions()  # Uses default models
+        else:
+            # Tesseract with optimized settings
+            if not RAPIDOCR_AVAILABLE and self.config.ocr_engine == "rapidocr":
+                logger.warning("RapidOCR requested but not installed. Install: pip install rapidocr_onnxruntime")
+                logger.info("Falling back to Tesseract")
+
+            logger.info(f"Using Tesseract OCR with languages: {self.config.ocr_language}")
+            # Tesseract settings for Czech+English
+            ocr_options = TesseractCliOcrOptions(lang=self.config.ocr_language)  # e.g., ["ces", "eng"]
 
         # Configure layout model based on config
         layout_model_map = {

@@ -24,6 +24,7 @@ from src.reranker import CrossEncoderReranker
 from .agent_core import AgentCore
 from .config import AgentConfig
 from .tools.registry import get_registry
+from .tools.token_manager import TokenCounter
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +295,9 @@ class AgentCLI:
 
         # Initialize with document list (adds to conversation history)
         self.agent.initialize_with_documents()
+
+        # Display initial token count (system prompt + tools + documents)
+        self._display_initial_token_count()
 
         # Check for degraded mode
         degraded_features = []
@@ -607,6 +611,63 @@ class AgentCLI:
         except Exception as e:
             print(f"\n❌ Failed to switch model: {e}")
             logger.error(f"Model switch error: {e}", exc_info=True)
+
+    def _display_initial_token_count(self):
+        """
+        Display token count for initial context before first user message.
+
+        Calculates tokens for:
+        - System prompt
+        - Tool definitions (27 tools)
+        - Initial messages (document list)
+        """
+        print("\n📊 Initial Context Token Count:")
+
+        try:
+            # Initialize token counter
+            token_counter = TokenCounter(model=self.config.model)
+
+            # Count system prompt tokens
+            system_prompt_tokens = token_counter.count_tokens(self.config.system_prompt)
+            print(f"  System prompt: {system_prompt_tokens:,} tokens")
+
+            # Count tool definitions tokens
+            tools = self.agent.registry.get_claude_sdk_tools()
+            import json
+            tools_json = json.dumps(tools)
+            tools_tokens = token_counter.count_tokens(tools_json)
+            print(f"  Tool definitions ({len(tools)} tools): {tools_tokens:,} tokens")
+
+            # Count initial messages tokens (document list + acknowledgment)
+            initial_messages_tokens = 0
+            if self.agent.conversation_history:
+                for msg in self.agent.conversation_history:
+                    if isinstance(msg.get("content"), str):
+                        initial_messages_tokens += token_counter.count_tokens(msg["content"])
+                    elif isinstance(msg.get("content"), list):
+                        for block in msg["content"]:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                initial_messages_tokens += token_counter.count_tokens(block.get("text", ""))
+
+            print(f"  Document list: {initial_messages_tokens:,} tokens")
+
+            # Calculate total
+            total_tokens = system_prompt_tokens + tools_tokens + initial_messages_tokens
+            print(f"  ─────────────────────────")
+            print(f"  TOTAL: {total_tokens:,} tokens")
+
+            # Show cache impact if caching is enabled
+            if self.config.enable_prompt_caching and self.agent.provider.supports_feature("prompt_caching"):
+                print(f"\n  ℹ️  Prompt caching enabled:")
+                print(f"     - First request: Full cost ({total_tokens:,} tokens)")
+                print(f"     - Subsequent requests: ~90% discount on cached portions")
+                print(f"     - Estimated savings: ~{int(total_tokens * 0.9):,} tokens per request")
+
+            print()
+
+        except Exception as e:
+            logger.warning(f"Failed to calculate initial token count: {e}")
+            # Don't crash if token counting fails - just skip the display
 
     def _list_available_models(self):
         """List available models with pricing info."""

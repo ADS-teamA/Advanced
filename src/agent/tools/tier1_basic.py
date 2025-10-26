@@ -25,7 +25,7 @@ class GetToolHelpInput(ToolInput):
 
     tool_name: str = Field(
         ...,
-        description="Name of tool to get help for (e.g., 'simple_search', 'compare_documents')"
+        description="Name of tool to get help for (e.g., 'search', 'compare_documents')"
     )
 
 
@@ -123,86 +123,337 @@ class GetToolHelpTool(BaseTool):
         )
 
 
-# === Tool 1: Simple Search (Hybrid + Reranking) ===
+# === Tool 1: Unified Search (with Query Expansion) ===
 
 
-class SimpleSearchInput(ToolInput):
-    """Input for simple_search tool."""
+class SearchInput(ToolInput):
+    """Input for unified search tool."""
 
     query: str = Field(..., description="Natural language search query")
     k: int = Field(5, description="Number of results to return (3-5 recommended)", ge=1, le=10)
+    num_expands: int = Field(
+        0,
+        description="Number of query paraphrases to generate: 0=original query only (fast, ~200ms), 1=original+1 paraphrase (2 queries total, ~500ms), 2=original+2 paraphrases (3 queries total, ~800ms). Total queries = num_expands + 1. Warning: num_expands > 3 may impact performance",
+        ge=0,
+        le=5,
+    )
 
 
 @register_tool
-class SimpleSearchTool(BaseTool):
-    """Fast hybrid search with reranking."""
+class SearchTool(BaseTool):
+    """Unified search with optional query expansion."""
 
-    name = "simple_search"
-    description = "Hybrid search with reranking"
+    name = "search"
+    description = "Unified hybrid search with optional query expansion for better recall"
     detailed_help = """
-    Fast hybrid search combining BM25 keyword matching with dense embeddings,
-    followed by cross-encoder reranking for best quality.
+    Unified search tool combining hybrid retrieval (BM25 + Dense + RRF) with optional
+    query expansion for improved recall. Agent can control both result count (k) and
+    number of paraphrases (num_expands).
+
+    **Query Expansion:**
+    - num_expands=0: Use original query only (fast, ~200-300ms, 1 query total)
+    - num_expands=1: Original + 1 paraphrase (~500ms, 2 queries total, +10-15% recall)
+    - num_expands=2: Original + 2 paraphrases (~800ms, 3 queries total, +15-25% recall)
+    - num_expands=3: Original + 3 paraphrases (~1.2s, 4 queries total, +20-30% recall)
 
     **When to use:**
-    - Most queries (80% of use cases)
-    - Best quality/speed tradeoff
-    - General document search
+    - Most queries (replaces simple_search)
+    - When recall is important: Use num_expands=1 or 2
+    - When speed is critical: Use num_expands=0
+    - For ambiguous queries: Use num_expands=2 to capture different interpretations
 
-    **Method:** BM25 + Dense + RRF fusion → Cross-encoder reranking
-    **Speed:** ~200-300ms
-    **Quality:** Highest (reranked results)
+    **Method:**
+    1. Query expansion (if num_expands > 0): Generate N paraphrases using LLM
+    2. Hybrid search for each query: BM25 + Dense + RRF fusion
+    3. RRF fusion across queries (if multiple queries)
+    4. Cross-encoder reranking (final quality boost)
+
+    **Performance:**
+    - num_expands=0: ~200-300ms (1 query, no expansion)
+    - num_expands=1: ~500ms (2 queries, recommended)
+    - num_expands=2: ~800ms (3 queries, good balance)
+    - num_expands=3: ~1.2s (4 queries, maximum quality)
+
+    **Best practices:**
+    - Start with num_expands=0 for most queries
+    - Use num_expands=1-2 when user query is ambiguous or recall is critical
+    - Use num_expands=3 only when comprehensive recall is essential
+    - Avoid num_expands > 3 (diminishing returns, performance impact)
     """
     tier = 1
-    input_schema = SimpleSearchInput
+    input_schema = SearchInput
     requires_reranker = True
 
-    def execute_impl(self, query: str, k: int = 5) -> ToolResult:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._query_expander = None  # Lazy initialization
+
+    def _get_query_expander(self):
+        """Lazy initialization of QueryExpander."""
+        if self._query_expander is None:
+            import os
+            from ..query_expander import QueryExpander
+
+            # Get provider and model from config (self.config is ToolConfig)
+            provider = self.config.query_expansion_provider
+            model = self.config.query_expansion_model
+
+            # Get API keys from environment variables
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+            openai_key = os.getenv("OPENAI_API_KEY")
+
+            try:
+                self._query_expander = QueryExpander(
+                    provider=provider,
+                    model=model,
+                    anthropic_api_key=anthropic_key,
+                    openai_api_key=openai_key,
+                )
+                logger.info(f"QueryExpander initialized: provider={provider}, model={model}")
+            except ValueError as e:
+                # Configuration error (missing API key, invalid provider, etc.)
+                logger.warning(
+                    f"QueryExpander configuration error: {e}. "
+                    f"Query expansion will be disabled. Check your API keys and provider settings."
+                )
+                self._query_expander = None
+            except ImportError as e:
+                # Missing package (openai or anthropic)
+                logger.warning(
+                    f"QueryExpander package missing: {e}. "
+                    f"Query expansion will be disabled. Install required package: "
+                    f"'pip install openai' or 'pip install anthropic'"
+                )
+                self._query_expander = None
+            except Exception as e:
+                # Unexpected error
+                logger.error(
+                    f"Unexpected error initializing QueryExpander ({type(e).__name__}): {e}. "
+                    f"Query expansion will be disabled. This may indicate a bug."
+                )
+                self._query_expander = None
+
+        return self._query_expander
+
+    def execute_impl(self, query: str, k: int = 5, num_expands: int = 0) -> ToolResult:
         k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
-        # Embed query
-        query_embedding = self.embedder.embed_texts([query])
+        # === STEP 1: Query Expansion ===
+        queries = [query]  # Default: original query only
+        expansion_metadata = {"num_expands": num_expands, "expansion_method": "none"}
 
-        # Hybrid search (retrieve more candidates for reranking)
+        if num_expands > 0:
+            # Attempt query expansion
+            expander = self._get_query_expander()
+
+            if expander:
+                try:
+                    # num_expands = number of paraphrases to generate
+                    # Result will be [original] + num_expands paraphrases
+                    expansion_result = expander.expand(query, num_expansions=num_expands)
+                    queries = expansion_result.expanded_queries
+                    expansion_metadata.update({
+                        "expansion_method": expansion_result.expansion_method,
+                        "model_used": expansion_result.model_used,
+                        "queries_generated": len(queries),
+                        "paraphrases_requested": num_expands,
+                        "paraphrases_generated": len(queries) - 1,  # Exclude original
+                    })
+                    logger.info(
+                        f"Query expansion: original='{query}' + {num_expands} paraphrases "
+                        f"→ {len(queries)} queries total: {queries}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Query expansion failed: {e}. Using original query only.")
+                    # Fallback to original query
+                    queries = [query]
+                    expansion_metadata["expansion_method"] = "failed"
+            else:
+                logger.warning("QueryExpander not available. Using original query only.")
+                expansion_metadata["expansion_method"] = "unavailable"
+        else:
+            logger.debug(f"No expansion (num_expands=0): using original query only")
+
+        # === STEP 2: Hybrid Search for Each Query ===
+        # Retrieve more candidates for reranking
         candidates_k = k * 3 if self.reranker else k
 
-        results = self.vector_store.hierarchical_search(
-            query_text=query,
-            query_embedding=query_embedding,
-            k_layer3=candidates_k,
+        all_chunks = []  # All chunks from all queries (with their original scores)
+        search_metadata = []  # Track metadata for each query search
+
+        for idx, q in enumerate(queries, 1):
+            logger.info(f"Searching with query {idx}/{len(queries)}: '{q}'")
+
+            # Embed query
+            query_embedding = self.embedder.embed_texts([q])
+
+            # Hybrid search
+            results = self.vector_store.hierarchical_search(
+                query_text=q,
+                query_embedding=query_embedding,
+                k_layer3=candidates_k,
+            )
+
+            chunks = results["layer3"]
+            # Tag chunks with their source query for tracking
+            for chunk in chunks:
+                chunk["_source_query"] = q
+
+            all_chunks.extend(chunks)
+
+            # Track search metadata
+            search_metadata.append({
+                "query": q,
+                "chunks_retrieved": len(chunks),
+            })
+
+            logger.info(
+                f"Query {idx} retrieved {len(chunks)} chunks from layer3"
+            )
+
+        # Log total candidates before fusion/reranking
+        logger.info(
+            f"Total candidates from all queries: {len(all_chunks)} chunks "
+            f"(from {len(queries)} queries)"
         )
 
-        chunks = results["layer3"]
+        # === STEP 3: RRF Fusion (if multiple queries) ===
+        if len(queries) > 1:
+            # Use RRF to combine results from multiple queries
+            chunks_before_fusion = len(all_chunks)
+            chunks = self._rrf_fusion(all_chunks, k=candidates_k)
+            fusion_method = "rrf"
+            logger.info(
+                f"RRF fusion: {chunks_before_fusion} candidates → {len(chunks)} "
+                f"unique chunks (deduped and reranked by RRF)"
+            )
+        else:
+            # Single query: use chunks as-is
+            chunks = all_chunks[:candidates_k]
+            fusion_method = "none"
 
-        # Rerank if available
+        # Get document filter info (if available)
+        document_filter = "none"
+        if chunks and "document_id" in chunks[0]:
+            # Check if results are filtered to specific documents
+            unique_docs = set(c.get("document_id") for c in chunks)
+            if len(unique_docs) == 1:
+                document_filter = list(unique_docs)[0]
+            elif len(unique_docs) <= 3:
+                document_filter = ", ".join(sorted(unique_docs))
+
+        # === STEP 4: Reranking ===
+        chunks_before_rerank = len(chunks)
         if self.reranker and len(chunks) > k:
-            logger.debug(f"Reranking {len(chunks)} candidates to top {k}")
+            logger.info(f"Reranking {len(chunks)} candidates to top {k}...")
             chunks = self.reranker.rerank(query=query, candidates=chunks, top_k=k)
+            reranking_applied = True
+            logger.info(
+                f"Reranking complete: {chunks_before_rerank} → {len(chunks)} chunks"
+            )
         else:
             chunks = chunks[:k]
+            reranking_applied = False
+            logger.debug(f"No reranking applied, using top {len(chunks)} chunks")
 
-        # Format results
+        # === STEP 5: Format Results ===
         formatted = [format_chunk_result(c) for c in chunks]
+        final_count = len(formatted)
 
         # Generate citations
         citations = [
             f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
+        # Enhanced metadata with debug info
+        result_metadata = {
+            "query": query,
+            "k": k,
+            "num_expands": num_expands,
+            "expansion_metadata": expansion_metadata,
+            "fusion_method": fusion_method,
+            "reranking_applied": reranking_applied,
+            "method": "hybrid+expansion+rerank" if num_expands > 1 and self.reranker else "hybrid+rerank" if self.reranker else "hybrid",
+            "candidates_retrieved": len(all_chunks),
+            "chunks_before_rerank": chunks_before_rerank,
+            "chunks_after_rerank": final_count,
+            "final_count": final_count,
+            "document_filter": document_filter,
+            "queries_used": queries,
+            "search_metadata": search_metadata,
+        }
+
+        # Log final summary
+        logger.info(
+            f"Search complete: expanded to {len(queries)} queries, "
+            f"{len(all_chunks)} total candidates, "
+            f"{chunks_before_rerank} before rerank, "
+            f"{final_count} final chunks returned"
+        )
+
         return ToolResult(
             success=True,
             data=formatted,
             citations=citations,
-            metadata={
-                "query": query,
-                "k": k,
-                "method": "hybrid+rerank" if self.reranker else "hybrid",
-                "candidates_retrieved": len(results["layer3"]),
-                "final_count": len(formatted),
-            },
+            metadata=result_metadata,
         )
 
+    def _rrf_fusion(self, chunks: List[dict], k: int = 60) -> List[dict]:
+        """
+        RRF (Reciprocal Rank Fusion) for combining results from multiple queries.
 
-# === Tool 2: Get Document List ===
+        RRF formula: score(chunk) = sum(1 / (k + rank)) for all queries where chunk appears
+
+        Args:
+            chunks: List of chunks from all queries (may contain duplicates)
+            k: RRF parameter (default: 60, optimal from research)
+
+        Returns:
+            Deduplicated and reranked chunks sorted by RRF score
+        """
+        # Group chunks by chunk_id
+        chunk_ranks = {}  # {chunk_id: [(rank, source_query), ...]}
+
+        current_rank = {}  # {source_query: current_rank}
+
+        for chunk in chunks:
+            chunk_id = chunk.get("chunk_id")
+            source_query = chunk.get("_source_query", "")
+
+            if source_query not in current_rank:
+                current_rank[source_query] = 0
+
+            rank = current_rank[source_query]
+            current_rank[source_query] += 1
+
+            if chunk_id not in chunk_ranks:
+                chunk_ranks[chunk_id] = {
+                    "chunk": chunk,
+                    "ranks": [],
+                }
+
+            chunk_ranks[chunk_id]["ranks"].append((rank, source_query))
+
+        # Calculate RRF scores
+        rrf_scores = []
+        for chunk_id, data in chunk_ranks.items():
+            # RRF score: sum of 1/(k + rank) for all occurrences
+            rrf_score = sum(1.0 / (k + rank) for rank, _ in data["ranks"])
+
+            rrf_scores.append({
+                "chunk": data["chunk"],
+                "rrf_score": rrf_score,
+                "appearances": len(data["ranks"]),
+            })
+
+        # Sort by RRF score (descending)
+        rrf_scores.sort(key=lambda x: x["rrf_score"], reverse=True)
+
+        # Return top chunks
+        return [item["chunk"] for item in rrf_scores]
+
+
+# === Tool 3: Get Document List ===
 
 
 class GetDocumentListInput(ToolInput):
@@ -360,13 +611,14 @@ class ListAvailableToolsTool(BaseTool):
                 "best_practices": {
                     "general": [
                         "Start with Tier 1 (fast) tools before escalating to Tier 2/3",
-                        "Use simple_search for most queries (hybrid + rerank = best quality)",
+                        "Use 'search' for most queries (hybrid + optional expansion + rerank = best quality)",
+                        "Start with num_expands=0 for speed, increase to 1-2 for better recall when needed",
                         "For complex queries, decompose into sub-tasks and use multiple tools",
                         "Try multiple retrieval strategies before giving up",
                     ],
                     "selection_strategy": {
-                        "most_queries": "simple_search",
-                        "entity_focused": "Use simple_search with entity names, or multi_hop_search if KG available",
+                        "most_queries": "search (with num_expands=0 for speed, 1-2 for recall)",
+                        "entity_focused": "Use 'search' with entity names, or multi_hop_search if KG available",
                         "specific_document": "Use exact_match_search or filtered_search with document_id filter",
                         "multi_hop_reasoning": "multi_hop_search (requires KG)",
                         "comparison": "compare_documents",
