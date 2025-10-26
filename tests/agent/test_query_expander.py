@@ -92,7 +92,7 @@ class TestQueryExpansionOptimization:
             assert result.model_used is None
 
     def test_expansion_when_num_expands_1(self):
-        """Test that expansion DOES happen when num_expansions=1 (generates 1 variation)."""
+        """Test that expansion DOES happen when num_expansions=1 (generates 1 paraphrase)."""
         with patch("openai.OpenAI") as mock_openai_class:
             mock_client = Mock()
             mock_openai_class.return_value = mock_client
@@ -111,7 +111,7 @@ class TestQueryExpansionOptimization:
             # Verify LLM WAS called
             mock_client.chat.completions.create.assert_called_once()
 
-            # Verify result: original + 1 expansion = 2 queries total
+            # Verify result: original + 1 paraphrase = 2 queries total
             assert result.original_query == "test query"
             assert len(result.expanded_queries) == 2
             assert "test query" in result.expanded_queries
@@ -119,6 +119,29 @@ class TestQueryExpansionOptimization:
             assert result.num_expansions == 2  # 2 queries total
             assert result.expansion_method == "llm"
             assert result.model_used == "gpt-5-nano"
+
+    def test_expansion_filters_duplicate_original(self):
+        """Test that expansion filters out original query if LLM repeats it."""
+        with patch("openai.OpenAI") as mock_openai_class:
+            mock_client = Mock()
+            mock_openai_class.return_value = mock_client
+
+            expander = QueryExpander(provider="openai", model="gpt-5-nano", openai_api_key="sk-test")
+            expander.client = mock_client
+
+            # Mock OpenAI response with duplicate original query
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=Mock(content="test query\nQuery variation 1"))]
+            mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+            mock_client.chat.completions.create.return_value = mock_response
+
+            result = expander.expand("test query", num_expansions=2)
+
+            # Should filter out duplicate "test query" from LLM response
+            # Expected: original + "Query variation 1" only
+            assert result.original_query == "test query"
+            assert len(result.expanded_queries) == 2
+            assert result.expanded_queries.count("test query") == 1  # Only once (original)
 
 
 class TestQueryExpansionBasic:

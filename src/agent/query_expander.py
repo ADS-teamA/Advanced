@@ -219,7 +219,20 @@ class QueryExpander:
         # Filter out numbering (e.g., "1. query" → "query")
         expansions = [self._strip_numbering(exp) for exp in expansions]
 
-        # Return up to num_expansions
+        # Filter out empty strings and original query (if LLM repeated it)
+        expansions = [
+            exp for exp in expansions
+            if exp and exp.lower() != query.lower()
+        ]
+
+        # Log warning if we got fewer expansions than requested
+        if len(expansions) < num_expansions:
+            logger.warning(
+                f"Generated {len(expansions)}/{num_expansions} expansions. "
+                f"LLM response may have been incomplete. Raw response: {expanded_text[:200]}"
+            )
+
+        # Return up to num_expansions (may be fewer if LLM didn't generate enough)
         return expansions[:num_expansions]
 
     def _build_expansion_prompt(self, query: str, num_expansions: int) -> str:

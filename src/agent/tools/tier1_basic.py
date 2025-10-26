@@ -132,10 +132,10 @@ class SearchInput(ToolInput):
     query: str = Field(..., description="Natural language search query")
     k: int = Field(5, description="Number of results to return (3-5 recommended)", ge=1, le=10)
     num_expands: int = Field(
-        1,
-        description="Number of query expansions: 1=original query only (fast), 3=multi-query search (better recall), 5=maximum expansion (best recall but slower). Warning: num_expands > 5 may impact performance",
-        ge=1,
-        le=10,
+        0,
+        description="Number of query paraphrases to generate: 0=original query only (fast, ~200ms), 1=original+1 paraphrase (2 queries total, ~500ms), 2=original+2 paraphrases (3 queries total, ~800ms). Total queries = num_expands + 1. Warning: num_expands > 3 may impact performance",
+        ge=0,
+        le=5,
     )
 
 
@@ -148,35 +148,37 @@ class SearchTool(BaseTool):
     detailed_help = """
     Unified search tool combining hybrid retrieval (BM25 + Dense + RRF) with optional
     query expansion for improved recall. Agent can control both result count (k) and
-    expansion level (num_expands).
+    number of paraphrases (num_expands).
 
     **Query Expansion:**
-    - num_expands=1: Use original query only (fast, ~200-300ms)
-    - num_expands=3: Multi-query search (+15-25% recall, ~500-800ms)
-    - num_expands=5: Maximum expansion (+20-30% recall, ~1-1.5s)
+    - num_expands=0: Use original query only (fast, ~200-300ms, 1 query total)
+    - num_expands=1: Original + 1 paraphrase (~500ms, 2 queries total, +10-15% recall)
+    - num_expands=2: Original + 2 paraphrases (~800ms, 3 queries total, +15-25% recall)
+    - num_expands=3: Original + 3 paraphrases (~1.2s, 4 queries total, +20-30% recall)
 
     **When to use:**
     - Most queries (replaces simple_search)
-    - When recall is important: Use num_expands=3 or higher
-    - When speed is critical: Use num_expands=1
-    - For ambiguous queries: Use num_expands=3 to capture different interpretations
+    - When recall is important: Use num_expands=1 or 2
+    - When speed is critical: Use num_expands=0
+    - For ambiguous queries: Use num_expands=2 to capture different interpretations
 
     **Method:**
-    1. Query expansion (if num_expands > 1): Generate N variations using LLM
+    1. Query expansion (if num_expands > 0): Generate N paraphrases using LLM
     2. Hybrid search for each query: BM25 + Dense + RRF fusion
     3. RRF fusion across queries (if multiple queries)
     4. Cross-encoder reranking (final quality boost)
 
     **Performance:**
-    - num_expands=1: ~200-300ms (same as simple_search)
-    - num_expands=3: ~500-800ms (recommended)
-    - num_expands=5: ~1-1.5s (maximum quality)
+    - num_expands=0: ~200-300ms (1 query, no expansion)
+    - num_expands=1: ~500ms (2 queries, recommended)
+    - num_expands=2: ~800ms (3 queries, good balance)
+    - num_expands=3: ~1.2s (4 queries, maximum quality)
 
     **Best practices:**
-    - Start with num_expands=1 for most queries
-    - Use num_expands=3 when user query is ambiguous or recall is critical
-    - Use num_expands=5 only when comprehensive recall is essential
-    - Avoid num_expands > 5 (diminishing returns, performance impact)
+    - Start with num_expands=0 for most queries
+    - Use num_expands=1-2 when user query is ambiguous or recall is critical
+    - Use num_expands=3 only when comprehensive recall is essential
+    - Avoid num_expands > 3 (diminishing returns, performance impact)
     """
     tier = 1
     input_schema = SearchInput
@@ -214,29 +216,33 @@ class SearchTool(BaseTool):
 
         return self._query_expander
 
-    def execute_impl(self, query: str, k: int = 5, num_expands: int = 1) -> ToolResult:
+    def execute_impl(self, query: str, k: int = 5, num_expands: int = 0) -> ToolResult:
         k, _ = validate_k_parameter(k, adaptive=True, detail_level="medium")
 
         # === STEP 1: Query Expansion ===
         queries = [query]  # Default: original query only
         expansion_metadata = {"num_expands": num_expands, "expansion_method": "none"}
 
-        if num_expands > 1:
+        if num_expands > 0:
             # Attempt query expansion
             expander = self._get_query_expander()
 
             if expander:
                 try:
-                    expansion_result = expander.expand(query, num_expansions=num_expands - 1)
+                    # num_expands = number of paraphrases to generate
+                    # Result will be [original] + num_expands paraphrases
+                    expansion_result = expander.expand(query, num_expansions=num_expands)
                     queries = expansion_result.expanded_queries
                     expansion_metadata.update({
                         "expansion_method": expansion_result.expansion_method,
                         "model_used": expansion_result.model_used,
                         "queries_generated": len(queries),
+                        "paraphrases_requested": num_expands,
+                        "paraphrases_generated": len(queries) - 1,  # Exclude original
                     })
                     logger.info(
-                        f"Query expansion: original='{query}' → {len(queries)} queries: "
-                        f"{queries}"
+                        f"Query expansion: original='{query}' + {num_expands} paraphrases "
+                        f"→ {len(queries)} queries total: {queries}"
                     )
                 except Exception as e:
                     logger.warning(f"Query expansion failed: {e}. Using original query only.")
@@ -247,7 +253,7 @@ class SearchTool(BaseTool):
                 logger.warning("QueryExpander not available. Using original query only.")
                 expansion_metadata["expansion_method"] = "unavailable"
         else:
-            logger.debug(f"No expansion (num_expands=1): using original query only")
+            logger.debug(f"No expansion (num_expands=0): using original query only")
 
         # === STEP 2: Hybrid Search for Each Query ===
         # Retrieve more candidates for reranking
@@ -587,12 +593,12 @@ class ListAvailableToolsTool(BaseTool):
                     "general": [
                         "Start with Tier 1 (fast) tools before escalating to Tier 2/3",
                         "Use 'search' for most queries (hybrid + optional expansion + rerank = best quality)",
-                        "Start with num_expands=1 for speed, increase to 3-5 for better recall when needed",
+                        "Start with num_expands=0 for speed, increase to 1-2 for better recall when needed",
                         "For complex queries, decompose into sub-tasks and use multiple tools",
                         "Try multiple retrieval strategies before giving up",
                     ],
                     "selection_strategy": {
-                        "most_queries": "search (with num_expands=1 for speed, 3-5 for recall)",
+                        "most_queries": "search (with num_expands=0 for speed, 1-2 for recall)",
                         "entity_focused": "Use 'search' with entity names, or multi_hop_search if KG available",
                         "specific_document": "Use exact_match_search or filtered_search with document_id filter",
                         "multi_hop_reasoning": "multi_hop_search (requires KG)",
