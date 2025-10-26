@@ -229,8 +229,9 @@ These decisions are backed by research papers and extensive testing:
 **Tool Tiers (Speed/Quality Tradeoff):**
 - **TIER 1** (11 tools): Fast (<100ms), basic retrieval - Use first
   - Key tool: **`search`** (unified hybrid search with optional query expansion)
-    - `num_expands=1`: Fast mode (~200-300ms) - use for most queries
-    - `num_expands=3-5`: Better recall mode (~500-1500ms) - use for ambiguous/complex queries
+    - `num_expands=0`: Fast mode (~200ms) - original query only, use for most queries
+    - `num_expands=1-2`: Balanced mode (~400-600ms) - 2-3 queries total, better recall
+    - `num_expands=3-5`: Best recall mode (~800-1500ms) - 4-6 queries total, use for ambiguous/complex queries
     - Replaces deprecated `simple_search` tool
 - **TIER 2** (9 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
 - **TIER 3** (6 tools): Deep (1-3s), analysis and insights - Use sparingly

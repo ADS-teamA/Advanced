@@ -358,3 +358,254 @@ class TestExpansionResult:
         assert result.expansion_method == "llm"
         assert result.model_used == "gpt-5-nano"
         assert result.cost_estimate == 0.001
+
+
+class TestGPT5Compatibility:
+    """Test GPT-5 specific compatibility issues."""
+
+    @pytest.fixture
+    def mock_openai_expander(self):
+        """Create QueryExpander with mocked OpenAI client."""
+        with patch("openai.OpenAI") as mock_openai_class:
+            mock_client = Mock()
+            mock_openai_class.return_value = mock_client
+
+            expander = QueryExpander(
+                provider="openai",
+                model="gpt-5-nano",
+                openai_api_key="sk-test"
+            )
+            expander.client = mock_client
+
+            yield expander, mock_client
+
+    def test_gpt5_empty_response_handling(self, mock_openai_expander, caplog):
+        """Test handling when GPT-5 returns empty/None content (known GPT-5 issue)."""
+        expander, mock_client = mock_openai_expander
+
+        # Mock GPT-5 returning empty content (known issue with gpt-5-nano)
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content=""))]  # Empty string
+        mock_response.usage = Mock(prompt_tokens=100, completion_tokens=0)
+        mock_response.model_dump.return_value = {"id": "test", "choices": []}
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with caplog.at_level("WARNING"):
+            result = expander.expand("test query", num_expansions=2)
+
+        # Should generate warning about empty response
+        assert "Generated 0/2 expansions" in caplog.text
+
+        # Should still return original query (graceful degradation)
+        assert result.original_query == "test query"
+        assert len(result.expanded_queries) == 1  # Only original
+        assert result.expanded_queries[0] == "test query"
+
+    def test_gpt5_uses_max_completion_tokens(self, mock_openai_expander):
+        """Test that GPT-5 models use max_completion_tokens instead of max_tokens."""
+        expander, mock_client = mock_openai_expander
+
+        # Mock valid response
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content="Query 1\nQuery 2"))]
+        mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+        mock_client.chat.completions.create.return_value = mock_response
+
+        expander.expand("test", num_expansions=2)
+
+        # Verify API call used max_completion_tokens (not max_tokens)
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert "max_completion_tokens" in call_kwargs
+        assert "max_tokens" not in call_kwargs
+        assert call_kwargs["max_completion_tokens"] == 300
+
+    def test_gpt5_no_temperature_parameter(self, mock_openai_expander):
+        """Test that GPT-5 models don't set temperature (only default 1.0 supported)."""
+        expander, mock_client = mock_openai_expander
+
+        # Mock valid response
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content="Query 1"))]
+        mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+        mock_client.chat.completions.create.return_value = mock_response
+
+        expander.expand("test", num_expansions=1)
+
+        # Verify API call doesn't include temperature
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert "temperature" not in call_kwargs
+
+    def test_gpt4_uses_max_tokens_and_temperature(self):
+        """Test that GPT-4 models use max_tokens and temperature (old API)."""
+        with patch("openai.OpenAI") as mock_openai_class:
+            mock_client = Mock()
+            mock_openai_class.return_value = mock_client
+
+            expander = QueryExpander(
+                provider="openai",
+                model="gpt-4o-mini",  # GPT-4 model
+                openai_api_key="sk-test"
+            )
+            expander.client = mock_client
+
+            # Mock valid response
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=Mock(content="Query 1"))]
+            mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+            mock_client.chat.completions.create.return_value = mock_response
+
+            expander.expand("test", num_expansions=1)
+
+            # Verify API call uses old parameters
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert "max_tokens" in call_kwargs
+            assert "temperature" in call_kwargs
+            assert "max_completion_tokens" not in call_kwargs
+            assert call_kwargs["max_tokens"] == 300
+            assert call_kwargs["temperature"] == 0.7
+
+
+class TestAnthropicProvider:
+    """Test Anthropic provider integration."""
+
+    @pytest.fixture
+    def mock_anthropic_expander(self):
+        """Create QueryExpander with mocked Anthropic client."""
+        with patch("anthropic.Anthropic") as mock_anthropic_class:
+            mock_client = Mock()
+            mock_anthropic_class.return_value = mock_client
+
+            expander = QueryExpander(
+                provider="anthropic",
+                model="claude-haiku-4-5",
+                anthropic_api_key="sk-ant-test"
+            )
+            expander.client = mock_client
+
+            yield expander, mock_client
+
+    def test_anthropic_expansion_success(self, mock_anthropic_expander):
+        """Test successful query expansion with Anthropic."""
+        expander, mock_client = mock_anthropic_expander
+
+        # Mock Anthropic response
+        mock_content = Mock()
+        mock_content.text = "Alternative query 1\nAlternative query 2\nAlternative query 3"
+        mock_response = Mock()
+        mock_response.content = [mock_content]
+        mock_response.usage = Mock(input_tokens=100, output_tokens=50)
+        mock_client.messages.create.return_value = mock_response
+
+        result = expander.expand("test query", num_expansions=3)
+
+        # Verify result
+        assert result.original_query == "test query"
+        assert len(result.expanded_queries) == 4  # Original + 3 expansions
+        assert "test query" in result.expanded_queries
+        assert result.expansion_method == "llm"
+        assert result.model_used == "claude-haiku-4-5"
+
+        # Verify API call
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == "claude-haiku-4-5"
+        assert call_kwargs["max_tokens"] == 300
+        assert call_kwargs["temperature"] == 0.7
+
+    def test_anthropic_cost_tracking(self, mock_anthropic_expander):
+        """Test that cost tracking works with Anthropic provider."""
+        expander, mock_client = mock_anthropic_expander
+
+        # Mock Anthropic response
+        mock_content = Mock()
+        mock_content.text = "Query 1\nQuery 2"
+        mock_response = Mock()
+        mock_response.content = [mock_content]
+        mock_response.usage = Mock(input_tokens=150, output_tokens=75)
+        mock_client.messages.create.return_value = mock_response
+
+        # Mock cost tracker
+        with patch("src.cost_tracker.get_global_tracker") as mock_tracker_getter:
+            mock_tracker = Mock()
+            mock_tracker_getter.return_value = mock_tracker
+
+            expander.expand("test", num_expansions=2)
+
+            # Verify cost tracking was called with Anthropic provider
+            mock_tracker.track_llm.assert_called_once_with(
+                "anthropic", "claude-haiku-4-5", 150, 75
+            )
+
+    def test_anthropic_fallback_on_error(self, mock_anthropic_expander, caplog):
+        """Test graceful fallback when Anthropic API fails."""
+        expander, mock_client = mock_anthropic_expander
+
+        # Mock Anthropic to raise error
+        mock_client.messages.create.side_effect = Exception("API error")
+
+        with caplog.at_level("WARNING"):
+            result = expander.expand("test query", num_expansions=2)
+
+        # Should fall back to original query
+        assert result.original_query == "test query"
+        assert result.expanded_queries == ["test query"]
+        assert result.expansion_method == "fallback"
+        assert "Query expansion failed" in caplog.text
+
+
+class TestPartialExpansion:
+    """Test handling when LLM generates fewer expansions than requested."""
+
+    @pytest.fixture
+    def mock_openai_expander(self):
+        """Create QueryExpander with mocked OpenAI client."""
+        with patch("openai.OpenAI") as mock_openai_class:
+            mock_client = Mock()
+            mock_openai_class.return_value = mock_client
+
+            expander = QueryExpander(
+                provider="openai",
+                model="gpt-5-nano",
+                openai_api_key="sk-test"
+            )
+            expander.client = mock_client
+
+            yield expander, mock_client
+
+    def test_partial_expansion_warning(self, mock_openai_expander, caplog):
+        """Test warning when LLM generates fewer expansions than requested."""
+        expander, mock_client = mock_openai_expander
+
+        # Mock response with only 1 expansion (requested 3)
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content="Query variation 1"))]
+        mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with caplog.at_level("WARNING"):
+            result = expander.expand("test query", num_expansions=3)
+
+        # Should log warning about incomplete expansion
+        assert "Generated 1/3 expansions" in caplog.text
+        assert "LLM response may have been incomplete" in caplog.text
+
+        # Should still return what we got
+        assert result.original_query == "test query"
+        assert len(result.expanded_queries) == 2  # Original + 1 expansion
+        assert result.expansion_method == "llm"
+
+    def test_partial_expansion_with_empty_lines(self, mock_openai_expander):
+        """Test that empty lines in LLM response are filtered out."""
+        expander, mock_client = mock_openai_expander
+
+        # Mock response with empty lines
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content="Query 1\n\n\nQuery 2\n\n"))]
+        mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = expander.expand("test", num_expansions=2)
+
+        # Should filter out empty lines
+        assert len(result.expanded_queries) == 3  # Original + 2 valid expansions
+        assert "" not in result.expanded_queries

@@ -210,8 +210,27 @@ class SearchTool(BaseTool):
                     openai_api_key=openai_key,
                 )
                 logger.info(f"QueryExpander initialized: provider={provider}, model={model}")
+            except ValueError as e:
+                # Configuration error (missing API key, invalid provider, etc.)
+                logger.warning(
+                    f"QueryExpander configuration error: {e}. "
+                    f"Query expansion will be disabled. Check your API keys and provider settings."
+                )
+                self._query_expander = None
+            except ImportError as e:
+                # Missing package (openai or anthropic)
+                logger.warning(
+                    f"QueryExpander package missing: {e}. "
+                    f"Query expansion will be disabled. Install required package: "
+                    f"'pip install openai' or 'pip install anthropic'"
+                )
+                self._query_expander = None
             except Exception as e:
-                logger.warning(f"QueryExpander initialization failed: {e}. Query expansion will be disabled.")
+                # Unexpected error
+                logger.error(
+                    f"Unexpected error initializing QueryExpander ({type(e).__name__}): {e}. "
+                    f"Query expansion will be disabled. This may indicate a bug."
+                )
                 self._query_expander = None
 
         return self._query_expander
