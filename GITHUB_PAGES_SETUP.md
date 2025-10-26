@@ -8,7 +8,7 @@ This guide explains how to enable GitHub Pages for SUJBOT2 interactive documenta
 docs/
 ├── index.html                    # Landing page with links to both pipelines
 ├── indexing_pipeline.html        # Phase 1-5 visualization
-├── user_search_pipeline.html     # Phase 7 + 17 tools visualization
+├── user_search_pipeline.html     # Phase 7 + 16 tools visualization
 └── .nojekyll                     # Prevents Jekyll processing
 ```
 
@@ -91,7 +91,7 @@ If you want a custom domain like `docs.sujbot2.com`:
 ### Landing Page (`index.html`)
 - Clean, modern design
 - 2 large clickable cards for each pipeline
-- Stats overview (7 phases, 17 tools, -67% failures, etc.)
+- Stats overview (7 phases, 16 tools, -67% failures, etc.)
 - GitHub link
 - Responsive design (mobile-friendly)
 

@@ -4,7 +4,7 @@ Interactive CLI agent powered by Claude SDK for legal and technical document ret
 
 ## ✨ Features
 
-- **17 Specialized RAG Tools** organized in 3 tiers (basic, advanced, analysis)
+- **16 Specialized RAG Tools** organized in 3 tiers (basic, advanced, analysis)
 - **Hybrid Search**: BM25 + Dense embeddings + RRF fusion + Cross-encoder reranking
 - **Knowledge Graph Integration**: Entity-aware search and relationship queries
 - **Query Optimization**: HyDE (Hypothetical Document Embeddings) and query decomposition
@@ -320,10 +320,10 @@ The agent includes several advanced features that are built into the tool system
 ├─────────────────────────────────────────────────────────────┤
 │  Tool System (tools/)                                       │
 │  ├─ Base tool abstraction                                   │
-│  ├─ Tool registry (17 tools)                                │
+│  ├─ Tool registry (16 tools)                                │
 │  │   ├─ Tier 1: Basic (6 tools)                            │
-│  │   ├─ Tier 2: Advanced (6 tools)                         │
-│  │   └─ Tier 3: Analysis (5 tools)                         │
+│  │   ├─ Tier 2: Advanced (7 tools)                         │
+│  │   └─ Tier 3: Analysis (3 tools)                         │
 │  └─ Utility functions                                       │
 ├─────────────────────────────────────────────────────────────┤
 │  RAG Pipeline Components                                    │
@@ -614,7 +614,7 @@ Debug mode runs comprehensive validation on startup:
 # ✅ Knowledge graph (if enabled)
 # ✅ Embedding compatibility
 # ✅ Claude model access
-# ✅ Tool registry (all 17 tools registered)
+# ✅ Tool registry (all 16 tools registered)
 ```
 
 ### Integration Test
@@ -730,7 +730,7 @@ STARTING COMPREHENSIVE VALIDATION
 ✅ Dependency: faiss - Vector search - installed
 ✅ API Key: ANTHROPIC - Anthropic API key present (format valid)
 ✅ Vector Store - Vector store loaded successfully (12,453 vectors)
-✅ Tool Registry - All 17 tools registered
+✅ Tool Registry - All 16 tools registered
 
 ================================================================================
 VALIDATION SUMMARY: 15/15 checks passed
@@ -742,7 +742,7 @@ VALIDATION SUMMARY: 15/15 checks passed
 Loading vector store...
 Initializing embedder...
 Loading reranker...
-✅ 17 tools initialized
+✅ 16 tools initialized
 
 ✅ Agent ready!
 

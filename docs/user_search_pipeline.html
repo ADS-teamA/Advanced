@@ -296,7 +296,7 @@
 <body>
     <div class="container">
         <h1>💬 SUJBOT2 User Search Pipeline</h1>
-        <p class="subtitle">Phase 7: Od user query k AI odpovědi (Claude SDK Agent + 17 Tools)</p>
+        <p class="subtitle">Phase 7: Od user query k AI odpovědi (Claude SDK Agent + 16 Tools)</p>
 
         <div class="pipeline">
             <!-- STEP 1: User Input -->
@@ -399,7 +399,7 @@ $ ./run_cli.sh --debug
                 </div>
                 <div class="step-content">
                     <div class="step-description">
-                        <strong>Úkol:</strong> Agent core zpracuje query, vytvoří system prompt, registruje 17 tools a odešle request do Claude/OpenAI API.<br>
+                        <strong>Úkol:</strong> Agent core zpracuje query, vytvoří system prompt, registruje 16 tools a odešle request do Claude/OpenAI API.<br>
                         <strong>Model (default):</strong> Claude 4.5 Haiku (rychlý & levný)<br>
                         <strong>Přepínatelné:</strong> Claude 4.5 Sonnet, GPT-5 Mini, GPT-5 Nano (via <code>/model</code> command)
                     </div>
@@ -419,8 +419,8 @@ messages = [
     }
 ]
 
-<span class="code-comment"># Tools registry (17 tools)</span>
-tools = registry.get_claude_sdk_tools()  <span class="code-comment"># → 17 tool definitions</span>
+<span class="code-comment"># Tools registry (16 tools)</span>
+tools = registry.get_claude_sdk_tools()  <span class="code-comment"># → 16 tool definitions</span>
 
 <span class="code-comment"># Call Claude/OpenAI API s streaming</span>
 response = client.messages.stream(
@@ -671,7 +671,7 @@ spolupráci s úřadem...
                     <div class="tool-card">
                         <div class="tool-name">list_available_tools</div>
                         <div class="tool-description">
-                            List all 17 tools grouped by tier with availability status (requires KG/reranker).
+                            List all 16 tools grouped by tier with availability status (requires KG/reranker).
                         </div>
                         <div class="tool-meta">
                             <span class="tool-badge speed">~30ms</span>
