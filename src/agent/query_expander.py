@@ -195,6 +195,14 @@ class QueryExpander:
             response = self.client.chat.completions.create(**params)
 
             expanded_text = response.choices[0].message.content
+
+            # Debug: Log full response if content is empty or None
+            if not expanded_text:
+                logger.error(
+                    f"GPT-5 returned empty content. Full response: {response.model_dump()}"
+                )
+                expanded_text = ""  # Ensure it's a string
+
             input_tokens = response.usage.prompt_tokens
             output_tokens = response.usage.completion_tokens
 
