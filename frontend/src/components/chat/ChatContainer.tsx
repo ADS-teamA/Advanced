@@ -98,16 +98,50 @@ export function ChatContainer({
               'divide-y',
               'divide-accent-200 dark:divide-accent-800'
             )}>
-              {conversation.messages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  animationDelay={index * 50}
-                  onEdit={onEditMessage}
-                  onRegenerate={onRegenerateMessage}
-                  disabled={isStreaming}
-                />
-              ))}
+              {conversation.messages
+                .filter((message) => {
+                  // Show user messages always
+                  if (message.role === 'user') return true;
+
+                  // Show assistant messages with:
+                  // 1. Non-empty content (after trimming), OR
+                  // 2. Tool calls (even if content is empty/whitespace)
+                  const hasContent = message.content && message.content.trim().length > 0;
+                  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+
+                  return hasContent || hasToolCalls;
+                })
+                .map((message, index, filteredMessages) => {
+                  // Calculate response duration for assistant messages
+                  let responseDurationMs: number | undefined;
+
+                  if (message.role === 'assistant' && index > 0) {
+                    // Find the previous user message
+                    const prevMessage = filteredMessages[index - 1];
+                    if (prevMessage && prevMessage.role === 'user') {
+                      const userTime = new Date(prevMessage.timestamp).getTime();
+                      const assistantTime = new Date(message.timestamp).getTime();
+                      const duration = assistantTime - userTime;
+
+                      // Only set duration if it's positive and reasonable (> 50ms, < 5 min)
+                      if (duration > 50 && duration < 300000) {
+                        responseDurationMs = duration;
+                      }
+                    }
+                  }
+
+                  return (
+                    <ChatMessage
+                      key={message.id}
+                      message={message}
+                      animationDelay={index * 50}
+                      onEdit={onEditMessage}
+                      onRegenerate={onRegenerateMessage}
+                      disabled={isStreaming}
+                      responseDurationMs={responseDurationMs}
+                    />
+                  );
+                })}
             </div>
           )}
           <div ref={messagesEndRef} />

@@ -162,7 +162,7 @@ async def chat_stream(request: ChatRequest):
             ):
                 # Format as SSE event
                 event_type = event["event"]
-                event_data = json.dumps(event["data"])
+                event_data = json.dumps(event["data"], ensure_ascii=False)
 
                 yield {
                     "event": event_type,
@@ -176,7 +176,7 @@ async def chat_stream(request: ChatRequest):
                 "data": json.dumps({
                     "error": str(e),
                     "type": type(e).__name__
-                })
+                }, ensure_ascii=False)
             }
 
     return EventSourceResponse(event_generator())

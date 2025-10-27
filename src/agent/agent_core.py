@@ -994,6 +994,14 @@ class AgentCore:
                                 "type": "tool_result",
                                 "tool_use_id": tool_use.id,
                                 "content": tool_result_content,
+                                # Store metadata for web UI (not sent to LLM)
+                                "_metadata": {
+                                    "execution_time_ms": result.execution_time_ms,
+                                    "success": result.success,
+                                    "error": result.error,
+                                    "estimated_tokens": result.estimated_tokens,
+                                    "explicit_params": result.metadata.get("explicit_params", []),
+                                },
                             }
                         )
 
@@ -1148,6 +1156,14 @@ class AgentCore:
                                     "type": "tool_result",
                                     "tool_use_id": block["id"],
                                     "content": tool_result_content,
+                                    # Store metadata for web UI (not sent to LLM)
+                                    "_metadata": {
+                                        "execution_time_ms": result.execution_time_ms,
+                                        "success": result.success,
+                                        "error": result.error,
+                                        "estimated_tokens": result.estimated_tokens,
+                                        "explicit_params": result.metadata.get("explicit_params", []),
+                                    },
                                 }
                             )
 
@@ -1191,7 +1207,7 @@ class AgentCore:
             Formatted string for Claude
         """
         if not result.success:
-            return json.dumps({"error": result.error, "metadata": result.metadata}, indent=2)
+            return json.dumps({"error": result.error, "metadata": result.metadata}, indent=2, ensure_ascii=False)
 
         # Format successful result
         formatted = {"data": result.data, "metadata": result.metadata}
@@ -1199,4 +1215,4 @@ class AgentCore:
         if result.citations:
             formatted["citations"] = result.citations
 
-        return json.dumps(formatted, indent=2)
+        return json.dumps(formatted, indent=2, ensure_ascii=False)

@@ -69,13 +69,28 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
             )}>
               Input:
             </div>
-            <pre className={cn(
+            <div className={cn(
               'text-xs p-2 rounded overflow-x-auto',
               'bg-accent-50 dark:bg-accent-900',
-              'text-accent-900 dark:text-accent-100'
+              'text-accent-900 dark:text-accent-100',
+              'font-mono'
             )}>
-              {JSON.stringify(toolCall.input, null, 2)}
-            </pre>
+              {Object.entries(toolCall.input).map(([key, value]) => {
+                const isExplicit = toolCall.explicitParams?.includes(key);
+                return (
+                  <div key={key} className="mb-1 last:mb-0">
+                    <span className={cn(isExplicit && 'font-semibold')}>
+                      {key}:
+                    </span>{' '}
+                    <span className={cn(isExplicit && 'font-semibold')}>
+                      {typeof value === 'object'
+                        ? JSON.stringify(value)
+                        : String(value)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Result */}

@@ -77,19 +77,6 @@ export function Sidebar({
           </div>
         )}
       </div>
-
-      {/* Footer */}
-      <div className={cn(
-        'p-4',
-        'border-t border-accent-200 dark:border-accent-800'
-      )}>
-        <div className={cn(
-          'text-xs text-center',
-          'text-accent-500 dark:text-accent-400'
-        )}>
-          SUJBOT2 v1.0.0
-        </div>
-      </div>
     </div>
   );
 }

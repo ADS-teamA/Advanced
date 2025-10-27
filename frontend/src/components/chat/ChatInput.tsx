@@ -59,7 +59,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             'focus:outline-none focus:ring-2 focus:ring-accent-600 dark:focus:ring-accent-400',
             'focus:scale-[1.01] transition-all duration-200',
             'disabled:opacity-50 disabled:cursor-not-allowed',
-            'placeholder:text-accent-400 dark:placeholder:text-accent-500'
+            'placeholder:text-accent-400 dark:placeholder:text-accent-500',
+            'scrollbar-hide overflow-y-auto'
           )}
           rows={1}
         />

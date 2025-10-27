@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Sun, Moon, Settings, Activity, Menu } from 'lucide-react';
+import { Sun, Moon, Settings, Menu } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { cn } from '../../design-system/utils/cn';
 import { useHover } from '../../design-system/animations/hooks/useHover';
@@ -27,7 +27,6 @@ export function Header({
   sidebarOpen,
 }: HeaderProps) {
   const [models, setModels] = useState<Model[]>([]);
-  const [isHealthy, setIsHealthy] = useState(true);
   const [showModelSelector, setShowModelSelector] = useState(false);
 
   // Animation hooks
@@ -42,12 +41,6 @@ export function Header({
       .catch((error) => {
         console.error('Failed to load models:', error);
       });
-
-    // Check health status
-    apiService
-      .checkHealth()
-      .then((health) => setIsHealthy(health.status === 'healthy'))
-      .catch(() => setIsHealthy(false));
   }, []);
 
   const handleModelChange = async (modelId: string) => {
@@ -114,19 +107,6 @@ export function Header({
 
         {/* Controls */}
         <div className="flex items-center gap-3">
-          {/* Health status */}
-          <div
-            className={cn(
-              'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
-              isHealthy
-                ? 'bg-accent-200 dark:bg-accent-800 text-accent-700 dark:text-accent-300'
-                : 'bg-accent-300 dark:bg-accent-700 text-accent-800 dark:text-accent-400'
-            )}
-          >
-            <Activity size={12} />
-            {isHealthy ? 'Ready' : 'Offline'}
-          </div>
-
           {/* Model selector */}
           <div className="relative">
             <button

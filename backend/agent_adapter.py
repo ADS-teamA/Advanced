@@ -209,6 +209,57 @@ class AgentAdapter:
                     # Yield control to event loop (allows concurrent requests)
                     await asyncio.sleep(0)
 
+            # Extract tool calls from conversation history
+            # Tool calls are stored in assistant message content blocks (Anthropic format)
+            # Tool results are in subsequent user messages with metadata
+            tool_calls_info = []
+            tool_results_map = {}  # tool_use_id -> result metadata
+
+            if self.agent.conversation_history:
+                # First pass: Collect tool_use blocks
+                for message in self.agent.conversation_history[-10:]:
+                    if message.get("role") == "assistant" and "content" in message:
+                        for content_block in message["content"]:
+                            if isinstance(content_block, dict) and content_block.get("type") == "tool_use":
+                                tool_calls_info.append({
+                                    "id": content_block.get("id", ""),
+                                    "name": content_block.get("name", ""),
+                                    "input": content_block.get("input", {}),
+                                })
+
+                # Second pass: Collect tool_result blocks with metadata
+                for message in self.agent.conversation_history[-10:]:
+                    if message.get("role") == "user" and "content" in message:
+                        for content_block in message["content"]:
+                            if isinstance(content_block, dict) and content_block.get("type") == "tool_result":
+                                tool_use_id = content_block.get("tool_use_id")
+                                if tool_use_id:
+                                    tool_results_map[tool_use_id] = {
+                                        "result": content_block.get("content"),
+                                        "metadata": content_block.get("_metadata", {}),
+                                    }
+
+                # Third pass: Merge tool_use and tool_result data
+                for tool_call in tool_calls_info:
+                    tool_id = tool_call["id"]
+                    if tool_id in tool_results_map:
+                        result_data = tool_results_map[tool_id]
+                        tool_call["result"] = result_data["result"]
+                        tool_call["executionTimeMs"] = result_data["metadata"].get("execution_time_ms", 0)
+                        tool_call["success"] = result_data["metadata"].get("success", True)
+                        tool_call["error"] = result_data["metadata"].get("error")
+                        tool_call["explicitParams"] = result_data["metadata"].get("explicit_params", [])
+
+            # Send tool calls summary if any
+            if tool_calls_info:
+                yield {
+                    "event": "tool_calls_summary",
+                    "data": {
+                        "tool_calls": tool_calls_info,
+                        "count": len(tool_calls_info)
+                    }
+                }
+
             # Send final cost update
             cost_summary = tracker.get_session_cost_summary()
             yield {
