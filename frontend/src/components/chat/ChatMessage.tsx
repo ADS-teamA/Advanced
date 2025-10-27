@@ -18,6 +18,7 @@ interface ChatMessageProps {
   onEdit: (messageId: string, newContent: string) => void;
   onRegenerate: (messageId: string) => void;
   disabled?: boolean;
+  responseDurationMs?: number; // Duration in milliseconds for assistant responses
 }
 
 export function ChatMessage({
@@ -26,6 +27,7 @@ export function ChatMessage({
   onEdit,
   onRegenerate,
   disabled = false,
+  responseDurationMs,
 }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [isEditing, setIsEditing] = useState(false);
@@ -183,42 +185,200 @@ export function ChatMessage({
             </div>
           </div>
         ) : (
-          <div className="prose dark:prose-invert prose-sm max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={{
-                code({ node, inline, className, children, ...props }: any) {
-                  return inline ? (
-                    <code
-                      className={cn(
-                        'px-1 py-0.5 rounded text-sm',
-                        'bg-accent-100 dark:bg-accent-800'
-                      )}
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  ) : (
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
-        )}
+          <>
+            {/* Tool calls display (if any) */}
+            {message.toolCalls && message.toolCalls.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {message.toolCalls.map((toolCall) => (
+                  <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                ))}
+              </div>
+            )}
 
-        {/* Tool calls */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mt-4 space-y-2">
-            {message.toolCalls.map((toolCall) => (
-              <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-            ))}
-          </div>
+            {/* Message content */}
+            <div className="prose dark:prose-invert prose-sm max-w-none">
+              {(() => {
+              // Inline tool call display with content parsing
+              //
+              // Edge case handling:
+              // 1. Empty responses can occur when LLM uses only tools without explanation
+              // 2. [Using ...] markers are UI placeholders during streaming, removed after
+              // 3. Valid states:
+              //    - Content only (no tools): Normal text response
+              //    - Content + tools: Response with tool usage (most common)
+              //    - Tools only: Tool-only response (valid, no error)
+              //    - Neither: Error state (LLM bug or streaming failure)
+
+              const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+
+              // Check if content has substance (after removing [Using ...] markers)
+              // Remove markers and collapse all whitespace (including Unicode nbsp, zero-width)
+              const contentWithoutMarkers = message.content
+                .replace(/\[Using [^\]]+\.\.\.\]\n*/g, '')
+                .trim()
+                .replace(/\s+/g, '');  // Collapse all whitespace
+
+              const hasContent = contentWithoutMarkers.length > 0;
+
+              // Error: Neither content nor tools (shouldn't happen, but defensive)
+              if (!isUser && !hasContent && !hasToolCalls) {
+                return (
+                  <div className={cn(
+                    'px-3 py-2 rounded',
+                    'bg-accent-100 dark:bg-accent-800',
+                    'text-accent-700 dark:text-accent-300',
+                    'text-sm italic'
+                  )}>
+                    ⚠️ Model returned empty response. This may indicate an API error. Try regenerating.
+                  </div>
+                );
+              }
+
+              // Inline tool display parsing strategy
+              //
+              // Format: Assistant response contains "[Using tool_name...]" markers where tools were called
+              // Goal: Split text around markers and insert actual ToolCallDisplay components inline
+              //
+              // Regex: /\[Using ([^\]]+)\.\.\.\]\n*/g
+              //   - [Using ...] - Literal marker format
+              //   - ([^\]]+) - Capture group: tool name (any chars except ])
+              //   - \.\.\.\] - Literal "...]"
+              //   - \n* - Optional trailing newlines (normalize whitespace)
+              //
+              // Matching strategy: Match markers by tool NAME (not ID) because:
+              //   1. Markers are inserted during streaming before we have tool IDs
+              //   2. Multiple calls to same tool must be matched in order (usedToolCallIndices tracking)
+              //   3. If tool call missing for marker, we skip silently (defensive - shouldn't happen)
+              const toolMarkerRegex = /\[Using ([^\]]+)\.\.\.\]\n*/g;
+              const parts: JSX.Element[] = [];
+              let lastIndex = 0;
+              let match;
+
+              // Track matched tool calls to handle duplicate tool names (e.g., search called twice)
+              const usedToolCallIndices = new Set<number>();
+
+              while ((match = toolMarkerRegex.exec(message.content)) !== null) {
+                // Add text before the marker
+                if (match.index > lastIndex) {
+                  const textBefore = message.content.substring(lastIndex, match.index);
+                  parts.push(
+                    <ReactMarkdown
+                      key={`text-${lastIndex}`}
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeHighlight]}
+                      components={{
+                        code({ node, inline, className, children, ...props }: any) {
+                          return inline ? (
+                            <code
+                              className={cn(
+                                'px-1 py-0.5 rounded text-sm',
+                                'bg-accent-100 dark:bg-accent-800'
+                              )}
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
+                    >
+                      {textBefore}
+                    </ReactMarkdown>
+                  );
+                }
+
+                // Add tool call display - find first unused tool call with matching name
+                const toolName = match[1];
+                const toolCallIndex = message.toolCalls?.findIndex(
+                  (tc, idx) => tc.name === toolName && !usedToolCallIndices.has(idx)
+                );
+
+                if (toolCallIndex !== undefined && toolCallIndex >= 0 && message.toolCalls) {
+                  const toolCall = message.toolCalls[toolCallIndex];
+                  usedToolCallIndices.add(toolCallIndex);
+
+                  parts.push(
+                    <div key={`tool-${toolCall.id}`} className="my-3">
+                      <ToolCallDisplay toolCall={toolCall} />
+                    </div>
+                  );
+                }
+
+                lastIndex = match.index + match[0].length;
+              }
+
+              // Add remaining text after last marker
+              if (lastIndex < message.content.length) {
+                const textAfter = message.content.substring(lastIndex);
+                parts.push(
+                  <ReactMarkdown
+                    key={`text-${lastIndex}`}
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight]}
+                    components={{
+                      code({ node, inline, className, children, ...props }: any) {
+                        return inline ? (
+                          <code
+                            className={cn(
+                              'px-1 py-0.5 rounded text-sm',
+                              'bg-accent-100 dark:bg-accent-800'
+                            )}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        ) : (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
+                    {textAfter}
+                  </ReactMarkdown>
+                );
+              }
+
+              // If no markers found, render as before
+              if (parts.length === 0) {
+                return (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight]}
+                    components={{
+                      code({ node, inline, className, children, ...props }: any) {
+                        return inline ? (
+                          <code
+                            className={cn(
+                              'px-1 py-0.5 rounded text-sm',
+                              'bg-accent-100 dark:bg-accent-800'
+                            )}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        ) : (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                );
+              }
+
+              return <>{parts}</>;
+            })()}
+            </div>
+          </>
         )}
 
         {/* Cost information */}
@@ -242,16 +402,33 @@ export function ChatMessage({
                 {message.cost.cachedTokens.toLocaleString()} cached
               </span>
             )}
+            {/* Show tool usage count */}
+            {message.toolCalls && message.toolCalls.length > 0 && (
+              <span className={cn(
+                'text-accent-600 dark:text-accent-400'
+              )}>
+                tools used: {message.toolCalls.length}
+              </span>
+            )}
           </div>
         )}
 
-        {/* Timestamp */}
+        {/* Timestamp or Response Duration */}
         <div className={cn(
           'mt-2 flex items-center gap-1 text-xs',
           'text-accent-400 dark:text-accent-500'
         )}>
           <Clock size={12} />
-          {new Date(message.timestamp).toLocaleTimeString()}
+          {!isUser && responseDurationMs !== undefined ? (
+            // Show response duration for assistant messages
+            `${(responseDurationMs / 1000).toFixed(2)}s`
+          ) : (
+            // Show timestamp for user messages
+            (() => {
+              const date = message.timestamp ? new Date(message.timestamp) : new Date();
+              return !isNaN(date.getTime()) ? date.toLocaleTimeString() : 'Just now';
+            })()
+          )}
         </div>
       </div>
     </div>

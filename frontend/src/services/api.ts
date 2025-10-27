@@ -20,8 +20,6 @@ export class ApiService {
     conversationId?: string,
     model?: string
   ): AsyncGenerator<SSEEvent, void, unknown> {
-    console.log('🌐 API: Making POST request to /chat/stream', { message, conversationId, model });
-
     let response;
     try {
       response = await fetch(`${API_BASE_URL}/chat/stream`, {
@@ -37,13 +35,28 @@ export class ApiService {
       });
     } catch (error) {
       console.error('❌ API: Fetch failed:', error);
-      throw error;
+      // Yield error event to surface network failure to UI
+      yield {
+        event: 'error',
+        data: {
+          error: `Failed to connect to backend: ${(error as Error).message}. Check if backend is running on ${API_BASE_URL}`,
+          type: 'NetworkError'
+        }
+      };
+      return;  // Stop generator, don't throw (error already surfaced)
     }
 
-    console.log('📡 API: Response received', { ok: response.ok, status: response.status });
-
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Yield error event for HTTP errors (4xx, 5xx)
+      yield {
+        event: 'error',
+        data: {
+          error: `Backend returned HTTP ${response.status}. This may indicate a server error.`,
+          type: 'HTTPError',
+          status: response.status
+        }
+      };
+      return;
     }
 
     const reader = response.body?.getReader();
@@ -54,43 +67,53 @@ export class ApiService {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    // Timeout to prevent hanging on backend issues (5 minutes)
+    const STREAM_TIMEOUT_MS = 5 * 60 * 1000;
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      reader.cancel('Stream timeout after 5 minutes');
+      console.error('⏰ API: Stream timeout - cancelling reader');
+    }, STREAM_TIMEOUT_MS);
+
     try {
       while (true) {
         const { done, value } = await reader.read();
 
+        // Check for timeout (cancels reader, so next read may be done or throw)
+        if (timedOut) {
+          yield {
+            event: 'error',
+            data: {
+              error: 'Stream timeout after 5 minutes. The backend may be experiencing performance issues or the query is too complex. Try a simpler question or refresh the page.',
+              type: 'TimeoutError'
+            }
+          };
+          break;
+        }
+
         if (done) {
-          console.log('📡 API: Stream done (reader finished)');
           break;
         }
 
         const chunk = decoder.decode(value, { stream: true });
-        console.log('📦 API: Received chunk:', chunk.substring(0, 100) + (chunk.length > 100 ? '...' : ''));
         buffer += chunk;
-
-        console.log('🔍 Buffer now contains', buffer.length, 'chars, ends with:', JSON.stringify(buffer.slice(-10)));
 
         // Process complete SSE messages
         // Note: Backend sends CRLF (\r\n\r\n) so we need to split on that
         const lines = buffer.split(/\r?\n\r?\n/);
 
-        console.log('✂️ Split result:', lines.length, 'parts');
-
         // If split returned only 1 element, buffer doesn't contain separator yet
         // Keep waiting for more data
         if (lines.length === 1) {
-          console.log('⏳ API: No complete SSE messages yet, waiting for more data...');
           continue;
         }
 
         // Last element is either incomplete or empty (if buffer ends with separator)
         buffer = lines.pop() || '';
 
-        console.log(`📋 API: Processing ${lines.length} complete SSE messages, remaining buffer:`, buffer.length, 'chars');
-
         for (const line of lines) {
           if (!line.trim()) continue;
-
-          console.log('📄 API: Processing line:', line);
 
           // Parse SSE format:
           // event: text_delta
@@ -100,24 +123,56 @@ export class ApiService {
 
           if (eventMatch && dataMatch) {
             const event = eventMatch[1].trim();
-            const data = JSON.parse(dataMatch[1]);
 
-            console.log('✅ API: Parsed event:', event, 'data:', data);
+            // Try to parse JSON data
+            try {
+              const data = JSON.parse(dataMatch[1]);
 
-            yield {
-              event: event as SSEEvent['event'],
-              data,
-            };
+              yield {
+                event: event as SSEEvent['event'],
+                data,
+              };
+            } catch (parseError) {
+              // JSON parsing failed - this is a serious error, not just a warning
+              console.error('❌ API: Failed to parse JSON in SSE data field:', {
+                event,
+                rawData: dataMatch[1],
+                error: parseError
+              });
+
+              // Yield error event to surface the issue to UI
+              yield {
+                event: 'error',
+                data: {
+                  error: `Failed to parse server response (event: ${event})`,
+                  type: 'JSONParseError',
+                  rawData: dataMatch[1].substring(0, 100)
+                }
+              };
+            }
           } else {
-            console.warn('⚠️ API: Could not parse SSE line:', { line, eventMatch, dataMatch });
+            // SSE format is invalid - this should NOT be just a warning
+            console.error('❌ API: Invalid SSE format - missing event or data field:', {
+              line,
+              hasEvent: !!eventMatch,
+              hasData: !!dataMatch
+            });
+
+            // Yield error event instead of silently dropping
+            yield {
+              event: 'error',
+              data: {
+                error: 'Server sent malformed response',
+                type: 'SSEFormatError',
+                details: line.substring(0, 100)
+              }
+            };
           }
         }
       }
-
-      console.log('🏁 API: Stream loop finished');
     } finally {
+      clearTimeout(timeoutId);
       reader.releaseLock();
-      console.log('🔓 API: Reader released');
     }
   }
 

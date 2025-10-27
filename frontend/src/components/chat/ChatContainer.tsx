@@ -98,16 +98,76 @@ export function ChatContainer({
               'divide-y',
               'divide-accent-200 dark:divide-accent-800'
             )}>
-              {conversation.messages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  animationDelay={index * 50}
-                  onEdit={onEditMessage}
-                  onRegenerate={onRegenerateMessage}
-                  disabled={isStreaming}
-                />
-              ))}
+              {conversation.messages
+                .filter((message) => {
+                  // Show user messages always
+                  if (message.role === 'user') return true;
+
+                  // Show assistant messages with:
+                  // 1. Non-empty content (after trimming), OR
+                  // 2. Tool calls (even if content is empty/whitespace)
+                  const hasContent = message.content && message.content.trim().length > 0;
+                  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+
+                  return hasContent || hasToolCalls;
+                })
+                .map((message, index, filteredMessages) => {
+                  // Calculate response duration for assistant messages
+                  let responseDurationMs: number | undefined;
+
+                  if (message.role === 'assistant' && index > 0) {
+                    // Find the previous user message
+                    const prevMessage = filteredMessages[index - 1];
+                    if (prevMessage && prevMessage.role === 'user') {
+                      const userTime = new Date(prevMessage.timestamp).getTime();
+                      const assistantTime = new Date(message.timestamp).getTime();
+
+                      // Validate timestamps are valid dates
+                      if (isNaN(userTime)) {
+                        console.error('Invalid user message timestamp:', prevMessage.timestamp);
+                      } else if (isNaN(assistantTime)) {
+                        console.error('Invalid assistant message timestamp:', message.timestamp);
+                      } else {
+                        const duration = assistantTime - userTime;
+
+                        // Validate and warn about suspicious durations
+                        if (duration < 0) {
+                          console.warn('Negative duration detected (clock skew?):', {
+                            userTime,
+                            assistantTime,
+                            duration
+                          });
+                          // Don't show negative durations (clock skew issue)
+                        } else if (duration > 300000) {
+                          // Backend took > 5 minutes - this indicates performance issues
+                          console.error('⚠️ Backend response took > 5 minutes:', {
+                            duration,
+                            messageId: message.id,
+                            durationMinutes: (duration / 60000).toFixed(1)
+                          });
+                          // Still show duration to user so they know backend is slow
+                          responseDurationMs = duration;
+                        } else if (duration > 50) {
+                          // Normal duration: > 50ms, < 5 minutes
+                          responseDurationMs = duration;
+                        }
+                        // Else: duration <= 50ms (likely cached/instant), don't show
+                      }
+                    }
+                  }
+
+                  return (
+                    <ChatMessage
+                      key={message.id}
+                      message={message}
+                      animationDelay={index * 50}
+                      onEdit={onEditMessage}
+                      onRegenerate={onRegenerateMessage}
+                      disabled={isStreaming}
+                      responseDurationMs={responseDurationMs}
+                    />
+                  );
+                })}
             </div>
           )}
           <div ref={messagesEndRef} />

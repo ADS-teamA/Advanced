@@ -185,6 +185,9 @@ class BaseTool(ABC):
         start_time = time.time()
 
         try:
+            # Track which parameters were explicitly provided by the model (before validation)
+            explicit_params = list(kwargs.keys())
+
             # Validate inputs
             validated_input = self.input_schema(**kwargs)
             validated_dict = validated_input.model_dump()
@@ -199,6 +202,7 @@ class BaseTool(ABC):
             result.execution_time_ms = elapsed_ms
             result.metadata["tool_name"] = self.name
             result.metadata["tier"] = self.tier
+            result.metadata["explicit_params"] = explicit_params  # Track model-specified params
 
             # Estimate token count from result data
             result.estimated_tokens = estimate_tokens_from_result(result.data)
