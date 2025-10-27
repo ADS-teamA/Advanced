@@ -722,7 +722,30 @@ class AgentCore:
 
                             # Collect tool calls
                             elif hasattr(part, 'function_call') and part.function_call:
-                                # Create object-like structure (consistent with OpenAI path)
+                                # Validate function_call has required attributes
+                                if not hasattr(part.function_call, 'name') or not part.function_call.name:
+                                    logger.error(
+                                        f"Gemini returned malformed function_call missing 'name': {part.function_call}"
+                                    )
+                                    yield "\n[⚠️  Warning: Gemini returned malformed tool call - skipping]\n"
+                                    continue
+
+                                # Extract arguments with error handling (consistent with OpenAI path)
+                                tool_input = {}
+                                if hasattr(part.function_call, 'args') and part.function_call.args is not None:
+                                    try:
+                                        tool_input = dict(part.function_call.args)
+                                    except (TypeError, ValueError) as e:
+                                        logger.error(
+                                            f"Failed to convert tool arguments for {part.function_call.name}: {e}. "
+                                            f"Args type: {type(part.function_call.args)}"
+                                        )
+                                        tool_input = {}
+                                        yield f"\n[⚠️  Warning: Malformed tool arguments from API - tool may fail]\n"
+
+                                # Create dynamic ToolUse class instance (consistent with OpenAI path at line 841)
+                                # Required for attribute access in tool execution loop (line 902: tool_use.name, tool_use.input)
+                                # Using dict would cause AttributeError during tool execution
                                 tool_uses.append(
                                     type(
                                         "ToolUse",
@@ -730,7 +753,7 @@ class AgentCore:
                                         {
                                             "id": f"toolu_{part.function_call.name}",
                                             "name": part.function_call.name,
-                                            "input": dict(part.function_call.args) if hasattr(part.function_call, 'args') else {},
+                                            "input": tool_input,
                                         },
                                     )()
                                 )
@@ -746,8 +769,13 @@ class AgentCore:
                     if full_text:
                         assistant_message["content"].append({"type": "text", "text": full_text})
 
-                    # Add tool uses to message
+                    # Add tool uses to message (with validation)
                     for tool_use in tool_uses:
+                        # Validate tool_use has required attributes
+                        if not hasattr(tool_use, 'id') or not hasattr(tool_use, 'name') or not hasattr(tool_use, 'input'):
+                            logger.error(f"Malformed tool_use object - skipping. Attributes: {dir(tool_use)}")
+                            continue
+
                         assistant_message["content"].append({
                             "type": "tool_use",
                             "id": tool_use.id,
