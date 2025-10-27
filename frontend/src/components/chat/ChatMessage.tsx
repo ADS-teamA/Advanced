@@ -185,8 +185,19 @@ export function ChatMessage({
             </div>
           </div>
         ) : (
-          <div className="prose dark:prose-invert prose-sm max-w-none">
-            {(() => {
+          <>
+            {/* Tool calls display (if any) */}
+            {message.toolCalls && message.toolCalls.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {message.toolCalls.map((toolCall) => (
+                  <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                ))}
+              </div>
+            )}
+
+            {/* Message content */}
+            <div className="prose dark:prose-invert prose-sm max-w-none">
+              {(() => {
               // Inline tool call display with content parsing
               //
               // Edge case handling:
@@ -366,7 +377,8 @@ export function ChatMessage({
 
               return <>{parts}</>;
             })()}
-          </div>
+            </div>
+          </>
         )}
 
         {/* Cost information */}

@@ -28,6 +28,7 @@ export function Header({
 }: HeaderProps) {
   const [models, setModels] = useState<Model[]>([]);
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   // Animation hooks
   const hamburgerHover = useHover({ scale: true });
@@ -37,9 +38,13 @@ export function Header({
   useEffect(() => {
     apiService
       .getModels()
-      .then((data) => setModels(data.models))
+      .then((data) => {
+        setModels(data.models);
+        setModelError(null);
+      })
       .catch((error) => {
         console.error('Failed to load models:', error);
+        setModelError(`Failed to load models: ${error.message}. Using default model.`);
       });
   }, []);
 
@@ -47,8 +52,11 @@ export function Header({
     try {
       await onModelChange(modelId);
       setShowModelSelector(false);
+      setModelError(null);
     } catch (error) {
       console.error('Failed to switch model:', error);
+      setModelError(`Failed to switch to model: ${(error as Error).message}`);
+      // Keep selector open for retry
     }
   };
 
@@ -134,6 +142,18 @@ export function Header({
                 'rounded-lg shadow-lg overflow-hidden z-50',
                 'animate-scale-in'
               )}>
+                {/* Error message */}
+                {modelError && (
+                  <div className={cn(
+                    'px-4 py-3 border-b',
+                    'bg-red-50 dark:bg-red-900/20',
+                    'border-red-200 dark:border-red-800',
+                    'text-red-800 dark:text-red-200 text-xs'
+                  )}>
+                    {modelError}
+                  </div>
+                )}
+
                 {models.map((model) => (
                   <button
                     key={model.id}

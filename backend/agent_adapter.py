@@ -76,8 +76,8 @@ class AgentAdapter:
         logger.info("Initializing embedder...")
         embedder = EmbeddingGenerator()
 
-        # Track degraded components
-        degraded_components = []
+        # Track degraded components (instance variable for health endpoint)
+        self.degraded_components = []
 
         # Initialize reranker (optional, lazy load)
         reranker = None
@@ -88,10 +88,54 @@ class AgentAdapter:
                     reranker = CrossEncoderReranker(
                         model_name=self.config.tool_config.reranker_model
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
+                except (ImportError, ModuleNotFoundError) as e:
+                    logger.error(
+                        f"Reranker dependencies missing: {e}. "
+                        f"Install with: pip install sentence-transformers"
+                    )
                     self.config.tool_config.enable_reranking = False
-                    degraded_components.append("reranker")
+                    self.degraded_components.append({
+                        "component": "reranker",
+                        "error": f"Missing dependencies: {e}"
+                    })
+                except (FileNotFoundError, ValueError) as e:
+                    logger.error(
+                        f"Reranker configuration error: {e}. "
+                        f"Check model name '{self.config.tool_config.reranker_model}' in config."
+                    )
+                    self.config.tool_config.enable_reranking = False
+                    self.degraded_components.append({
+                        "component": "reranker",
+                        "error": f"Configuration error: {e}"
+                    })
+                except RuntimeError as e:
+                    if "CUDA" in str(e) or "GPU" in str(e):
+                        logger.warning(
+                            f"GPU unavailable for reranker: {e}. This is expected on CPU-only systems."
+                        )
+                        self.config.tool_config.enable_reranking = False
+                        self.degraded_components.append({
+                            "component": "reranker",
+                            "error": "GPU unavailable (CPU-only mode)"
+                        })
+                    else:
+                        logger.critical(f"Unexpected runtime error loading reranker: {e}", exc_info=True)
+                        self.config.tool_config.enable_reranking = False
+                        self.degraded_components.append({
+                            "component": "reranker",
+                            "error": f"Runtime error: {e}"
+                        })
+                except Exception as e:
+                    # Catch-all for truly unexpected errors
+                    logger.critical(
+                        f"Unexpected error loading reranker: {type(e).__name__}: {e}",
+                        exc_info=True
+                    )
+                    self.config.tool_config.enable_reranking = False
+                    self.degraded_components.append({
+                        "component": "reranker",
+                        "error": f"Unexpected error: {type(e).__name__}"
+                    })
             else:
                 logger.info("Reranker set to lazy load")
 
@@ -108,15 +152,53 @@ class AgentAdapter:
                 graph_retriever = GraphEnhancedRetriever(
                     vector_store=vector_store, knowledge_graph=knowledge_graph
                 )
-            except Exception as e:
-                logger.warning(f"Failed to load knowledge graph: {e}. Continuing without KG.")
+            except (ImportError, ModuleNotFoundError) as e:
+                logger.error(
+                    f"Knowledge graph dependencies missing: {e}. "
+                    f"Install with: pip install networkx"
+                )
                 self.config.enable_knowledge_graph = False
-                degraded_components.append("knowledge_graph")
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Missing dependencies: {e}"
+                })
+            except FileNotFoundError as e:
+                logger.error(
+                    f"Knowledge graph file not found: {e}. "
+                    f"Expected path: {self.config.knowledge_graph_path}"
+                )
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"File not found: {e}"
+                })
+            except (ValueError, KeyError, TypeError) as e:
+                logger.error(
+                    f"Knowledge graph file corrupted or invalid format: {e}. "
+                    f"Re-run indexing pipeline to regenerate."
+                )
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Invalid file format: {e}"
+                })
+            except Exception as e:
+                # Catch-all for truly unexpected errors
+                logger.critical(
+                    f"Unexpected error loading knowledge graph: {type(e).__name__}: {e}",
+                    exc_info=True
+                )
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Unexpected error: {type(e).__name__}"
+                })
 
         # Warn if running in degraded mode
-        if degraded_components:
+        if self.degraded_components:
+            component_names = [d["component"] for d in self.degraded_components]
             logger.warning(
-                f"⚠️ RUNNING IN DEGRADED MODE - Missing components: {', '.join(degraded_components)}"
+                f"⚠️ RUNNING IN DEGRADED MODE - Missing components: {', '.join(component_names)}"
             )
             logger.warning("Some agent tools may be unavailable or produce lower-quality results.")
 
@@ -247,8 +329,13 @@ class AgentAdapter:
             # 2. Tool results (tool_result) are in user messages with role="user"
             # 3. They must be joined by tool_use_id to create complete tool call objects
             #
-            # We scan last 10 messages only (performance optimization - typical conversations
-            # have 2-4 tool calls per turn, so 10 messages = ~5 turns = safe margin)
+            # Performance optimization: Scan last 10 messages only (not entire history)
+            # Rationale: In tool-heavy conversations, each turn can generate 2-5 messages:
+            #   - 1 assistant message (with tool_use blocks)
+            #   - 1-4 user messages (one tool_result per tool called)
+            # Therefore, 10 messages covers the most recent 2-4 turns, which is sufficient
+            # because tool_use/tool_result pairs are always in adjacent messages.
+            # For no-tool conversations: 10 messages = 5 complete turns.
             tool_calls_info = []
             tool_results_map = {}  # tool_use_id -> result metadata
 
@@ -450,7 +537,7 @@ class AgentAdapter:
         Get agent health status.
 
         Returns:
-            Health status dict
+            Health status dict with degraded component warnings
         """
         try:
             # Check if agent is properly initialized
@@ -458,7 +545,8 @@ class AgentAdapter:
                 return {
                     "status": "error",
                     "message": "Agent not initialized",
-                    "details": {}
+                    "details": {},
+                    "degraded_components": []
                 }
 
             # Check vector store
@@ -467,6 +555,7 @@ class AgentAdapter:
             # Check API keys
             has_anthropic_key = bool(self.config.anthropic_api_key)
             has_openai_key = bool(self.config.openai_api_key)
+            has_google_key = bool(self.config.google_api_key)
 
             if not vector_store_exists:
                 return {
@@ -474,25 +563,33 @@ class AgentAdapter:
                     "message": "Vector store not found",
                     "details": {
                         "vector_store_path": str(self.config.vector_store_path)
-                    }
+                    },
+                    "degraded_components": []
                 }
 
-            if not has_anthropic_key and not has_openai_key:
+            if not has_anthropic_key and not has_openai_key and not has_google_key:
                 return {
                     "status": "error",
                     "message": "No API keys configured",
-                    "details": {}
+                    "details": {},
+                    "degraded_components": []
                 }
 
+            # Determine overall status based on degraded components
+            status = "degraded" if self.degraded_components else "healthy"
+            message = "Agent ready" if status == "healthy" else "Agent running in degraded mode"
+
             return {
-                "status": "healthy",
-                "message": "Agent ready",
+                "status": status,
+                "message": message,
                 "details": {
                     "model": self.config.model,
                     "vector_store": str(self.config.vector_store_path),
                     "has_anthropic_key": has_anthropic_key,
-                    "has_openai_key": has_openai_key
-                }
+                    "has_openai_key": has_openai_key,
+                    "has_google_key": has_google_key
+                },
+                "degraded_components": self.degraded_components  # Expose to UI
             }
 
         except Exception as e:

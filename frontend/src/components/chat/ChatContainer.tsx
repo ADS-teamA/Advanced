@@ -130,25 +130,28 @@ export function ChatContainer({
                       } else {
                         const duration = assistantTime - userTime;
 
-                        // Warn about suspicious durations (still show them)
+                        // Validate and warn about suspicious durations
                         if (duration < 0) {
                           console.warn('Negative duration detected (clock skew?):', {
                             userTime,
                             assistantTime,
                             duration
                           });
+                          // Don't show negative durations (clock skew issue)
                         } else if (duration > 300000) {
-                          console.warn('Very long response time (> 5 min):', {
+                          // Backend took > 5 minutes - this indicates performance issues
+                          console.error('⚠️ Backend response took > 5 minutes:', {
                             duration,
-                            messageId: message.id
+                            messageId: message.id,
+                            durationMinutes: (duration / 60000).toFixed(1)
                           });
-                        }
-
-                        // Only set duration if it's positive and reasonable (> 50ms, < 300s)
-                        // Note: 300000ms = 300 seconds = 5 minutes
-                        if (duration > 50 && duration < 300000) {
+                          // Still show duration to user so they know backend is slow
+                          responseDurationMs = duration;
+                        } else if (duration > 50) {
+                          // Normal duration: > 50ms, < 5 minutes
                           responseDurationMs = duration;
                         }
+                        // Else: duration <= 50ms (likely cached/instant), don't show
                       }
                     }
                   }

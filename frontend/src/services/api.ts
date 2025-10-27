@@ -35,11 +35,28 @@ export class ApiService {
       });
     } catch (error) {
       console.error('❌ API: Fetch failed:', error);
-      throw error;
+      // Yield error event to surface network failure to UI
+      yield {
+        event: 'error',
+        data: {
+          error: `Failed to connect to backend: ${(error as Error).message}. Check if backend is running on ${API_BASE_URL}`,
+          type: 'NetworkError'
+        }
+      };
+      return;  // Stop generator, don't throw (error already surfaced)
     }
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Yield error event for HTTP errors (4xx, 5xx)
+      yield {
+        event: 'error',
+        data: {
+          error: `Backend returned HTTP ${response.status}. This may indicate a server error.`,
+          type: 'HTTPError',
+          status: response.status
+        }
+      };
+      return;
     }
 
     const reader = response.body?.getReader();
@@ -52,7 +69,9 @@ export class ApiService {
 
     // Timeout to prevent hanging on backend issues (5 minutes)
     const STREAM_TIMEOUT_MS = 5 * 60 * 1000;
+    let timedOut = false;
     const timeoutId = setTimeout(() => {
+      timedOut = true;
       reader.cancel('Stream timeout after 5 minutes');
       console.error('⏰ API: Stream timeout - cancelling reader');
     }, STREAM_TIMEOUT_MS);
@@ -60,6 +79,18 @@ export class ApiService {
     try {
       while (true) {
         const { done, value } = await reader.read();
+
+        // Check for timeout (cancels reader, so next read may be done or throw)
+        if (timedOut) {
+          yield {
+            event: 'error',
+            data: {
+              error: 'Stream timeout after 5 minutes. The backend may be experiencing performance issues or the query is too complex. Try a simpler question or refresh the page.',
+              type: 'TimeoutError'
+            }
+          };
+          break;
+        }
 
         if (done) {
           break;

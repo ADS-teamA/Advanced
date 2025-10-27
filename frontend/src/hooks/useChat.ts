@@ -199,6 +199,7 @@ export function useChat() {
           conversation.id,
           selectedModel
         )) {
+          console.log('📨 FRONTEND: Received event:', event.event);
           if (event.event === 'text_delta') {
             // Append text delta
             if (currentMessageRef.current) {
@@ -226,38 +227,49 @@ export function useChat() {
             }
           } else if (event.event === 'tool_call') {
             // Tool execution started
+            console.log('🔧 FRONTEND: Received tool_call event:', event.data);
             const toolCall: ToolCall = {
               id: event.data.call_id || `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               name: event.data.tool_name,
               input: event.data.tool_input,
               status: 'running',
             };
+            console.log('🔧 FRONTEND: Created ToolCall:', toolCall);
 
             currentToolCallsRef.current.set(toolCall.id, toolCall);
+            console.log('🔧 FRONTEND: currentToolCallsRef size:', currentToolCallsRef.current.size);
 
             if (currentMessageRef.current) {
               currentMessageRef.current.toolCalls = Array.from(
                 currentToolCallsRef.current.values()
               );
+              console.log('🔧 FRONTEND: Updated currentMessageRef.toolCalls:', currentMessageRef.current.toolCalls);
+            } else {
+              console.error('❌ FRONTEND: currentMessageRef.current is NULL!');
             }
 
             // Update UI
-            setConversations((prev) =>
-              prev.map((c) => {
+            setConversations((prev) => {
+              console.log('🔧 FRONTEND: Updating conversations state...');
+              return prev.map((c) => {
                 if (c.id !== updatedConversation.id) return c;
 
                 const messages = [...c.messages];
                 const lastMsg = messages[messages.length - 1];
+                console.log('🔧 FRONTEND: Last message role:', lastMsg?.role);
 
                 if (lastMsg?.role === 'assistant') {
+                  console.log('🔧 FRONTEND: Updating existing assistant message');
                   messages[messages.length - 1] = { ...currentMessageRef.current! };
                 } else {
+                  console.log('🔧 FRONTEND: Adding new assistant message');
                   messages.push({ ...currentMessageRef.current! });
                 }
 
+                console.log('🔧 FRONTEND: Updated message toolCalls:', messages[messages.length - 1]?.toolCalls);
                 return { ...c, messages };
-              })
-            );
+              });
+            });
           } else if (event.event === 'tool_result') {
             // Tool execution completed
             const callId = event.data.call_id;
