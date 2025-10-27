@@ -722,11 +722,18 @@ class AgentCore:
 
                             # Collect tool calls
                             elif hasattr(part, 'function_call') and part.function_call:
-                                tool_uses.append({
-                                    "id": f"toolu_{part.function_call.name}",
-                                    "name": part.function_call.name,
-                                    "input": dict(part.function_call.args) if hasattr(part.function_call, 'args') else {},
-                                })
+                                # Create object-like structure (consistent with OpenAI path)
+                                tool_uses.append(
+                                    type(
+                                        "ToolUse",
+                                        (),
+                                        {
+                                            "id": f"toolu_{part.function_call.name}",
+                                            "name": part.function_call.name,
+                                            "input": dict(part.function_call.args) if hasattr(part.function_call, 'args') else {},
+                                        },
+                                    )()
+                                )
 
                         # Extract usage from chunk if available
                         if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
@@ -743,9 +750,9 @@ class AgentCore:
                     for tool_use in tool_uses:
                         assistant_message["content"].append({
                             "type": "tool_use",
-                            "id": tool_use["id"],
-                            "name": tool_use["name"],
-                            "input": tool_use["input"],
+                            "id": tool_use.id,
+                            "name": tool_use.name,
+                            "input": tool_use.input,
                         })
 
                     # Track cost (with cache support)
