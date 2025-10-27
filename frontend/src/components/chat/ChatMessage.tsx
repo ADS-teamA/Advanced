@@ -57,11 +57,7 @@ export function ChatMessage({
   };
 
   const handleRegenerate = () => {
-    console.log('🔄 Regenerate clicked for message:', message.id);
-    console.log('🔄 onRegenerate function:', onRegenerate);
-    console.log('🔄 Calling onRegenerate...');
     onRegenerate(message.id);
-    console.log('🔄 onRegenerate called successfully');
   };
 
   return (
@@ -191,14 +187,29 @@ export function ChatMessage({
         ) : (
           <div className="prose dark:prose-invert prose-sm max-w-none">
             {(() => {
-              // Parse content and insert tool call displays inline
+              // Inline tool call display with content parsing
+              //
+              // Edge case handling:
+              // 1. Empty responses can occur when LLM uses only tools without explanation
+              // 2. [Using ...] markers are UI placeholders during streaming, removed after
+              // 3. Valid states:
+              //    - Content only (no tools): Normal text response
+              //    - Content + tools: Response with tool usage (most common)
+              //    - Tools only: Tool-only response (valid, no error)
+              //    - Neither: Error state (LLM bug or streaming failure)
+
               const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
 
               // Check if content has substance (after removing [Using ...] markers)
-              const contentWithoutMarkers = message.content.replace(/\[Using [^\]]+\.\.\.\]\n*/g, '');
-              const hasContent = contentWithoutMarkers.trim().length > 0;
+              // Remove markers and collapse all whitespace (including Unicode nbsp, zero-width)
+              const contentWithoutMarkers = message.content
+                .replace(/\[Using [^\]]+\.\.\.\]\n*/g, '')
+                .trim()
+                .replace(/\s+/g, '');  // Collapse all whitespace
 
-              // Show error if empty response from assistant
+              const hasContent = contentWithoutMarkers.length > 0;
+
+              // Error: Neither content nor tools (shouldn't happen, but defensive)
               if (!isUser && !hasContent && !hasToolCalls) {
                 return (
                   <div className={cn(
@@ -207,18 +218,32 @@ export function ChatMessage({
                     'text-accent-700 dark:text-accent-300',
                     'text-sm italic'
                   )}>
-                    ⚠️ Model didn't return any content. Try regenerating the response.
+                    ⚠️ Model returned empty response. This may indicate an API error. Try regenerating.
                   </div>
                 );
               }
 
-              // Split content by [Using ...] markers and render inline
+              // Inline tool display parsing strategy
+              //
+              // Format: Assistant response contains "[Using tool_name...]" markers where tools were called
+              // Goal: Split text around markers and insert actual ToolCallDisplay components inline
+              //
+              // Regex: /\[Using ([^\]]+)\.\.\.\]\n*/g
+              //   - [Using ...] - Literal marker format
+              //   - ([^\]]+) - Capture group: tool name (any chars except ])
+              //   - \.\.\.\] - Literal "...]"
+              //   - \n* - Optional trailing newlines (normalize whitespace)
+              //
+              // Matching strategy: Match markers by tool NAME (not ID) because:
+              //   1. Markers are inserted during streaming before we have tool IDs
+              //   2. Multiple calls to same tool must be matched in order (usedToolCallIndices tracking)
+              //   3. If tool call missing for marker, we skip silently (defensive - shouldn't happen)
               const toolMarkerRegex = /\[Using ([^\]]+)\.\.\.\]\n*/g;
               const parts: JSX.Element[] = [];
               let lastIndex = 0;
               let match;
 
-              // Track which tool calls we've already used (by index in array)
+              // Track matched tool calls to handle duplicate tool names (e.g., search called twice)
               const usedToolCallIndices = new Set<number>();
 
               while ((match = toolMarkerRegex.exec(message.content)) !== null) {

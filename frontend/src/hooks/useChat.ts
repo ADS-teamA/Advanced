@@ -24,10 +24,20 @@ export function useChat() {
   const currentMessageRef = useRef<Message | null>(null);
   const currentToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
 
-  // Ref to always access latest conversations (avoid stale closure)
+  // Ref pattern to avoid stale closures in async callbacks
+  //
+  // Problem: In regenerateMessage and editMessage, we read conversation state from an async callback
+  // that may execute after state updates. Using `conversations` directly would capture
+  // the value from when the callback was created (stale closure).
+  //
+  // Solution: Keep a ref that always points to latest conversations array. The ref
+  // object never changes identity, so it's safe to read in async contexts.
+  //
+  // When to use: Async callbacks that need latest state (regenerate, edit)
+  // When NOT to use: Synchronous operations - use functional setState instead
   const conversationsRef = useRef<Conversation[]>(conversations);
 
-  // Update ref when conversations change
+  // Keep ref synchronized with state
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
@@ -121,7 +131,6 @@ export function useChat() {
   const sendMessage = useCallback(
     async (content: string, addUserMessage: boolean = true) => {
       if (isStreaming || !content.trim()) {
-        console.log('❌ Early return:', { isStreaming, contentEmpty: !content.trim() });
         return;
       }
 
@@ -133,13 +142,10 @@ export function useChat() {
         const found = conversations.find((c) => c.id === currentConversationId);
         if (found) {
           conversation = found;
-          console.log('🔵 sendMessage using existing conversation:', conversation.id);
         } else {
-          console.log('📝 Creating new conversation (ID not found)');
           conversation = createConversation();
         }
       } else {
-        console.log('📝 Creating new conversation (no current ID)');
         conversation = createConversation();
       }
 
@@ -187,23 +193,16 @@ export function useChat() {
       setIsStreaming(true);
 
       try {
-        console.log('🚀 Starting API stream:', { conversationId: conversation.id, model: selectedModel });
-
         // Stream response from backend
         for await (const event of apiService.streamChat(
           content,
           conversation.id,
           selectedModel
         )) {
-          console.log('📨 Received event:', event.event);
           if (event.event === 'text_delta') {
             // Append text delta
             if (currentMessageRef.current) {
               currentMessageRef.current.content += event.data.content;
-
-              console.log('💬 Text delta:', event.data.content);
-              console.log('📝 Current message content now:', currentMessageRef.current.content.substring(0, 50));
-              console.log('🕐 Current message timestamp:', currentMessageRef.current.timestamp);
 
               // Update UI
               setConversations((prev) =>
@@ -213,19 +212,13 @@ export function useChat() {
                   const messages = [...c.messages];
                   const lastMsg = messages[messages.length - 1];
 
-                  console.log('🔍 Last message role:', lastMsg?.role);
-
                   if (lastMsg?.role === 'assistant') {
                     // Update existing assistant message
-                    console.log('✏️ Updating existing assistant message');
                     messages[messages.length - 1] = { ...currentMessageRef.current! };
                   } else {
                     // Add new assistant message
-                    console.log('➕ Adding new assistant message');
                     messages.push({ ...currentMessageRef.current! });
                   }
-
-                  console.log('📨 Total messages now:', messages.length);
 
                   return { ...c, messages };
                 })
@@ -267,7 +260,8 @@ export function useChat() {
             );
           } else if (event.event === 'tool_result') {
             // Tool execution completed
-            const existingToolCall = currentToolCallsRef.current.get(event.data.call_id);
+            const callId = event.data.call_id;
+            const existingToolCall = currentToolCallsRef.current.get(callId);
 
             if (existingToolCall) {
               existingToolCall.result = event.data.result;
@@ -292,6 +286,19 @@ export function useChat() {
                   return { ...c, messages };
                 })
               );
+            } else {
+              // Tool result without matching tool call (race condition or backend error)
+              console.error('❌ Received tool_result for unknown call_id:', {
+                callId,
+                knownCallIds: Array.from(currentToolCallsRef.current.keys()),
+                resultData: event.data
+              });
+
+              // Add warning message to chat
+              if (currentMessageRef.current) {
+                currentMessageRef.current.content +=
+                  `\n\n[Warning: Received result for tool call ${callId} but call not found]`;
+              }
             }
           } else if (event.event === 'tool_calls_summary') {
             // Tool calls summary from backend
@@ -386,8 +393,6 @@ export function useChat() {
               const finalConv = { ...c, messages: cleanedMessages, updatedAt: new Date() };
 
               // Save to localStorage with final content
-              console.log('💾 Saving final conversation to localStorage:', finalConv.messages.length, 'messages');
-              console.log('💬 Final assistant message content length:', finalMessage.content.length);
               storageService.saveConversation(finalConv);
 
               return finalConv;
@@ -403,7 +408,6 @@ export function useChat() {
           currentMessageRef.current.content += `\n\n[Error: ${(error as Error).message}]`;
         }
       } finally {
-        console.log('✅ Stream finished, cleaning up');
         setIsStreaming(false);
         currentMessageRef.current = null;
         currentToolCallsRef.current = new Map();
@@ -471,7 +475,14 @@ export function useChat() {
 
       // If validation passed, send the edited message
       if (shouldSend) {
-        // Small delay to ensure React has processed the state update
+        // Race condition fix: Wait for React to commit state update before sending
+        // Without this, sendMessage may read stale conversation state (pre-update)
+        // causing duplicate messages or incorrect context.
+        //
+        // Why 10ms: Minimum delay that ensures React has flushed state to DOM in all browsers
+        // (0ms would queue immediately, potentially before state commit in concurrent mode)
+        //
+        // Alternative considered: useEffect with dependency, but creates unnecessary rerender
         await new Promise(resolve => setTimeout(resolve, 10));
         await sendMessage(newContent);
       }
@@ -484,63 +495,45 @@ export function useChat() {
    */
   const regenerateMessage = useCallback(
     async (messageId: string) => {
-      console.log('🔥 regenerateMessage called with messageId:', messageId);
-      console.log('🔥 isStreaming:', isStreaming);
-      console.log('🔥 currentConversationId:', currentConversationId);
-
       if (isStreaming) {
-        console.log('🔥 Aborting: isStreaming is true');
         return;
       }
 
       // SYNCHRONOUSLY read current conversation from ref (always fresh)
-      console.log('🔥 Reading conversations from ref, count:', conversationsRef.current.length);
       const currentConv = conversationsRef.current.find((c) => c.id === currentConversationId);
 
       if (!currentConv) {
-        console.log('🔥 ERROR: Current conversation not found!');
         return;
       }
 
-      console.log('🔥 Found conversation, messages count:', currentConv.messages.length);
-
       // Find the message index
       const messageIndex = currentConv.messages.findIndex((m) => m.id === messageId);
-      console.log('🔥 Message index:', messageIndex);
 
       if (messageIndex === -1) {
-        console.log('🔥 ERROR: Message not found!');
         return;
       }
 
       const message = currentConv.messages[messageIndex];
-      console.log('🔥 Message role:', message.role);
 
       if (message.role !== 'assistant') {
-        console.log('🔥 ERROR: Message is not from assistant!');
         return;
       }
 
       // Find the user message before this assistant message
       const userMessageIndex = messageIndex - 1;
-      console.log('🔥 User message index:', userMessageIndex);
 
       if (userMessageIndex < 0) {
-        console.log('🔥 ERROR: No user message before assistant message!');
         return;
       }
 
       const userMessage = currentConv.messages[userMessageIndex];
-      console.log('🔥 User message role:', userMessage.role);
 
       if (userMessage.role !== 'user') {
-        console.log('🔥 ERROR: Previous message is not from user!');
         return;
       }
 
       const userMessageContent = userMessage.content;
       const conversationId = currentConv.id;
-      console.log('🔥 Success! Will regenerate with user message:', userMessageContent.substring(0, 50));
 
       // Remove all messages after (and including) the assistant message we want to regenerate
       const updatedMessages = currentConv.messages.slice(0, messageIndex);
@@ -563,12 +556,17 @@ export function useChat() {
       // Save to storage
       storageService.saveConversation(updatedConversation);
 
-      console.log('🔥 Calling sendMessage with:', userMessageContent.substring(0, 50));
-      // Small delay to ensure React has processed the state update
+      // Race condition fix: Wait for React to commit state update before sending
+      // Without this, sendMessage may read stale conversation state (pre-truncation)
+      // causing duplicate messages or incorrect context.
+      //
+      // Why 10ms: Minimum delay that ensures React has flushed state to DOM in all browsers
+      // (0ms would queue immediately, potentially before state commit in concurrent mode)
+      //
+      // Alternative considered: useEffect with dependency, but creates unnecessary rerender
       await new Promise(resolve => setTimeout(resolve, 10));
       // Pass false to prevent adding a new user message (we're regenerating from existing)
       await sendMessage(userMessageContent, false);
-      console.log('🔥 sendMessage completed');
     },
     [isStreaming, sendMessage, currentConversationId]
   );

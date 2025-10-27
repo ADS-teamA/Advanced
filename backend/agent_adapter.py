@@ -168,12 +168,17 @@ class AgentAdapter:
 
         Yields SSE events in format:
         {
-            "event": "text_delta" | "cost_update" | "done" | "error",
+            "event": "text_delta" | "tool_call" | "tool_calls_summary" | "cost_update" | "done" | "error",
             "data": {...}
         }
 
-        Note: Currently streams only text_delta events. Tool call/result events
-        will be added when AgentCore supports structured event streaming.
+        Event types:
+        - text_delta: Streaming text chunks from agent response
+        - tool_call: Tool invocation detected (streamed immediately when Claude decides to use tool)
+        - tool_calls_summary: Summary of all tool calls with results (sent after response completes)
+        - cost_update: Token usage and cost information
+        - done: Stream completed successfully
+        - error: Error occurred during streaming
 
         Args:
             query: User query
@@ -194,64 +199,141 @@ class AgentAdapter:
             # Get streaming generator from AgentCore
             text_stream = self.agent.process_message(query, stream=True)
 
-            # Stream text chunks
+            # Stream text chunks and detect tool calls
             for chunk in text_stream:
-                # Strip ANSI color codes (CLI uses them for formatting)
-                clean_chunk = re.sub(r'\033\[[0-9;]+m', '', chunk)
+                # Debug: Log chunk content (first 100 chars)
+                logger.debug(f"Chunk received: {repr(chunk[:100])}")
 
-                if clean_chunk:  # Only send non-empty chunks
+                # Detect tool call notification: [Using TOOL_NAME...]
+                # Pattern: [Using <tool_name>...]
+                tool_call_match = re.search(r'\[Using\s+([a-z_]+)\.{3}\]', chunk)
+
+                if tool_call_match:
+                    # Extract tool name
+                    tool_name = tool_call_match.group(1)
+                    logger.info(f"🔧 Tool call detected: {tool_name}")
+
+                    # Send tool_call event immediately
                     yield {
-                        "event": "text_delta",
+                        "event": "tool_call",
                         "data": {
-                            "content": clean_chunk
+                            "tool_name": tool_name,
+                            "tool_input": {},  # Input not available yet (streamed before execution)
+                            "call_id": f"tool_{tool_name}"  # Placeholder ID
                         }
                     }
-                    # Yield control to event loop (allows concurrent requests)
+                    # Yield control to event loop
                     await asyncio.sleep(0)
+                else:
+                    # Regular text content - strip ANSI color codes
+                    clean_chunk = re.sub(r'\033\[[0-9;]+m', '', chunk)
+
+                    if clean_chunk:  # Only send non-empty chunks
+                        yield {
+                            "event": "text_delta",
+                            "data": {
+                                "content": clean_chunk
+                            }
+                        }
+                        # Yield control to event loop (allows concurrent requests)
+                        await asyncio.sleep(0)
 
             # Extract tool calls from conversation history
             # Tool calls are stored in assistant message content blocks (Anthropic format)
             # Tool results are in subsequent user messages with metadata
+            #
+            # Three-pass extraction is required because:
+            # 1. Tool calls (tool_use) are in assistant messages with role="assistant"
+            # 2. Tool results (tool_result) are in user messages with role="user"
+            # 3. They must be joined by tool_use_id to create complete tool call objects
+            #
+            # We scan last 10 messages only (performance optimization - typical conversations
+            # have 2-4 tool calls per turn, so 10 messages = ~5 turns = safe margin)
             tool_calls_info = []
             tool_results_map = {}  # tool_use_id -> result metadata
 
             if self.agent.conversation_history:
-                # First pass: Collect tool_use blocks
+                # Pass 1: Collect tool_use blocks (from assistant messages)
                 for message in self.agent.conversation_history[-10:]:
                     if message.get("role") == "assistant" and "content" in message:
-                        for content_block in message["content"]:
-                            if isinstance(content_block, dict) and content_block.get("type") == "tool_use":
+                        content = message["content"]
+
+                        # Validate content is a list (defensive programming)
+                        if not isinstance(content, list):
+                            logger.error(
+                                f"Invalid message content format: expected list, got {type(content).__name__}. "
+                                f"Message role={message.get('role')}, content preview={str(content)[:100]}"
+                            )
+                            continue
+
+                        for content_block in content:
+                            # Validate content_block is a dict
+                            if not isinstance(content_block, dict):
+                                logger.warning(f"Skipping non-dict content block: {type(content_block).__name__}")
+                                continue
+
+                            if content_block.get("type") == "tool_use":
+                                # Validate required fields exist
+                                if "id" not in content_block or "name" not in content_block:
+                                    logger.error(
+                                        f"tool_use block missing required fields. "
+                                        f"Has id={('id' in content_block)}, name={('name' in content_block)}"
+                                    )
+                                    continue
+
                                 tool_calls_info.append({
                                     "id": content_block.get("id", ""),
                                     "name": content_block.get("name", ""),
                                     "input": content_block.get("input", {}),
                                 })
 
-                # Second pass: Collect tool_result blocks with metadata
+                # Pass 2: Collect tool_result blocks with metadata (from user messages)
                 for message in self.agent.conversation_history[-10:]:
                     if message.get("role") == "user" and "content" in message:
-                        for content_block in message["content"]:
-                            if isinstance(content_block, dict) and content_block.get("type") == "tool_result":
+                        content = message["content"]
+
+                        # Validate content is a list
+                        if not isinstance(content, list):
+                            logger.error(
+                                f"Invalid message content format: expected list, got {type(content).__name__}. "
+                                f"Message role={message.get('role')}"
+                            )
+                            continue
+
+                        for content_block in content:
+                            # Validate content_block is a dict
+                            if not isinstance(content_block, dict):
+                                logger.warning(f"Skipping non-dict content block: {type(content_block).__name__}")
+                                continue
+
+                            if content_block.get("type") == "tool_result":
                                 tool_use_id = content_block.get("tool_use_id")
                                 if tool_use_id:
+                                    # Note: _metadata was removed from agent_core.py (API compliance fix)
+                                    # We can no longer access execution_time_ms, success, error from here
+                                    # This will be handled differently in future versions
                                     tool_results_map[tool_use_id] = {
                                         "result": content_block.get("content"),
-                                        "metadata": content_block.get("_metadata", {}),
+                                        "metadata": {},  # Empty - no longer available from API responses
                                     }
 
-                # Third pass: Merge tool_use and tool_result data
+                # Pass 3: Merge tool_use and tool_result data by tool_use_id
                 for tool_call in tool_calls_info:
                     tool_id = tool_call["id"]
                     if tool_id in tool_results_map:
                         result_data = tool_results_map[tool_id]
-                        tool_call["result"] = result_data["result"]
-                        tool_call["executionTimeMs"] = result_data["metadata"].get("execution_time_ms", 0)
-                        tool_call["success"] = result_data["metadata"].get("success", True)
-                        tool_call["error"] = result_data["metadata"].get("error")
-                        tool_call["explicitParams"] = result_data["metadata"].get("explicit_params", [])
+                        tool_call["result"] = result_data.get("result")
+
+                        # Defensive: Get metadata with fallback to empty dict
+                        metadata = result_data.get("metadata", {})
+                        tool_call["executionTimeMs"] = metadata.get("execution_time_ms", 0)
+                        tool_call["success"] = metadata.get("success", True)
+                        tool_call["error"] = metadata.get("error")
+                        tool_call["explicitParams"] = metadata.get("explicit_params", [])
 
             # Send tool calls summary if any
             if tool_calls_info:
+                logger.info(f"Extracted {len(tool_calls_info)} tool calls from conversation history")
                 yield {
                     "event": "tool_calls_summary",
                     "data": {
@@ -259,6 +341,8 @@ class AgentAdapter:
                         "count": len(tool_calls_info)
                     }
                 }
+            else:
+                logger.debug("No tool calls found in conversation history")
 
             # Send final cost update
             cost_summary = tracker.get_session_cost_summary()

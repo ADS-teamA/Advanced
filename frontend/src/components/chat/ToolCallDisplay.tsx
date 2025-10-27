@@ -43,7 +43,17 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
       >
         {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         {statusIcon}
-        <span className="font-mono text-sm font-medium">{toolCall.name}</span>
+        <div className="flex flex-col items-start gap-0.5">
+          <span className="font-mono text-sm font-medium">{toolCall.name}</span>
+          {toolCall.status === 'running' && (
+            <span className={cn(
+              'text-xs italic',
+              'text-accent-500 dark:text-accent-400'
+            )}>
+              Calling tool...
+            </span>
+          )}
+        </div>
         {toolCall.executionTimeMs !== undefined && (
           <span className={cn(
             'ml-auto text-xs',
@@ -76,6 +86,10 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
               'font-mono'
             )}>
               {Object.entries(toolCall.input).map(([key, value]) => {
+                // Highlight params explicitly set by LLM (vs using default values)
+                // Helps users understand what the model actually requested vs what defaults filled in
+                // Example: search(query="test") → query is explicit (bold), k=10 is default (normal)
+                // Tracked in: src/agent/tools/base.py line 189 (before Pydantic validation)
                 const isExplicit = toolCall.explicitParams?.includes(key);
                 return (
                   <div key={key} className="mb-1 last:mb-0">

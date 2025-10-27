@@ -121,11 +121,34 @@ export function ChatContainer({
                     if (prevMessage && prevMessage.role === 'user') {
                       const userTime = new Date(prevMessage.timestamp).getTime();
                       const assistantTime = new Date(message.timestamp).getTime();
-                      const duration = assistantTime - userTime;
 
-                      // Only set duration if it's positive and reasonable (> 50ms, < 5 min)
-                      if (duration > 50 && duration < 300000) {
-                        responseDurationMs = duration;
+                      // Validate timestamps are valid dates
+                      if (isNaN(userTime)) {
+                        console.error('Invalid user message timestamp:', prevMessage.timestamp);
+                      } else if (isNaN(assistantTime)) {
+                        console.error('Invalid assistant message timestamp:', message.timestamp);
+                      } else {
+                        const duration = assistantTime - userTime;
+
+                        // Warn about suspicious durations (still show them)
+                        if (duration < 0) {
+                          console.warn('Negative duration detected (clock skew?):', {
+                            userTime,
+                            assistantTime,
+                            duration
+                          });
+                        } else if (duration > 300000) {
+                          console.warn('Very long response time (> 5 min):', {
+                            duration,
+                            messageId: message.id
+                          });
+                        }
+
+                        // Only set duration if it's positive and reasonable (> 50ms, < 300s)
+                        // Note: 300000ms = 300 seconds = 5 minutes
+                        if (duration > 50 && duration < 300000) {
+                          responseDurationMs = duration;
+                        }
                       }
                     }
                   }
