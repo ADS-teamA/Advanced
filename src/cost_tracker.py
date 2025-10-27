@@ -100,6 +100,17 @@ PRICING = {
         "voyage-multilingual-2": {"input": 0.12, "output": 0.0},  # Estimated
         "kanon-2": {"input": 0.12, "output": 0.0},  # Estimated
     },
+    # Google Gemini models (per 1M tokens)
+    "google": {
+        # Gemini 2.5 models
+        "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
+        "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+        "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
+        # Aliases
+        "gemini": {"input": 0.30, "output": 2.50},
+        "gemini-flash": {"input": 0.30, "output": 2.50},
+        "gemini-pro": {"input": 1.25, "output": 10.00},
+    },
     # Local models (free)
     "huggingface": {
         "bge-m3": {"input": 0.0, "output": 0.0},

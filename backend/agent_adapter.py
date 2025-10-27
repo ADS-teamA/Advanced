@@ -1,0 +1,357 @@
+"""
+Agent Adapter - Wraps existing AgentCore without modifying src/.
+
+This adapter:
+1. Imports AgentCore from src/agent/agent_core.py
+2. Handles SSE event formatting
+3. Tracks cost per message
+4. Provides clean interface for FastAPI
+"""
+
+import asyncio
+import json
+import logging
+import re
+from pathlib import Path
+from typing import AsyncGenerator, Dict, Any, Optional
+
+from src.agent.agent_core import AgentCore
+from src.agent.config import AgentConfig
+from src.agent.tools.registry import get_registry
+from src.context_assembly import CitationFormat, ContextAssembler
+from src.cost_tracker import get_global_tracker, reset_global_tracker
+from src.embedding_generator import EmbeddingGenerator
+from src.hybrid_search import HybridVectorStore
+from src.reranker import CrossEncoderReranker
+
+logger = logging.getLogger(__name__)
+
+
+class AgentAdapter:
+    """
+    Adapter wrapping AgentCore for web frontend.
+
+    Responsibilities:
+    - Initialize AgentCore with config
+    - Convert streaming events to SSE format
+    - Track costs per request
+    - Provide model switching capability
+    """
+
+    def __init__(self, vector_store_path: Optional[Path] = None, model: Optional[str] = None):
+        """
+        Initialize agent adapter.
+
+        Args:
+            vector_store_path: Path to vector store (default: ../vector_db from backend/)
+            model: Model to use (default: from config)
+        """
+        # Load config from environment
+        config_overrides = {}
+
+        # Set default vector_store_path relative to project root (parent of backend/)
+        if vector_store_path:
+            config_overrides["vector_store_path"] = vector_store_path
+        else:
+            # Backend runs from backend/, so vector_db is in parent directory
+            project_root = Path(__file__).parent.parent
+            config_overrides["vector_store_path"] = project_root / "vector_db"
+
+        if model:
+            config_overrides["model"] = model
+
+        self.config = AgentConfig.from_env(**config_overrides)
+
+        # Validate config
+        try:
+            self.config.validate()
+        except Exception as e:
+            logger.error(f"Config validation failed: {e}")
+            raise
+
+        # Initialize pipeline components (same as CLI)
+        logger.info("Loading vector store...")
+        vector_store = HybridVectorStore.load(str(self.config.vector_store_path))
+
+        logger.info("Initializing embedder...")
+        embedder = EmbeddingGenerator()
+
+        # Initialize reranker (optional, lazy load)
+        reranker = None
+        if self.config.tool_config.enable_reranking:
+            if not self.config.tool_config.lazy_load_reranker:
+                logger.info("Loading reranker...")
+                try:
+                    reranker = CrossEncoderReranker(
+                        model_name=self.config.tool_config.reranker_model
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
+                    self.config.tool_config.enable_reranking = False
+            else:
+                logger.info("Reranker set to lazy load")
+
+        # Load knowledge graph (optional)
+        knowledge_graph = None
+        graph_retriever = None
+        if self.config.enable_knowledge_graph and self.config.knowledge_graph_path:
+            logger.info("Loading knowledge graph...")
+            try:
+                from src.graph.models import KnowledgeGraph
+                from src.graph_retrieval import GraphEnhancedRetriever
+
+                knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
+                graph_retriever = GraphEnhancedRetriever(
+                    vector_store=vector_store, knowledge_graph=knowledge_graph
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load knowledge graph: {e}. Continuing without KG.")
+                self.config.enable_knowledge_graph = False
+
+        # Initialize context assembler
+        logger.info("Initializing context assembler...")
+        citation_format_map = {
+            "inline": CitationFormat.INLINE,
+            "detailed": CitationFormat.DETAILED,
+            "footnote": CitationFormat.FOOTNOTE,
+        }
+        context_assembler = ContextAssembler(
+            citation_format=citation_format_map.get(
+                self.config.cli_config.citation_format, CitationFormat.INLINE
+            )
+        )
+
+        # Initialize tools (CRITICAL - must happen before AgentCore)
+        logger.info("Initializing tools...")
+        registry = get_registry()
+        registry.initialize_tools(
+            vector_store=vector_store,
+            embedder=embedder,
+            reranker=reranker,
+            graph_retriever=graph_retriever,
+            knowledge_graph=knowledge_graph,
+            context_assembler=context_assembler,
+            config=self.config.tool_config,
+        )
+        logger.info(f"✅ {len(registry)} tools initialized")
+
+        # Initialize AgentCore (reuses existing implementation)
+        self.agent = AgentCore(self.config)
+
+        # Initialize with document list
+        self.agent.initialize_with_documents()
+
+        logger.info(
+            f"AgentAdapter initialized: model={self.config.model}, "
+            f"vector_store={self.config.vector_store_path}, tools={len(registry)}"
+        )
+
+    async def stream_response(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Stream agent response as SSE-compatible events.
+
+        Yields SSE events in format:
+        {
+            "event": "text_delta" | "cost_update" | "done" | "error",
+            "data": {...}
+        }
+
+        Note: Currently streams only text_delta events. Tool call/result events
+        will be added when AgentCore supports structured event streaming.
+
+        Args:
+            query: User query
+            conversation_id: Optional conversation ID for context
+
+        Yields:
+            Dict containing event type and data
+        """
+        # Reset cost tracker for this request
+        reset_global_tracker()
+        tracker = get_global_tracker()
+
+        try:
+            # Stream from AgentCore using process_message
+            # Note: process_message is synchronous generator, but we can iterate
+            # in async context with periodic yields to event loop
+
+            # Get streaming generator from AgentCore
+            text_stream = self.agent.process_message(query, stream=True)
+
+            # Stream text chunks
+            for chunk in text_stream:
+                # Strip ANSI color codes (CLI uses them for formatting)
+                clean_chunk = re.sub(r'\033\[[0-9;]+m', '', chunk)
+
+                if clean_chunk:  # Only send non-empty chunks
+                    yield {
+                        "event": "text_delta",
+                        "data": {
+                            "content": clean_chunk
+                        }
+                    }
+                    # Yield control to event loop (allows concurrent requests)
+                    await asyncio.sleep(0)
+
+            # Send final cost update
+            cost_summary = tracker.get_session_cost_summary()
+            yield {
+                "event": "cost_update",
+                "data": {
+                    "summary": cost_summary,
+                    "total_cost": tracker.get_total_cost(),
+                    "input_tokens": tracker._total_input_tokens,
+                    "output_tokens": tracker._total_output_tokens,
+                    "cached_tokens": tracker._total_cache_read_tokens
+                }
+            }
+
+            # Signal completion
+            yield {
+                "event": "done",
+                "data": {}
+            }
+
+        except Exception as e:
+            logger.error(f"Error during streaming: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": {
+                    "error": str(e),
+                    "type": type(e).__name__
+                }
+            }
+
+    def get_available_models(self) -> list[Dict[str, Any]]:
+        """
+        Get list of available models (same as CLI).
+
+        Returns:
+            List of model info dicts matching CLI's _list_available_models()
+        """
+        return [
+            # Anthropic Claude models (from CLI)
+            {
+                "id": "claude-haiku-4-5-20251001",
+                "name": "Claude Haiku 4.5",
+                "provider": "anthropic",
+                "description": "Fast & cost-effective (✅ caching)"
+            },
+            {
+                "id": "claude-sonnet-4-5-20250929",
+                "name": "Claude Sonnet 4.5",
+                "provider": "anthropic",
+                "description": "Balanced performance (✅ caching)"
+            },
+            # Google Gemini models
+            {
+                "id": "gemini-2.5-flash",
+                "name": "Gemini 2.5 Flash",
+                "provider": "google",
+                "description": "Fast & agentic (✅ caching, 250/day free)"
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro",
+                "provider": "google",
+                "description": "Best reasoning (✅ caching, 100/day free)"
+            },
+            {
+                "id": "gemini-2.5-flash-lite",
+                "name": "Gemini 2.5 Flash Lite",
+                "provider": "google",
+                "description": "High volume (✅ caching, 1000/day free)"
+            },
+            # OpenAI GPT-5 models (from CLI)
+            {
+                "id": "gpt-5-nano",
+                "name": "GPT-5 Nano",
+                "provider": "openai",
+                "description": "Ultra-fast, minimal cost (❌ no caching)"
+            },
+            {
+                "id": "gpt-5-mini",
+                "name": "GPT-5 Mini",
+                "provider": "openai",
+                "description": "Balanced & affordable (❌ no caching)"
+            },
+            {
+                "id": "gpt-5",
+                "name": "GPT-5",
+                "provider": "openai",
+                "description": "Most capable (❌ no caching)"
+            }
+        ]
+
+    def switch_model(self, model: str) -> None:
+        """
+        Switch to a different model.
+
+        Args:
+            model: Model identifier
+        """
+        self.config.model = model
+        self.agent = AgentCore(self.config)
+        logger.info(f"Switched to model: {model}")
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get agent health status.
+
+        Returns:
+            Health status dict
+        """
+        try:
+            # Check if agent is properly initialized
+            if not self.agent:
+                return {
+                    "status": "error",
+                    "message": "Agent not initialized",
+                    "details": {}
+                }
+
+            # Check vector store
+            vector_store_exists = self.config.vector_store_path.exists()
+
+            # Check API keys
+            has_anthropic_key = bool(self.config.anthropic_api_key)
+            has_openai_key = bool(self.config.openai_api_key)
+
+            if not vector_store_exists:
+                return {
+                    "status": "error",
+                    "message": "Vector store not found",
+                    "details": {
+                        "vector_store_path": str(self.config.vector_store_path)
+                    }
+                }
+
+            if not has_anthropic_key and not has_openai_key:
+                return {
+                    "status": "error",
+                    "message": "No API keys configured",
+                    "details": {}
+                }
+
+            return {
+                "status": "healthy",
+                "message": "Agent ready",
+                "details": {
+                    "model": self.config.model,
+                    "vector_store": str(self.config.vector_store_path),
+                    "has_anthropic_key": has_anthropic_key,
+                    "has_openai_key": has_openai_key
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Health check failed: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "message": str(e),
+                "details": {}
+            }

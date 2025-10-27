@@ -64,6 +64,13 @@ class ModelRegistry:
         "o1": "o1",
         "o1-mini": "o1-mini",
         "o3-mini": "o3-mini",
+        # Google Gemini models (2025)
+        "gemini": "gemini-2.5-flash",  # Default - agentic use (250 RPD free)
+        "gemini-flash": "gemini-2.5-flash",  # Best for agents (10 RPM, 250 RPD)
+        "gemini-pro": "gemini-2.5-pro",  # Best reasoning (5 RPM, 100 RPD)
+        "gemini-2.5-flash": "gemini-2.5-flash",
+        "gemini-2.5-pro": "gemini-2.5-pro",
+        "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",  # High volume (15 RPM, 1000 RPD)
         # Local models
         "saul-7b": "Equall/Saul-7B-Instruct-v1",
         "saul": "Equall/Saul-7B-Instruct-v1",
@@ -260,6 +267,8 @@ class ModelRegistry:
             return "anthropic"
         elif "gpt-" in resolved.lower() or "o1" in resolved.lower() or "o3" in resolved.lower():
             return "openai"
+        elif "gemini" in resolved.lower():
+            return "google"
         elif "voyage" in resolved.lower():
             return "voyage"
         elif "text-embedding" in resolved.lower():

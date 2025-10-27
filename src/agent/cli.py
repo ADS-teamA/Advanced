@@ -687,6 +687,19 @@ class AgentCLI:
             output_price = pricing.get("output", 0)
             print(f"  {alias:12s} - {desc:25s} (${input_price:.2f}/${output_price:.2f} per 1M tokens, ✅ caching)")
 
+        print("\n🔴 Google Gemini:")
+        gemini_models = [
+            ("gemini-flash", "gemini-2.5-flash", "Fast & agentic (250/day free)"),
+            ("gemini-pro", "gemini-2.5-pro", "Best reasoning (100/day free)"),
+            ("gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "High volume (1000/day free)"),
+        ]
+
+        for alias, full_name, desc in gemini_models:
+            pricing = PRICING.get("google", {}).get(full_name, {})
+            input_price = pricing.get("input", 0)
+            output_price = pricing.get("output", 0)
+            print(f"  {alias:18s} - {desc:30s} (${input_price:.2f}/${output_price:.2f} per 1M tokens, ✅ caching)")
+
         print("\n🟢 OpenAI GPT-5:")
         gpt_models = [
             ("gpt-5-nano", "gpt-5-nano", "Ultra-fast, minimal cost"),
