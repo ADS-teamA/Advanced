@@ -172,6 +172,7 @@ class AgentConfig:
     # API Keys (provider-specific)
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
     openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    google_api_key: str = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY", ""))
 
     # Model selection (user can override via CLI)
     model: str = field(
@@ -237,12 +238,13 @@ class AgentConfig:
         - Sub-config validation (automatically via __post_init__)
         """
         # API key validation - require at least one API key
-        if not self.anthropic_api_key and not self.openai_api_key:
+        if not self.anthropic_api_key and not self.openai_api_key and not self.google_api_key:
             raise ValueError(
-                "No API keys set. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.\n"
+                "No API keys set. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY environment variable.\n"
                 "Example:\n"
                 "  export ANTHROPIC_API_KEY=sk-ant-...\n"
-                "  export OPENAI_API_KEY=sk-..."
+                "  export OPENAI_API_KEY=sk-...\n"
+                "  export GOOGLE_API_KEY=AIza..."
             )
 
         # Validate format if keys are present
@@ -251,6 +253,9 @@ class AgentConfig:
 
         if self.openai_api_key and not (self.openai_api_key.startswith("sk-") or self.openai_api_key.startswith("sk-proj-")):
             raise ValueError("OpenAI API key has invalid format (should start with sk- or sk-proj-)")
+
+        if self.google_api_key and not self.google_api_key.startswith("AIza"):
+            raise ValueError("Google API key has invalid format (should start with AIza)")
 
         # Numeric range validation
         if self.max_tokens <= 0:
@@ -262,17 +267,18 @@ class AgentConfig:
         if not 0.0 <= self.temperature <= 1.0:
             raise ValueError(f"temperature must be in [0.0, 1.0], got {self.temperature}")
 
-        # Model name validation - accept both Claude and GPT models
+        # Model name validation - accept Claude, GPT, and Gemini models
         model_lower = self.model.lower()
         is_valid_model = any(
             keyword in model_lower
-            for keyword in ["claude", "haiku", "sonnet", "opus", "gpt-", "o1", "o3"]
+            for keyword in ["claude", "haiku", "sonnet", "opus", "gpt-", "o1", "o3", "gemini"]
         )
 
         if not is_valid_model:
             raise ValueError(
                 f"Invalid model name: {self.model}\n"
-                f"Supported models: Claude (haiku/sonnet/opus), GPT-5 (gpt-5-mini/gpt-5-nano)"
+                f"Supported models: Claude (haiku/sonnet/opus), GPT-5 (gpt-5-mini/gpt-5-nano), "
+                f"Gemini (gemini-2.5-flash/gemini-2.5-pro)"
             )
 
         # Path validation
