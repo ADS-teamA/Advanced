@@ -10,13 +10,18 @@ from typing import Optional
 
 from .anthropic_provider import AnthropicProvider
 from .base import BaseProvider
+from .gemini_provider import GeminiProvider
 from .openai_provider import OpenAIProvider
 
 logger = logging.getLogger(__name__)
 
 
 def create_provider(
-    model: str, api_key: Optional[str] = None, anthropic_api_key: Optional[str] = None, openai_api_key: Optional[str] = None
+    model: str,
+    api_key: Optional[str] = None,
+    anthropic_api_key: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    google_api_key: Optional[str] = None,
 ) -> BaseProvider:
     """
     Create appropriate provider based on model name.
@@ -25,13 +30,14 @@ def create_provider(
     environment if not provided.
 
     Args:
-        model: Model name or alias (e.g., "claude-haiku-4-5", "gpt-5-mini", "haiku", "gpt-5-nano")
+        model: Model name or alias (e.g., "claude-haiku-4-5", "gpt-5-mini", "gemini-flash")
         api_key: API key for the provider (deprecated, use provider-specific keys)
         anthropic_api_key: Anthropic API key (optional, defaults to ANTHROPIC_API_KEY env var)
         openai_api_key: OpenAI API key (optional, defaults to OPENAI_API_KEY env var)
+        google_api_key: Google API key (optional, defaults to GOOGLE_API_KEY env var)
 
     Returns:
-        Provider instance (AnthropicProvider or OpenAIProvider)
+        Provider instance (AnthropicProvider, OpenAIProvider, or GeminiProvider)
 
     Raises:
         ValueError: If provider cannot be determined or API key is missing
@@ -91,10 +97,23 @@ def create_provider(
 
         return OpenAIProvider(api_key=key, model=resolved_model)
 
+    elif provider_name == "google":
+        # Get API key (priority: explicit param > env var)
+        key = google_api_key or api_key or os.getenv("GOOGLE_API_KEY")
+
+        if not key:
+            raise ValueError(
+                "Google API key required for Gemini models.\n"
+                "Set GOOGLE_API_KEY environment variable or pass google_api_key parameter.\n"
+                "Example: export GOOGLE_API_KEY=AIza..."
+            )
+
+        return GeminiProvider(api_key=key, model=resolved_model)
+
     else:
         raise ValueError(
             f"Unsupported provider: {provider_name} for model: {model}\n"
-            f"Supported providers: anthropic (Claude), openai (GPT-5)"
+            f"Supported providers: anthropic (Claude), openai (GPT-5), google (Gemini)"
         )
 
 
@@ -121,8 +140,12 @@ def _detect_provider_from_model(model: str) -> str:
     if any(pattern in model_lower for pattern in ["gpt-", "o1", "o3"]):
         return "openai"
 
+    # Google Gemini patterns
+    if "gemini" in model_lower:
+        return "google"
+
     raise ValueError(
         f"Cannot determine provider for model: {model}\n"
-        f"Model name should contain: 'claude', 'haiku', 'sonnet', 'opus' (Anthropic) "
-        f"or 'gpt-', 'o1', 'o3' (OpenAI)"
+        f"Model name should contain: 'claude', 'haiku', 'sonnet', 'opus' (Anthropic), "
+        f"'gpt-', 'o1', 'o3' (OpenAI), or 'gemini' (Google)"
     )
