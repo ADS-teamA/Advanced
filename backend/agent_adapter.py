@@ -76,8 +76,8 @@ class AgentAdapter:
         logger.info("Initializing embedder...")
         embedder = EmbeddingGenerator()
 
-        # Track degraded components
-        degraded_components = []
+        # Track degraded components (instance variable for health endpoint)
+        self.degraded_components = []
 
         # Initialize reranker (optional, lazy load)
         reranker = None
@@ -88,10 +88,54 @@ class AgentAdapter:
                     reranker = CrossEncoderReranker(
                         model_name=self.config.tool_config.reranker_model
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
+                except (ImportError, ModuleNotFoundError) as e:
+                    logger.error(
+                        f"Reranker dependencies missing: {e}. "
+                        f"Install with: pip install sentence-transformers"
+                    )
                     self.config.tool_config.enable_reranking = False
-                    degraded_components.append("reranker")
+                    self.degraded_components.append({
+                        "component": "reranker",
+                        "error": f"Missing dependencies: {e}"
+                    })
+                except (FileNotFoundError, ValueError) as e:
+                    logger.error(
+                        f"Reranker configuration error: {e}. "
+                        f"Check model name '{self.config.tool_config.reranker_model}' in config."
+                    )
+                    self.config.tool_config.enable_reranking = False
+                    self.degraded_components.append({
+                        "component": "reranker",
+                        "error": f"Configuration error: {e}"
+                    })
+                except RuntimeError as e:
+                    if "CUDA" in str(e) or "GPU" in str(e):
+                        logger.warning(
+                            f"GPU unavailable for reranker: {e}. This is expected on CPU-only systems."
+                        )
+                        self.config.tool_config.enable_reranking = False
+                        self.degraded_components.append({
+                            "component": "reranker",
+                            "error": "GPU unavailable (CPU-only mode)"
+                        })
+                    else:
+                        logger.critical(f"Unexpected runtime error loading reranker: {e}", exc_info=True)
+                        self.config.tool_config.enable_reranking = False
+                        self.degraded_components.append({
+                            "component": "reranker",
+                            "error": f"Runtime error: {e}"
+                        })
+                except Exception as e:
+                    # Catch-all for truly unexpected errors
+                    logger.critical(
+                        f"Unexpected error loading reranker: {type(e).__name__}: {e}",
+                        exc_info=True
+                    )
+                    self.config.tool_config.enable_reranking = False
+                    self.degraded_components.append({
+                        "component": "reranker",
+                        "error": f"Unexpected error: {type(e).__name__}"
+                    })
             else:
                 logger.info("Reranker set to lazy load")
 
@@ -108,15 +152,53 @@ class AgentAdapter:
                 graph_retriever = GraphEnhancedRetriever(
                     vector_store=vector_store, knowledge_graph=knowledge_graph
                 )
-            except Exception as e:
-                logger.warning(f"Failed to load knowledge graph: {e}. Continuing without KG.")
+            except (ImportError, ModuleNotFoundError) as e:
+                logger.error(
+                    f"Knowledge graph dependencies missing: {e}. "
+                    f"Install with: pip install networkx"
+                )
                 self.config.enable_knowledge_graph = False
-                degraded_components.append("knowledge_graph")
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Missing dependencies: {e}"
+                })
+            except FileNotFoundError as e:
+                logger.error(
+                    f"Knowledge graph file not found: {e}. "
+                    f"Expected path: {self.config.knowledge_graph_path}"
+                )
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"File not found: {e}"
+                })
+            except (ValueError, KeyError, TypeError) as e:
+                logger.error(
+                    f"Knowledge graph file corrupted or invalid format: {e}. "
+                    f"Re-run indexing pipeline to regenerate."
+                )
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Invalid file format: {e}"
+                })
+            except Exception as e:
+                # Catch-all for truly unexpected errors
+                logger.critical(
+                    f"Unexpected error loading knowledge graph: {type(e).__name__}: {e}",
+                    exc_info=True
+                )
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Unexpected error: {type(e).__name__}"
+                })
 
         # Warn if running in degraded mode
-        if degraded_components:
+        if self.degraded_components:
+            component_names = [d["component"] for d in self.degraded_components]
             logger.warning(
-                f"⚠️ RUNNING IN DEGRADED MODE - Missing components: {', '.join(degraded_components)}"
+                f"⚠️ RUNNING IN DEGRADED MODE - Missing components: {', '.join(component_names)}"
             )
             logger.warning("Some agent tools may be unavailable or produce lower-quality results.")
 
@@ -168,12 +250,17 @@ class AgentAdapter:
 
         Yields SSE events in format:
         {
-            "event": "text_delta" | "cost_update" | "done" | "error",
+            "event": "text_delta" | "tool_call" | "tool_calls_summary" | "cost_update" | "done" | "error",
             "data": {...}
         }
 
-        Note: Currently streams only text_delta events. Tool call/result events
-        will be added when AgentCore supports structured event streaming.
+        Event types:
+        - text_delta: Streaming text chunks from agent response
+        - tool_call: Tool invocation detected (streamed immediately when Claude decides to use tool)
+        - tool_calls_summary: Summary of all tool calls with results (sent after response completes)
+        - cost_update: Token usage and cost information
+        - done: Stream completed successfully
+        - error: Error occurred during streaming
 
         Args:
             query: User query
@@ -194,20 +281,155 @@ class AgentAdapter:
             # Get streaming generator from AgentCore
             text_stream = self.agent.process_message(query, stream=True)
 
-            # Stream text chunks
+            # Stream text chunks and detect tool calls
             for chunk in text_stream:
-                # Strip ANSI color codes (CLI uses them for formatting)
-                clean_chunk = re.sub(r'\033\[[0-9;]+m', '', chunk)
+                # Debug: Log chunk content (first 100 chars)
+                logger.debug(f"Chunk received: {repr(chunk[:100])}")
 
-                if clean_chunk:  # Only send non-empty chunks
+                # Detect tool call notification: [Using TOOL_NAME...]
+                # Pattern: [Using <tool_name>...]
+                tool_call_match = re.search(r'\[Using\s+([a-z_]+)\.{3}\]', chunk)
+
+                if tool_call_match:
+                    # Extract tool name
+                    tool_name = tool_call_match.group(1)
+                    logger.info(f"🔧 Tool call detected: {tool_name}")
+
+                    # Send tool_call event immediately
                     yield {
-                        "event": "text_delta",
+                        "event": "tool_call",
                         "data": {
-                            "content": clean_chunk
+                            "tool_name": tool_name,
+                            "tool_input": {},  # Input not available yet (streamed before execution)
+                            "call_id": f"tool_{tool_name}"  # Placeholder ID
                         }
                     }
-                    # Yield control to event loop (allows concurrent requests)
+                    # Yield control to event loop
                     await asyncio.sleep(0)
+                else:
+                    # Regular text content - strip ANSI color codes
+                    clean_chunk = re.sub(r'\033\[[0-9;]+m', '', chunk)
+
+                    if clean_chunk:  # Only send non-empty chunks
+                        yield {
+                            "event": "text_delta",
+                            "data": {
+                                "content": clean_chunk
+                            }
+                        }
+                        # Yield control to event loop (allows concurrent requests)
+                        await asyncio.sleep(0)
+
+            # Extract tool calls from conversation history
+            # Tool calls are stored in assistant message content blocks (Anthropic format)
+            # Tool results are in subsequent user messages with metadata
+            #
+            # Three-pass extraction is required because:
+            # 1. Tool calls (tool_use) are in assistant messages with role="assistant"
+            # 2. Tool results (tool_result) are in user messages with role="user"
+            # 3. They must be joined by tool_use_id to create complete tool call objects
+            #
+            # Performance optimization: Scan last 10 messages only (not entire history)
+            # Rationale: In tool-heavy conversations, each turn can generate 2-5 messages:
+            #   - 1 assistant message (with tool_use blocks)
+            #   - 1-4 user messages (one tool_result per tool called)
+            # Therefore, 10 messages covers the most recent 2-4 turns, which is sufficient
+            # because tool_use/tool_result pairs are always in adjacent messages.
+            # For no-tool conversations: 10 messages = 5 complete turns.
+            tool_calls_info = []
+            tool_results_map = {}  # tool_use_id -> result metadata
+
+            if self.agent.conversation_history:
+                # Pass 1: Collect tool_use blocks (from assistant messages)
+                for message in self.agent.conversation_history[-10:]:
+                    if message.get("role") == "assistant" and "content" in message:
+                        content = message["content"]
+
+                        # Validate content is a list (defensive programming)
+                        if not isinstance(content, list):
+                            logger.error(
+                                f"Invalid message content format: expected list, got {type(content).__name__}. "
+                                f"Message role={message.get('role')}, content preview={str(content)[:100]}"
+                            )
+                            continue
+
+                        for content_block in content:
+                            # Validate content_block is a dict
+                            if not isinstance(content_block, dict):
+                                logger.warning(f"Skipping non-dict content block: {type(content_block).__name__}")
+                                continue
+
+                            if content_block.get("type") == "tool_use":
+                                # Validate required fields exist
+                                if "id" not in content_block or "name" not in content_block:
+                                    logger.error(
+                                        f"tool_use block missing required fields. "
+                                        f"Has id={('id' in content_block)}, name={('name' in content_block)}"
+                                    )
+                                    continue
+
+                                tool_calls_info.append({
+                                    "id": content_block.get("id", ""),
+                                    "name": content_block.get("name", ""),
+                                    "input": content_block.get("input", {}),
+                                })
+
+                # Pass 2: Collect tool_result blocks with metadata (from user messages)
+                for message in self.agent.conversation_history[-10:]:
+                    if message.get("role") == "user" and "content" in message:
+                        content = message["content"]
+
+                        # Validate content is a list
+                        if not isinstance(content, list):
+                            logger.error(
+                                f"Invalid message content format: expected list, got {type(content).__name__}. "
+                                f"Message role={message.get('role')}"
+                            )
+                            continue
+
+                        for content_block in content:
+                            # Validate content_block is a dict
+                            if not isinstance(content_block, dict):
+                                logger.warning(f"Skipping non-dict content block: {type(content_block).__name__}")
+                                continue
+
+                            if content_block.get("type") == "tool_result":
+                                tool_use_id = content_block.get("tool_use_id")
+                                if tool_use_id:
+                                    # Note: _metadata was removed from agent_core.py (API compliance fix)
+                                    # We can no longer access execution_time_ms, success, error from here
+                                    # This will be handled differently in future versions
+                                    tool_results_map[tool_use_id] = {
+                                        "result": content_block.get("content"),
+                                        "metadata": {},  # Empty - no longer available from API responses
+                                    }
+
+                # Pass 3: Merge tool_use and tool_result data by tool_use_id
+                for tool_call in tool_calls_info:
+                    tool_id = tool_call["id"]
+                    if tool_id in tool_results_map:
+                        result_data = tool_results_map[tool_id]
+                        tool_call["result"] = result_data.get("result")
+
+                        # Defensive: Get metadata with fallback to empty dict
+                        metadata = result_data.get("metadata", {})
+                        tool_call["executionTimeMs"] = metadata.get("execution_time_ms", 0)
+                        tool_call["success"] = metadata.get("success", True)
+                        tool_call["error"] = metadata.get("error")
+                        tool_call["explicitParams"] = metadata.get("explicit_params", [])
+
+            # Send tool calls summary if any
+            if tool_calls_info:
+                logger.info(f"Extracted {len(tool_calls_info)} tool calls from conversation history")
+                yield {
+                    "event": "tool_calls_summary",
+                    "data": {
+                        "tool_calls": tool_calls_info,
+                        "count": len(tool_calls_info)
+                    }
+                }
+            else:
+                logger.debug("No tool calls found in conversation history")
 
             # Send final cost update
             cost_summary = tracker.get_session_cost_summary()
@@ -315,7 +537,7 @@ class AgentAdapter:
         Get agent health status.
 
         Returns:
-            Health status dict
+            Health status dict with degraded component warnings
         """
         try:
             # Check if agent is properly initialized
@@ -323,7 +545,8 @@ class AgentAdapter:
                 return {
                     "status": "error",
                     "message": "Agent not initialized",
-                    "details": {}
+                    "details": {},
+                    "degraded_components": []
                 }
 
             # Check vector store
@@ -332,6 +555,7 @@ class AgentAdapter:
             # Check API keys
             has_anthropic_key = bool(self.config.anthropic_api_key)
             has_openai_key = bool(self.config.openai_api_key)
+            has_google_key = bool(self.config.google_api_key)
 
             if not vector_store_exists:
                 return {
@@ -339,25 +563,33 @@ class AgentAdapter:
                     "message": "Vector store not found",
                     "details": {
                         "vector_store_path": str(self.config.vector_store_path)
-                    }
+                    },
+                    "degraded_components": []
                 }
 
-            if not has_anthropic_key and not has_openai_key:
+            if not has_anthropic_key and not has_openai_key and not has_google_key:
                 return {
                     "status": "error",
                     "message": "No API keys configured",
-                    "details": {}
+                    "details": {},
+                    "degraded_components": []
                 }
 
+            # Determine overall status based on degraded components
+            status = "degraded" if self.degraded_components else "healthy"
+            message = "Agent ready" if status == "healthy" else "Agent running in degraded mode"
+
             return {
-                "status": "healthy",
-                "message": "Agent ready",
+                "status": status,
+                "message": message,
                 "details": {
                     "model": self.config.model,
                     "vector_store": str(self.config.vector_store_path),
                     "has_anthropic_key": has_anthropic_key,
-                    "has_openai_key": has_openai_key
-                }
+                    "has_openai_key": has_openai_key,
+                    "has_google_key": has_google_key
+                },
+                "degraded_components": self.degraded_components  # Expose to UI
             }
 
         except Exception as e:

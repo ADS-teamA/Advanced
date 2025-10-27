@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Sun, Moon, Settings, Activity, Menu } from 'lucide-react';
+import { Sun, Moon, Settings, Menu } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { cn } from '../../design-system/utils/cn';
 import { useHover } from '../../design-system/animations/hooks/useHover';
@@ -27,8 +27,8 @@ export function Header({
   sidebarOpen,
 }: HeaderProps) {
   const [models, setModels] = useState<Model[]>([]);
-  const [isHealthy, setIsHealthy] = useState(true);
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   // Animation hooks
   const hamburgerHover = useHover({ scale: true });
@@ -38,24 +38,25 @@ export function Header({
   useEffect(() => {
     apiService
       .getModels()
-      .then((data) => setModels(data.models))
+      .then((data) => {
+        setModels(data.models);
+        setModelError(null);
+      })
       .catch((error) => {
         console.error('Failed to load models:', error);
+        setModelError(`Failed to load models: ${error.message}. Using default model.`);
       });
-
-    // Check health status
-    apiService
-      .checkHealth()
-      .then((health) => setIsHealthy(health.status === 'healthy'))
-      .catch(() => setIsHealthy(false));
   }, []);
 
   const handleModelChange = async (modelId: string) => {
     try {
       await onModelChange(modelId);
       setShowModelSelector(false);
+      setModelError(null);
     } catch (error) {
       console.error('Failed to switch model:', error);
+      setModelError(`Failed to switch to model: ${(error as Error).message}`);
+      // Keep selector open for retry
     }
   };
 
@@ -114,19 +115,6 @@ export function Header({
 
         {/* Controls */}
         <div className="flex items-center gap-3">
-          {/* Health status */}
-          <div
-            className={cn(
-              'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
-              isHealthy
-                ? 'bg-accent-200 dark:bg-accent-800 text-accent-700 dark:text-accent-300'
-                : 'bg-accent-300 dark:bg-accent-700 text-accent-800 dark:text-accent-400'
-            )}
-          >
-            <Activity size={12} />
-            {isHealthy ? 'Ready' : 'Offline'}
-          </div>
-
           {/* Model selector */}
           <div className="relative">
             <button
@@ -154,6 +142,18 @@ export function Header({
                 'rounded-lg shadow-lg overflow-hidden z-50',
                 'animate-scale-in'
               )}>
+                {/* Error message */}
+                {modelError && (
+                  <div className={cn(
+                    'px-4 py-3 border-b',
+                    'bg-red-50 dark:bg-red-900/20',
+                    'border-red-200 dark:border-red-800',
+                    'text-red-800 dark:text-red-200 text-xs'
+                  )}>
+                    {modelError}
+                  </div>
+                )}
+
                 {models.map((model) => (
                   <button
                     key={model.id}

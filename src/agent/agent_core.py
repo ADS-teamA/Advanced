@@ -633,6 +633,11 @@ class AgentCore:
                             if event.type == "content_block_start":
                                 if event.content_block.type == "text":
                                     assistant_message["content"].append({"type": "text", "text": ""})
+                                elif event.content_block.type == "tool_use":
+                                    # Stream tool call notification immediately
+                                    tool_name = event.content_block.name
+                                    if self.config.cli_config.show_tool_calls:
+                                        yield f"\n{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
 
                             elif event.type == "content_block_delta":
                                 if event.delta.type == "text_delta":
@@ -692,6 +697,7 @@ class AgentCore:
                     assistant_message = {"role": "assistant", "content": []}
                     tool_uses = []
                     full_text = ""
+                    announced_tools = set()  # Track which tools we've announced
 
                     # Track usage
                     input_tokens = 0
@@ -729,6 +735,13 @@ class AgentCore:
                                     )
                                     yield "\n[⚠️  Warning: Gemini returned malformed tool call - skipping]\n"
                                     continue
+
+                                # Stream tool call notification immediately (once per tool)
+                                tool_name = part.function_call.name
+                                if tool_name not in announced_tools:
+                                    announced_tools.add(tool_name)
+                                    if self.config.cli_config.show_tool_calls:
+                                        yield f"\n{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
 
                                 # Extract arguments with error handling (consistent with OpenAI path)
                                 tool_input = {}
@@ -811,6 +824,7 @@ class AgentCore:
                     tool_uses = []
                     full_text = ""
                     tool_calls_buffer = {}
+                    announced_tools = set()  # Track which tools we've announced
 
                     # Track usage
                     input_tokens = 0
@@ -840,7 +854,15 @@ class AgentCore:
 
                                 if tool_call.function:
                                     if tool_call.function.name:
-                                        tool_calls_buffer[idx]["name"] = tool_call.function.name
+                                        tool_name = tool_call.function.name
+                                        tool_calls_buffer[idx]["name"] = tool_name
+
+                                        # Stream tool call notification immediately (once per tool)
+                                        if tool_name and tool_name not in announced_tools:
+                                            announced_tools.add(tool_name)
+                                            if self.config.cli_config.show_tool_calls:
+                                                yield f"\n{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
+
                                     if tool_call.function.arguments:
                                         tool_calls_buffer[idx]["arguments"] += tool_call.function.arguments
 
@@ -930,11 +952,7 @@ class AgentCore:
                         tool_name = tool_use.name
                         tool_input = tool_use.input
 
-                        # Show tool call (in blue)
-                        if self.config.cli_config.show_tool_calls:
-                            yield f"{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
-
-                        # Execute tool
+                        # Execute tool (notification already streamed at content_block_start)
                         logger.info(f"Executing tool: {tool_name} with input {tool_input}")
 
                         result = self.registry.execute_tool(tool_name, **tool_input)
@@ -1191,7 +1209,7 @@ class AgentCore:
             Formatted string for Claude
         """
         if not result.success:
-            return json.dumps({"error": result.error, "metadata": result.metadata}, indent=2)
+            return json.dumps({"error": result.error, "metadata": result.metadata}, indent=2, ensure_ascii=False)
 
         # Format successful result
         formatted = {"data": result.data, "metadata": result.metadata}
@@ -1199,4 +1217,4 @@ class AgentCore:
         if result.citations:
             formatted["citations"] = result.citations
 
-        return json.dumps(formatted, indent=2)
+        return json.dumps(formatted, indent=2, ensure_ascii=False)

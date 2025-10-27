@@ -123,9 +123,9 @@ async def chat_stream(request: ChatRequest):
     Stream chat response using Server-Sent Events (SSE).
 
     Events:
-    - text_delta: Streaming text chunks
-    - tool_call: Tool execution started
-    - tool_result: Tool execution completed
+    - text_delta: Streaming text chunks from agent response
+    - tool_call: Tool execution started (streamed immediately when detected)
+    - tool_calls_summary: Summary of all tool calls with results (sent after completion)
     - cost_update: Token usage and cost update
     - done: Stream completed
     - error: Error occurred
@@ -136,11 +136,21 @@ async def chat_stream(request: ChatRequest):
     data: {"content": "Hello"}
 
     event: tool_call
-    data: {"tool_name": "search", "tool_input": {...}, "call_id": "123"}
+    data: {"tool_name": "search", "tool_input": {}, "call_id": "tool_search"}
+
+    event: tool_calls_summary
+    data: {"tool_calls": [...], "count": 2}
+
+    event: cost_update
+    data: {"summary": "...", "total_cost": 0.001, ...}
 
     event: done
     data: {}
     ```
+
+    Note: tool_call events are sent IMMEDIATELY when Claude decides to use a tool,
+    before the tool execution completes. This enables real-time UI updates showing
+    which tools are being invoked.
     """
     if agent_adapter is None:
         raise HTTPException(
@@ -162,13 +172,54 @@ async def chat_stream(request: ChatRequest):
             ):
                 # Format as SSE event
                 event_type = event["event"]
-                event_data = json.dumps(event["data"])
+
+                # Try to serialize with UTF-8, fall back to ASCII on error
+                try:
+                    event_data = json.dumps(event["data"], ensure_ascii=False)
+                except (TypeError, ValueError, UnicodeDecodeError) as e:
+                    logger.error(
+                        f"Failed to serialize SSE event data with UTF-8: {e}. "
+                        f"Event type: {event.get('event')}. Falling back to ASCII.",
+                        exc_info=True
+                    )
+                    # Fall back to ASCII encoding (escapes non-ASCII as \uXXXX)
+                    try:
+                        event_data = json.dumps(event["data"], ensure_ascii=True)
+                    except Exception as fallback_error:
+                        logger.error(f"ASCII fallback also failed: {fallback_error}", exc_info=True)
+                        # Send error event instead of crashing entire stream
+                        yield {
+                            "event": "error",
+                            "data": json.dumps({
+                                "error": f"Server failed to encode response data: {type(e).__name__}",
+                                "type": "EncodingError",
+                                "event_type": event.get("event")
+                            }, ensure_ascii=True)
+                        }
+                        continue
 
                 yield {
                     "event": event_type,
                     "data": event_data
                 }
 
+        except asyncio.CancelledError:
+            # Client disconnected - this is normal, don't log as error
+            logger.info("Stream cancelled by client")
+            # Don't yield error event, just stop
+            return
+        except (KeyboardInterrupt, SystemExit):
+            # Don't catch these - let them propagate for clean shutdown
+            raise
+        except MemoryError as e:
+            logger.critical(f"OUT OF MEMORY during streaming: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "error": "Server out of memory. Please contact administrator.",
+                    "type": "MemoryError"
+                }, ensure_ascii=True)
+            }
         except Exception as e:
             logger.error(f"Error in event generator: {e}", exc_info=True)
             yield {
@@ -176,7 +227,7 @@ async def chat_stream(request: ChatRequest):
                 "data": json.dumps({
                     "error": str(e),
                     "type": type(e).__name__
-                })
+                }, ensure_ascii=True)  # Use ASCII for error messages (defensive)
             }
 
     return EventSourceResponse(event_generator())

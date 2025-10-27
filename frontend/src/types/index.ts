@@ -19,6 +19,7 @@ export interface ToolCall {
   executionTimeMs?: number;
   success?: boolean;
   status: 'running' | 'completed' | 'failed';
+  explicitParams?: string[];
 }
 
 export interface CostInfo {
@@ -53,4 +54,8 @@ export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'error';
   message: string;
   details: Record<string, any>;
+  degraded_components?: Array<{
+    component: string;
+    error: string;
+  }>;
 }
