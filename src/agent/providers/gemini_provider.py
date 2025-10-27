@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, Iterator, List, Optional
 
 from google import genai
+from google.api_core import exceptions as google_exceptions
 from google.genai import types
 
 from .base import BaseProvider, ProviderResponse
@@ -35,7 +36,24 @@ class GeminiProvider(BaseProvider):
         Args:
             api_key: Google API key
             model: Gemini model name (e.g., "gemini-2.5-flash")
+
+        Raises:
+            ValueError: If api_key or model is invalid
         """
+        # Validate API key
+        if not api_key or not api_key.strip():
+            raise ValueError("Gemini API key is required")
+
+        if not api_key.startswith("AIza"):
+            logger.warning(f"Unusual API key format (expected AIza prefix): {api_key[:10]}...")
+
+        # Validate model name
+        if "gemini" not in model.lower():
+            raise ValueError(
+                f"Invalid Gemini model: {model}\n"
+                f"Expected model name containing 'gemini' (e.g., 'gemini-2.5-flash')"
+            )
+
         self._client = genai.Client(api_key=api_key)
         self.model = model
         self._cache: Optional[types.CachedContent] = None
@@ -66,7 +84,6 @@ class GeminiProvider(BaseProvider):
         # Convert to Gemini format
         gemini_messages = self._convert_messages_to_gemini(messages)
         gemini_tools = self._convert_tools_to_gemini(tools) if tools else None
-        system_instruction = self._extract_system_instruction(system)
 
         # Build config
         config_params = {
@@ -96,8 +113,28 @@ class GeminiProvider(BaseProvider):
             # Convert to Anthropic format
             return self._convert_response_to_anthropic(response)
 
+        except google_exceptions.Unauthenticated as e:
+            logger.error(f"Gemini API authentication failed: {e}")
+            raise ValueError("Invalid Google API key. Please check GOOGLE_API_KEY in .env") from e
+
+        except google_exceptions.NotFound as e:
+            logger.error(f"Gemini model not found: {self.model}")
+            raise ValueError(f"Model '{self.model}' not available. Check model name.") from e
+
+        except google_exceptions.ResourceExhausted as e:
+            logger.error(f"Gemini quota exceeded: {e}")
+            raise ValueError("Gemini API quota exceeded. Try again later or upgrade plan.") from e
+
+        except google_exceptions.InvalidArgument as e:
+            logger.error(f"Gemini rejected request (content policy?): {e}")
+            raise ValueError(f"Gemini rejected request: {e}") from e
+
+        except (KeyError, TypeError, AttributeError) as e:
+            logger.error(f"Failed to parse Gemini response: {e}", exc_info=True)
+            raise RuntimeError(f"Unexpected Gemini response format: {e}") from e
+
         except Exception as e:
-            logger.error(f"Gemini API error: {e}")
+            logger.error(f"Unexpected Gemini API error: {e}", exc_info=True)
             raise
 
     def stream_message(
@@ -128,7 +165,6 @@ class GeminiProvider(BaseProvider):
         # Convert to Gemini format
         gemini_messages = self._convert_messages_to_gemini(messages)
         gemini_tools = self._convert_tools_to_gemini(tools) if tools else None
-        system_instruction = self._extract_system_instruction(system)
 
         # Build config
         config_params = {
@@ -156,8 +192,28 @@ class GeminiProvider(BaseProvider):
 
             return stream
 
+        except google_exceptions.Unauthenticated as e:
+            logger.error(f"Gemini API authentication failed: {e}")
+            raise ValueError("Invalid Google API key. Please check GOOGLE_API_KEY in .env") from e
+
+        except google_exceptions.NotFound as e:
+            logger.error(f"Gemini model not found: {self.model}")
+            raise ValueError(f"Model '{self.model}' not available. Check model name.") from e
+
+        except google_exceptions.ResourceExhausted as e:
+            logger.error(f"Gemini quota exceeded: {e}")
+            raise ValueError("Gemini API quota exceeded. Try again later or upgrade plan.") from e
+
+        except google_exceptions.InvalidArgument as e:
+            logger.error(f"Gemini rejected request (content policy?): {e}")
+            raise ValueError(f"Gemini rejected request: {e}") from e
+
+        except google_exceptions.DeadlineExceeded as e:
+            logger.error(f"Gemini streaming timeout: {e}")
+            raise TimeoutError("Gemini stream timed out. Try a shorter query.") from e
+
         except Exception as e:
-            logger.error(f"Gemini streaming error: {e}")
+            logger.error(f"Unexpected Gemini streaming error: {e}", exc_info=True)
             raise
 
     def supports_feature(self, feature: str) -> bool:

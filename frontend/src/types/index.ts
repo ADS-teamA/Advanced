@@ -40,7 +40,7 @@ export interface Conversation {
 export interface Model {
   id: string;
   name: string;
-  provider: 'anthropic' | 'openai';
+  provider: 'anthropic' | 'openai' | 'google';
   description: string;
 }
 

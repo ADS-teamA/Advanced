@@ -76,6 +76,9 @@ class AgentAdapter:
         logger.info("Initializing embedder...")
         embedder = EmbeddingGenerator()
 
+        # Track degraded components
+        degraded_components = []
+
         # Initialize reranker (optional, lazy load)
         reranker = None
         if self.config.tool_config.enable_reranking:
@@ -88,6 +91,7 @@ class AgentAdapter:
                 except Exception as e:
                     logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
                     self.config.tool_config.enable_reranking = False
+                    degraded_components.append("reranker")
             else:
                 logger.info("Reranker set to lazy load")
 
@@ -107,6 +111,14 @@ class AgentAdapter:
             except Exception as e:
                 logger.warning(f"Failed to load knowledge graph: {e}. Continuing without KG.")
                 self.config.enable_knowledge_graph = False
+                degraded_components.append("knowledge_graph")
+
+        # Warn if running in degraded mode
+        if degraded_components:
+            logger.warning(
+                f"⚠️ RUNNING IN DEGRADED MODE - Missing components: {', '.join(degraded_components)}"
+            )
+            logger.warning("Some agent tools may be unavailable or produce lower-quality results.")
 
         # Initialize context assembler
         logger.info("Initializing context assembler...")

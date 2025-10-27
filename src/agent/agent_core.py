@@ -74,13 +74,14 @@ class AgentCore:
         # Validate config
         config.validate()
 
-        # Initialize provider (Anthropic or OpenAI)
+        # Initialize provider (Anthropic, OpenAI, or Google)
         if config.debug_mode:
             logger.debug("Initializing provider...")
         self.provider = create_provider(
             model=config.model,
             anthropic_api_key=config.anthropic_api_key,
             openai_api_key=config.openai_api_key,
+            google_api_key=config.google_api_key,
         )
 
         # Log provider info
@@ -701,10 +702,16 @@ class AgentCore:
                     for chunk in stream:
                         # Gemini stream format: chunks with candidates
                         if not hasattr(chunk, 'candidates') or not chunk.candidates:
+                            logger.warning(f"Gemini chunk missing candidates: {chunk}")
+                            # Check for safety blocks
+                            if hasattr(chunk, 'prompt_feedback') and chunk.prompt_feedback:
+                                logger.error(f"Gemini content blocked: {chunk.prompt_feedback.block_reason}")
+                                yield "\n\n⚠️ [Content blocked by Gemini safety filters]\n\n"
                             continue
 
                         candidate = chunk.candidates[0]
                         if not hasattr(candidate, 'content') or not candidate.content.parts:
+                            logger.warning(f"Gemini candidate missing content: candidate={candidate}")
                             continue
 
                         for part in candidate.content.parts:
@@ -715,17 +722,11 @@ class AgentCore:
 
                             # Collect tool calls
                             elif hasattr(part, 'function_call') and part.function_call:
-                                tool_uses.append(
-                                    type(
-                                        "ToolUse",
-                                        (),
-                                        {
-                                            "id": f"toolu_{part.function_call.name}",
-                                            "name": part.function_call.name,
-                                            "input": dict(part.function_call.args) if hasattr(part.function_call, 'args') else {},
-                                        },
-                                    )()
-                                )
+                                tool_uses.append({
+                                    "id": f"toolu_{part.function_call.name}",
+                                    "name": part.function_call.name,
+                                    "input": dict(part.function_call.args) if hasattr(part.function_call, 'args') else {},
+                                })
 
                         # Extract usage from chunk if available
                         if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
@@ -742,9 +743,9 @@ class AgentCore:
                     for tool_use in tool_uses:
                         assistant_message["content"].append({
                             "type": "tool_use",
-                            "id": tool_use.id,
-                            "name": tool_use.name,
-                            "input": tool_use.input,
+                            "id": tool_use["id"],
+                            "name": tool_use["name"],
+                            "input": tool_use["input"],
                         })
 
                     # Track cost (with cache support)
@@ -763,11 +764,11 @@ class AgentCore:
                         self.conversation_history.append(assistant_message)
 
                     # Set final_message for compatibility
-                    final_message = type(
-                        "Message",
-                        (),
-                        {"stop_reason": "tool_calls" if tool_uses else "stop"},
-                    )()
+                    class FinalMessage:
+                        def __init__(self):
+                            self.stop_reason = "tool_calls" if tool_uses else "stop"
+
+                    final_message = FinalMessage()
 
                 elif isinstance(self.provider, OpenAIProvider):
                     # OpenAI streaming (different format)
@@ -871,11 +872,11 @@ class AgentCore:
                         self.conversation_history.append(assistant_message)
 
                     # Set final_message for compatibility
-                    final_message = type(
-                        "Message",
-                        (),
-                        {"stop_reason": "tool_calls" if tool_uses else "stop"},
-                    )()
+                    class FinalMessage:
+                        def __init__(self):
+                            self.stop_reason = "tool_calls" if tool_uses else "stop"
+
+                    final_message = FinalMessage()
 
                 # Check stop reason (outside of with block but inside while)
                 stop_reason = final_message.stop_reason
