@@ -19,7 +19,12 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     """Request to send a message to the agent."""
 
-    message: str = Field(..., min_length=1, description="User message")
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=50000,
+        description="User message (max 50K chars to prevent abuse)",
+    )
     conversation_id: Optional[str] = Field(None, description="Conversation ID for history")
     model: Optional[str] = Field(None, description="Override default model")
 

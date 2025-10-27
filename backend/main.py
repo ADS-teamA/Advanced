@@ -42,9 +42,10 @@ async def lifespan(app: FastAPI):
         agent_adapter = AgentAdapter()
         logger.info("Agent adapter initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize agent: {e}", exc_info=True)
-        # Don't crash the server, but health check will show error
-        agent_adapter = None
+        logger.error(f"FATAL: Failed to initialize agent: {e}", exc_info=True)
+        logger.error("Server cannot start without agent. Fix configuration and restart.")
+        # Fail fast - prevent server from starting in broken state
+        raise RuntimeError("Cannot start server without initialized agent") from e
 
     yield
 

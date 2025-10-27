@@ -254,8 +254,9 @@ class AgentConfig:
         if self.openai_api_key and not (self.openai_api_key.startswith("sk-") or self.openai_api_key.startswith("sk-proj-")):
             raise ValueError("OpenAI API key has invalid format (should start with sk- or sk-proj-)")
 
-        if self.google_api_key and not self.google_api_key.startswith("AIza"):
-            raise ValueError("Google API key has invalid format (should start with AIza)")
+        # Google API keys: Legacy keys start with "AIza", modern keys vary - check length instead
+        if self.google_api_key and len(self.google_api_key) < 30:
+            raise ValueError("Google API key appears too short (expected 39 chars)")
 
         # Numeric range validation
         if self.max_tokens <= 0:
