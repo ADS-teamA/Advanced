@@ -269,18 +269,30 @@ class EntityExtractor:
         for attempt in range(max_retries):
             try:
                 if self.config.llm_provider == "openai":
-                    response = self.client.chat.completions.create(
-                        model=self.config.llm_model,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": "You are an expert at extracting structured entities from legal documents. Always return valid JSON.",
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                        temperature=self.config.temperature,
-                        max_tokens=4000,
-                    )
+                    # Prepare base parameters
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": "You are an expert at extracting structured entities from legal documents. Always return valid JSON.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ]
+
+                    params = {
+                        "model": self.config.llm_model,
+                        "messages": messages,
+                    }
+
+                    # GPT-5/o-series models use different parameters
+                    if self.config.llm_model.startswith(("gpt-5", "o1-", "o3-")):
+                        params["max_completion_tokens"] = 4000
+                        # Note: GPT-5 only supports temperature=1.0 (default), don't set it
+                    else:
+                        # GPT-4 and earlier
+                        params["max_tokens"] = 4000
+                        params["temperature"] = self.config.temperature
+
+                    response = self.client.chat.completions.create(**params)
 
                     # Track cost
                     self.tracker.track_llm(

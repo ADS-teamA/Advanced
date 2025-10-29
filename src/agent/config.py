@@ -329,24 +329,41 @@ class AgentConfig:
             query_expansion_model=query_expansion_model_env,
         )
 
+        # Load enable_knowledge_graph from environment
+        enable_kg_str = os.getenv("ENABLE_KNOWLEDGE_GRAPH", "false").lower()
+        enable_kg = enable_kg_str in ("true", "1", "yes")
+
         config = cls(
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             model=os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929"),
             vector_store_path=Path(os.getenv("VECTOR_STORE_PATH", "vector_db")),
+            enable_knowledge_graph=enable_kg,
             tool_config=tool_config,
         )
+
+        # Auto-detect KG path BEFORE applying overrides
+        kg_path_from_env = None
+        kg_path_str = os.getenv("KNOWLEDGE_GRAPH_PATH")
+        if kg_path_str:
+            kg_path = Path(kg_path_str)
+            if kg_path.exists():
+                kg_path_from_env = kg_path
 
         # Apply overrides
         for key, value in overrides.items():
             if hasattr(config, key):
                 setattr(config, key, value)
 
-        # Auto-detect KG if path exists
-        kg_path_str = os.getenv("KNOWLEDGE_GRAPH_PATH")
-        if kg_path_str:
-            kg_path = Path(kg_path_str)
-            if kg_path.exists():
-                config.knowledge_graph_path = kg_path
-                config.enable_knowledge_graph = True
+        # Set KG path after overrides
+        if kg_path_from_env:
+            config.knowledge_graph_path = kg_path_from_env
+            config.enable_knowledge_graph = True
+        elif config.enable_knowledge_graph and not config.knowledge_graph_path:
+            # Default to vector_store_path if KG enabled but no path specified
+            if config.vector_store_path:
+                default_kg_path = config.vector_store_path
+                if default_kg_path.exists():
+                    config.knowledge_graph_path = default_kg_path
+                    logger.info(f"Using vector store path for knowledge graphs: {default_kg_path}")
 
         return config

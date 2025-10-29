@@ -200,6 +200,12 @@ class IndexingConfig:
     max_context_tokens: int = 4000  # Max tokens in assembled context (~16K chars)
     include_chunk_metadata: bool = True  # Include document/section/page metadata
 
+    # Duplicate Detection (semantic similarity before indexing)
+    enable_duplicate_detection: bool = True  # Detect semantic duplicates before indexing
+    duplicate_similarity_threshold: float = 0.98  # 98% cosine similarity threshold
+    duplicate_sample_pages: int = 1  # Pages to sample for detection (1 = first page)
+    vector_store_path: str = "vector_db"  # Path to vector store for duplicate checking
+
     def __post_init__(self):
         """Configure speed mode and validate settings."""
         # Validate speed mode
@@ -254,6 +260,14 @@ class IndexingConfig:
             embedding_config=EmbeddingConfig.from_env(),
             enable_knowledge_graph=os.getenv("ENABLE_KNOWLEDGE_GRAPH", "true").lower() == "true",
             enable_hybrid_search=os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true",
+            enable_duplicate_detection=(
+                os.getenv("ENABLE_DUPLICATE_DETECTION", "true").lower() == "true"
+            ),
+            duplicate_similarity_threshold=float(
+                os.getenv("DUPLICATE_SIMILARITY_THRESHOLD", "0.98")
+            ),
+            duplicate_sample_pages=int(os.getenv("DUPLICATE_SAMPLE_PAGES", "1")),
+            vector_store_path=os.getenv("VECTOR_STORE_PATH", "vector_db"),
             **overrides,
         )
 
@@ -364,9 +378,10 @@ class IndexingPipeline:
         document_path: Path,
         save_intermediate: bool = False,
         output_dir: Optional[Path] = None,
-    ) -> Dict:
+        resume: bool = True,
+    ) -> Optional[Dict]:
         """
-        Index a single document.
+        Index a single document with automatic resume support.
 
         Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 
@@ -381,13 +396,16 @@ class IndexingPipeline:
             document_path: Path to document file (PDF, DOCX, PPTX, XLSX, HTML)
             save_intermediate: Save intermediate results (chunks, embeddings)
             output_dir: Directory for intermediate results
+            resume: Enable resume from existing phases (default: True)
 
         Returns:
-            Dict with:
+            Dict with pipeline results, or None if document is a duplicate and was skipped:
                 - vector_store: FAISSVectorStore with indexed document
                 - knowledge_graph: KnowledgeGraph (if enabled, else None)
                 - chunks: Dict of chunks (if save_intermediate)
                 - stats: Pipeline statistics
+
+            Returns None when duplicate detection is enabled and document is already indexed.
         """
         document_path = Path(document_path)
 
@@ -409,12 +427,130 @@ class IndexingPipeline:
         # Reset cost tracker for this document
         reset_global_tracker()
 
-        # PHASE 1+2: Extract + Summaries
-        logger.info("PHASE 1+2: Extraction + Summaries")
-        result = self.extractor.extract(document_path)
-        logger.info(
-            f"✓ Extracted: {result.num_sections} sections, " f"depth={result.hierarchy_depth}"
-        )
+        # RESUME DETECTION: Check for existing phases
+        from src.phase_detector import PhaseDetector
+        from src.phase_loaders import PhaseLoaders
+
+        phase_status = None
+        cached_extraction = None
+        cached_chunks = None
+
+        if resume and output_dir and output_dir.exists():
+            phase_status = PhaseDetector.detect(output_dir)
+
+            if phase_status.completed_phase > 0:
+                logger.info("")
+                logger.info("=" * 80)
+                logger.info("RESUME MODE: Detected existing phases")
+                logger.info("=" * 80)
+                logger.info(f"Phase 1 (extraction): {'EXISTS' if 1 in phase_status.phase_files else 'MISSING'}")
+                logger.info(f"Phase 2 (summaries):  {'EXISTS' if 2 in phase_status.phase_files else 'MISSING'}")
+                logger.info(f"Phase 3 (chunks):     {'EXISTS' if 3 in phase_status.phase_files else 'MISSING'}")
+                logger.info(f"Phase 4 (vectors):    {'EXISTS' if 4 in phase_status.phase_files else 'MISSING'}")
+                logger.info("")
+                logger.info(f"Will resume from Phase {phase_status.completed_phase + 1}")
+                logger.info("=" * 80)
+                logger.info("")
+
+                # Load cached phases with specific error handling per phase
+                try:
+                    if phase_status.completed_phase >= 1:
+                        logger.debug(f"Loading Phase 1 from {phase_status.phase_files[1]}")
+                        cached_extraction = PhaseLoaders.load_phase1(phase_status.phase_files[1])
+
+                    if phase_status.completed_phase >= 2:
+                        logger.debug(f"Loading Phase 2 from {phase_status.phase_files[2]}")
+                        cached_extraction = PhaseLoaders.load_phase2(
+                            phase_status.phase_files[2],
+                            cached_extraction
+                        )
+
+                    if phase_status.completed_phase >= 3:
+                        logger.debug(f"Loading Phase 3 from {phase_status.phase_files[3]}")
+                        cached_chunks = PhaseLoaders.load_phase3(phase_status.phase_files[3])
+
+                except (FileNotFoundError, ValueError, KeyError, UnicodeDecodeError) as e:
+                    logger.error(f"Failed to load cached phases: {e}")
+                    logger.warning("Phase cache corrupted or incomplete - reprocessing from scratch")
+                    logger.warning(f"Error details: {type(e).__name__}: {str(e)}")
+                    cached_extraction = None
+                    cached_chunks = None
+                    phase_status = None
+
+        # Semantic Duplicate Detection (before extraction to save time)
+        if self.config.enable_duplicate_detection:
+            logger.info("")
+            logger.info("=" * 80)
+            logger.info("PRE-CHECK: Semantic Duplicate Detection")
+            logger.info("=" * 80)
+
+            try:
+                from src.duplicate_detector import DuplicateDetector, DuplicateDetectionConfig
+
+                # Create detector config
+                dup_config = DuplicateDetectionConfig(
+                    enabled=True,
+                    similarity_threshold=self.config.duplicate_similarity_threshold,
+                    sample_pages=self.config.duplicate_sample_pages,
+                )
+
+                # Initialize detector (lazy-loads embedder and vector store)
+                detector = DuplicateDetector(
+                    config=dup_config,
+                    vector_store_path=self.config.vector_store_path,
+                )
+
+                # Check for duplicate
+                is_duplicate, similarity, match_doc_id = detector.check_duplicate(
+                    file_path=str(document_path),
+                    document_id=None,  # We don't have document_id yet (before extraction)
+                )
+
+                if is_duplicate:
+                    logger.warning("")
+                    logger.warning("[DUPLICATE]DUPLICATE DETECTED!")
+                    logger.warning(f"   Document: {document_path.name}")
+                    logger.warning(f"   Matches existing: {match_doc_id}")
+                    logger.warning(f"   Similarity: {similarity:.1%}")
+                    logger.warning(
+                        f"   Threshold: {self.config.duplicate_similarity_threshold:.1%}"
+                    )
+                    logger.warning("")
+                    logger.warning(
+                        "[SKIPPED] indexing to prevent duplicates in vector_db/"
+                    )
+                    logger.info("=" * 80)
+                    return None
+
+                logger.info(f"No duplicate found (highest similarity: {similarity:.1%})")
+                logger.info("=" * 80)
+                logger.info("")
+
+            except (ImportError, RuntimeError, PermissionError, OSError) as e:
+                logger.error(f"Duplicate detection failed: {e}")
+                logger.warning("Continuing with indexing...")
+                import traceback
+
+                logger.debug(traceback.format_exc())
+            except KeyboardInterrupt:
+                raise  # Always re-raise user interrupts
+            except SystemExit:
+                raise  # Always re-raise system exits
+
+        # PHASE 1+2: Extract + Summaries (skip if cached)
+        if cached_extraction is not None and phase_status and phase_status.completed_phase >= 2:
+            logger.info("PHASE 1+2: [SKIPPED] - Loaded from cache")
+            result = cached_extraction
+            logger.info(
+                f"Cached extraction: {result.num_sections} sections, "
+                f"depth={result.hierarchy_depth}"
+            )
+        else:
+            logger.info("PHASE 1+2: Extraction + Summaries")
+            result = self.extractor.extract(document_path)
+            logger.info(
+                f"Extracted: {result.num_sections} sections, " f"depth={result.hierarchy_depth}"
+            )
 
         # Check existing components in vector_db AFTER extraction
         logger.info("")
@@ -425,14 +561,14 @@ class IndexingPipeline:
         existing = check_existing_components(result.document_id)
 
         if existing["exists"]:
-            logger.info(f"✓ Document '{existing['existing_doc_id']}' found in vector_db:")
-            logger.info(f"  - Dense embeddings (FAISS): {'✓ EXISTS' if existing['has_dense'] else '✗ MISSING'}")
-            logger.info(f"  - BM25 index: {'✓ EXISTS' if existing['has_bm25'] else '✗ MISSING'}")
-            logger.info(f"  - Knowledge Graph: {'✓ EXISTS' if existing['has_kg'] else '✗ MISSING'}")
+            logger.info(f"Document '{existing['existing_doc_id']}' found in vector_db:")
+            logger.info(f"  - Dense embeddings (FAISS): {'EXISTS' if existing['has_dense'] else 'MISSING'}")
+            logger.info(f"  - BM25 index: {'EXISTS' if existing['has_bm25'] else 'MISSING'}")
+            logger.info(f"  - Knowledge Graph: {'EXISTS' if existing['has_kg'] else 'MISSING'}")
             logger.info("")
             logger.info("Will skip existing components and add only missing ones...")
         else:
-            logger.info(f"✓ Document '{result.document_id}' NOT found in vector_db")
+            logger.info(f"Document '{result.document_id}' NOT found in vector_db")
             logger.info("Will create all components...")
 
         logger.info("=" * 80)
@@ -443,31 +579,41 @@ class IndexingPipeline:
         skip_bm25 = existing["has_bm25"]
         skip_kg = existing["has_kg"]
 
-        # PHASE 3: Multi-layer chunking + SAC
-        logger.info("PHASE 3: Multi-Layer Chunking + SAC")
-        chunks = self.chunker.chunk_document(result)
-        chunking_stats = self.chunker.get_chunking_stats(chunks)
-        logger.info(
-            f"✓ Chunked: L1={chunking_stats['layer1_count']}, "
-            f"L2={chunking_stats['layer2_count']}, "
-            f"L3={chunking_stats['layer3_count']} (PRIMARY)"
-        )
+        # PHASE 3: Multi-layer chunking + SAC (skip if cached)
+        if cached_chunks is not None and phase_status and phase_status.completed_phase >= 3:
+            logger.info("PHASE 3: [SKIPPED] - Loaded from cache")
+            chunks = cached_chunks
+            chunking_stats = self.chunker.get_chunking_stats(chunks)
+            logger.info(
+                f"Cached chunks: L1={chunking_stats['layer1_count']}, "
+                f"L2={chunking_stats['layer2_count']}, "
+                f"L3={chunking_stats['layer3_count']} (PRIMARY)"
+            )
+        else:
+            logger.info("PHASE 3: Multi-Layer Chunking + SAC")
+            chunks = self.chunker.chunk_document(result)
+            chunking_stats = self.chunker.get_chunking_stats(chunks)
+            logger.info(
+                f"Chunked: L1={chunking_stats['layer1_count']}, "
+                f"L2={chunking_stats['layer2_count']}, "
+                f"L3={chunking_stats['layer3_count']} (PRIMARY)"
+            )
 
         # PHASE 4: Embedding & FAISS (skip if exists)
         vector_store = None
 
         if skip_dense:
-            logger.info("PHASE 4: ⏭️  SKIPPING - Dense embeddings already exist")
+            logger.info("PHASE 4: [SKIPPED] - Dense embeddings already exist")
             # Load existing vector store
             try:
                 vector_store = FAISSVectorStore.load("vector_db")
                 store_stats = vector_store.get_stats()
                 logger.info(
-                    f"✓ Loaded existing: {store_stats['total_vectors']} vectors "
+                    f"Loaded existing: {store_stats['total_vectors']} vectors "
                     f"({store_stats['documents']} documents)"
                 )
-            except Exception as e:
-                logger.error(f"✗ Failed to load existing vector_db: {e}")
+            except (FileNotFoundError, ValueError, RuntimeError, PermissionError) as e:
+                logger.error(f"[ERROR] Failed to load existing vector_db: {e}")
                 logger.info("Falling back to creating new embeddings...")
                 skip_dense = False
 
@@ -479,7 +625,7 @@ class IndexingPipeline:
                 "layer3": self.embedder.embed_chunks(chunks["layer3"], layer=3),
             }
             logger.info(
-                f"✓ Embedded: {self.embedder.dimensions}D vectors, "
+                f"Embedded: {self.embedder.dimensions}D vectors, "
                 f"{embeddings['layer3'].shape[0]} Layer 3 chunks"
             )
 
@@ -489,14 +635,14 @@ class IndexingPipeline:
             vector_store.add_chunks(chunks, embeddings)
             store_stats = vector_store.get_stats()
             logger.info(
-                f"✓ Indexed: {store_stats['total_vectors']} vectors "
+                f"Indexed: {store_stats['total_vectors']} vectors "
                 f"({store_stats['documents']} documents)"
             )
 
         # PHASE 5B: Hybrid Search (optional, skip if exists)
         if self.config.enable_hybrid_search:
             if skip_bm25 and existing["has_dense"]:
-                logger.info("PHASE 5B: ⏭️  SKIPPING - BM25 index already exists")
+                logger.info("PHASE 5B: [SKIPPED] - BM25 index already exists")
                 # vector_store should already be HybridVectorStore from loading
             else:
                 logger.info("PHASE 5B: Hybrid Search (BM25 + Dense + RRF)")
@@ -509,7 +655,7 @@ class IndexingPipeline:
                     bm25_store.build_from_chunks(chunks)
 
                     logger.info(
-                        f"✓ BM25 Indexed: "
+                        f"BM25 Indexed: "
                         f"L1={len(bm25_store.index_layer1.corpus)}, "
                         f"L2={len(bm25_store.index_layer2.corpus)}, "
                         f"L3={len(bm25_store.index_layer3.corpus)}"
@@ -526,10 +672,10 @@ class IndexingPipeline:
                     vector_store = hybrid_store
                     store_stats = vector_store.get_stats()
 
-                    logger.info(f"✓ Hybrid Search enabled: RRF k={self.config.hybrid_fusion_k}")
+                    logger.info(f"Hybrid Search enabled: RRF k={self.config.hybrid_fusion_k}")
 
-                except Exception as e:
-                    logger.error(f"✗ Hybrid Search failed: {e}")
+                except (ImportError, RuntimeError, ValueError, MemoryError) as e:
+                    logger.error(f"[ERROR] Hybrid Search failed: {e}")
                     logger.warning("Continuing with dense-only retrieval...")
                     import traceback
 
@@ -541,7 +687,7 @@ class IndexingPipeline:
 
         if self.kg_pipeline:
             if skip_kg:
-                logger.info("PHASE 5A: ⏭️  SKIPPING - Knowledge Graph already exists")
+                logger.info("PHASE 5A: [SKIPPED] - Knowledge Graph already exists")
                 # Try to load existing KG for stats
                 try:
                     output_dir = Path("output")
@@ -551,7 +697,7 @@ class IndexingPipeline:
                         with open(kg_files[0], 'r') as f:
                             kg_data = json.load(f)
                         logger.info(
-                            f"✓ Loaded existing KG: {len(kg_data.get('entities', []))} entities, "
+                            f"Loaded existing KG: {len(kg_data.get('entities', []))} entities, "
                             f"{len(kg_data.get('relationships', []))} relationships"
                         )
                 except Exception as e:
@@ -581,12 +727,12 @@ class IndexingPipeline:
                     )
 
                     logger.info(
-                        f"✓ Knowledge Graph: {len(knowledge_graph.entities)} entities, "
+                        f"Knowledge Graph: {len(knowledge_graph.entities)} entities, "
                         f"{len(knowledge_graph.relationships)} relationships"
                     )
 
                 except Exception as e:
-                    logger.error(f"✗ Knowledge Graph construction failed: {e}", exc_info=True)
+                    logger.error(f"[ERROR] Knowledge Graph construction failed: {e}", exc_info=True)
                     if self.config.enable_knowledge_graph:
                         logger.error(
                             f"ERROR: Knowledge Graph was enabled in config but construction failed.\n"
@@ -608,7 +754,7 @@ class IndexingPipeline:
             logger.info("\n" + tracker.get_summary())
 
         logger.info("=" * 80)
-        logger.info(f"✓ Indexing complete: {document_path.name}")
+        logger.info(f"Indexing complete: {document_path.name}")
         logger.info("=" * 80)
 
         # Prepare result
@@ -677,6 +823,11 @@ class IndexingPipeline:
                     output_dir=output_dir if save_per_document else None,
                 )
 
+                # Handle None return (duplicate document skipped)
+                if result is None:
+                    logger.info(f"[SKIPPED] Duplicate document: {document_path}")
+                    continue
+
                 # Extract components
                 doc_store = result["vector_store"]
                 doc_kg = result.get("knowledge_graph")
@@ -699,10 +850,10 @@ class IndexingPipeline:
                     doc_name = Path(document_path).stem
                     doc_output = output_dir / f"{doc_name}_store"
                     doc_store.save(doc_output)
-                    logger.info(f"✓ Saved individual store: {doc_output}")
+                    logger.info(f"Saved individual store: {doc_output}")
 
             except Exception as e:
-                logger.error(f"✗ Failed to index {document_path}: {e}")
+                logger.error(f"[ERROR] Failed to index {document_path}: {e}")
                 continue
 
         # Save combined store
@@ -713,7 +864,7 @@ class IndexingPipeline:
         if knowledge_graphs and self.kg_pipeline:
             try:
                 # Merge all KGs
-                from graph import KnowledgeGraph
+                from src.graph import KnowledgeGraph
 
                 combined_kg = KnowledgeGraph(
                     entities=[e for kg in knowledge_graphs for e in kg.entities],
@@ -723,16 +874,16 @@ class IndexingPipeline:
 
                 kg_output = output_dir / "combined_kg.json"
                 combined_kg.save_json(str(kg_output))
-                logger.info(f"✓ Saved combined Knowledge Graph: {kg_output}")
+                logger.info(f"Saved combined Knowledge Graph: {kg_output}")
                 logger.info(
                     f"  Total: {len(combined_kg.entities)} entities, "
                     f"{len(combined_kg.relationships)} relationships"
                 )
             except Exception as e:
-                logger.error(f"✗ Failed to save combined KG: {e}")
+                logger.error(f"[ERROR] Failed to save combined KG: {e}")
 
-        logger.info(f"\n✓ Batch indexing complete: {vector_store.get_stats()}")
-        logger.info(f"✓ Saved to: {combined_output}")
+        logger.info(f"\nBatch indexing complete: {vector_store.get_stats()}")
+        logger.info(f"Saved to: {combined_output}")
 
         return {
             "vector_store": vector_store,
@@ -778,7 +929,7 @@ class IndexingPipeline:
         }
         with open(phase1_path, "w", encoding="utf-8") as f:
             json.dump(phase1_export, f, indent=2, ensure_ascii=False)
-        logger.info(f"✓ Saved PHASE 1: {phase1_path}")
+        logger.info(f"Saved PHASE 1: {phase1_path}")
 
         # PHASE 2: Save summaries
         phase2_path = output_dir / "phase2_summaries.json"
@@ -792,7 +943,7 @@ class IndexingPipeline:
         }
         with open(phase2_path, "w", encoding="utf-8") as f:
             json.dump(phase2_export, f, indent=2, ensure_ascii=False)
-        logger.info(f"✓ Saved PHASE 2: {phase2_path}")
+        logger.info(f"Saved PHASE 2: {phase2_path}")
 
         # PHASE 3: Save chunks
         phase3_path = output_dir / "phase3_chunks.json"
@@ -806,7 +957,7 @@ class IndexingPipeline:
         }
         with open(phase3_path, "w", encoding="utf-8") as f:
             json.dump(phase3_export, f, indent=2, ensure_ascii=False)
-        logger.info(f"✓ Saved PHASE 3: {phase3_path}")
+        logger.info(f"Saved PHASE 3: {phase3_path}")
 
 
 # Example usage
