@@ -279,6 +279,9 @@ class PhaseLoaders:
                 for idx, c in enumerate(data[layer_name])
             ]
 
+        # Calculate total_chunks (required by get_chunking_stats)
+        chunks["total_chunks"] = len(chunks["layer1"]) + len(chunks["layer2"]) + len(chunks["layer3"])
+
         logger.info(
             f"Loaded Phase 3: "
             f"L1={len(chunks['layer1'])}, "

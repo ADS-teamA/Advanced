@@ -297,8 +297,8 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
                         )
 
                         # Initialize unified KG manager (uses merge_target directory for storage)
-                        storage_dir = merge_target.parent if merge_target.parent.name != 'phase4_vector_store' else merge_target.parent.parent
-                        manager = UnifiedKnowledgeGraphManager(storage_dir=str(storage_dir))
+                        # KG files should be stored in the same directory as the vector store
+                        manager = UnifiedKnowledgeGraphManager(storage_dir=str(merge_target))
 
                         # Initialize cross-document detector
                         detector = CrossDocumentRelationshipDetector(
@@ -334,7 +334,7 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
                         print_info(f"Documents in unified KG: {doc_stats['total_documents']}")
                         print_info(f"Cross-document entities: {doc_stats['cross_document_entities']} "
                                   f"({doc_stats['cross_document_entity_percentage']:.1f}%)")
-                        print_info(f"Saved: {storage_dir / 'unified_kg.json'}")
+                        print_info(f"Saved: {merge_target / 'unified_kg.json'}")
 
                 except Exception as e:
                     print()
@@ -508,17 +508,17 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Index single document
+  # Index single document (auto-merges to vector_db/)
   python run_pipeline.py data/document.pdf
 
-  # Index directory (batch)
+  # Index directory batch (auto-merges all to vector_db/)
   python run_pipeline.py data/documents/
 
-  # Index and merge into existing vector_db
-  python run_pipeline.py data/document.pdf --merge vector_db
+  # Index to custom location instead of vector_db
+  python run_pipeline.py data/document.pdf --merge custom_db
 
-  # Batch index with merge
-  python run_pipeline.py data/documents/ --merge vector_db
+  # Index without merging (keep separate)
+  python run_pipeline.py data/document.pdf --no-merge
         """
     )
 
@@ -532,12 +532,20 @@ Examples:
         "--merge",
         type=str,
         metavar="TARGET",
-        help="Merge indexed documents into existing vector store at TARGET path (e.g., vector_db)"
+        default="vector_db",  # Default to vector_db/ for automatic merging
+        help="Merge indexed documents into existing vector store at TARGET path (default: vector_db)"
+    )
+
+    parser.add_argument(
+        "--no-merge",
+        action="store_true",
+        help="Disable automatic merging to vector_db (keep documents separate)"
     )
 
     args = parser.parse_args()
 
     input_path = Path(args.input_path)
-    merge_target = Path(args.merge) if args.merge else None
+    # Use merge target unless --no-merge is specified
+    merge_target = None if args.no_merge else Path(args.merge)
 
     run_complete_pipeline(input_path, merge_target=merge_target)

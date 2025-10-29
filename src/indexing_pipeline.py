@@ -709,7 +709,7 @@ class IndexingPipeline:
                     # Prepare chunks for KG (use Layer 3 primary chunks)
                     kg_chunks = [
                         {
-                            "id": chunk.id,
+                            "id": chunk.chunk_id,  # Fixed: Use chunk_id instead of id
                             "content": chunk.content,
                             "raw_content": chunk.raw_content,
                             "metadata": {

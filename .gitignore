@@ -78,3 +78,4 @@ htmlcov/
 data_test/*.pdf
 !data_test/.gitkeep
 output/
+data_legacy/
