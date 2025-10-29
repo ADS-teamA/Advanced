@@ -68,16 +68,18 @@ class MultiHopSearchTool(BaseTool):
 
         try:
             # Use graph retriever for multi-hop reasoning
-            query_embedding = self.embedder.embed_texts([query])
+            query_embedding = self.embedder.embed_texts([query])[0]
 
-            results = self.graph_retriever.search_with_graph(
-                query_text=query,
+            # GraphEnhancedRetriever.search returns dict with layer1/layer2/layer3 keys
+            search_results = self.graph_retriever.search(
+                query=query,
                 query_embedding=query_embedding,
-                layer="layer3",
                 k=k * 2,  # Retrieve more for graph filtering
-                enable_multi_hop=True,
-                max_hops=max_hops,
+                enable_graph_boost=True,
             )
+
+            # Extract layer3 results (primary chunks)
+            results = search_results.get("layer3", [])
 
             if not results:
                 return ToolResult(
