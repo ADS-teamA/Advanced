@@ -336,12 +336,34 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
                                   f"({doc_stats['cross_document_entity_percentage']:.1f}%)")
                         print_info(f"Saved: {merge_target / 'unified_kg.json'}")
 
+                except FileNotFoundError as e:
+                    print()
+                    print_info(f"[ERROR] KG file not found: {e}")
+                    logger.error(f"KG merge failed - file missing: {e}", exc_info=True)
+                    logger.error(f"Document: {doc_name}, Merge target: {merge_target}")
+                    print_info(f"Document '{doc_name}' KG will not be merged into unified graph")
+                except PermissionError as e:
+                    print()
+                    print_info(f"[ERROR] Cannot write to {merge_target}: Permission denied")
+                    logger.error(f"KG merge failed - permission error: {e}", exc_info=True)
+                    print_info(f"Document '{doc_name}' KG will not be merged")
+                except (KeyError, AttributeError, TypeError) as e:
+                    print()
+                    print_info(f"[ERROR] KG data structure error: {e}")
+                    logger.error(f"KG merge failed - data integrity issue: {e}", exc_info=True)
+                    logger.error(f"Document: {doc_name}")
+                    if 'unified_kg' in locals():
+                        logger.error(f"Unified KG state: {len(unified_kg.entities)} entities, {len(unified_kg.relationships)} relationships")
+                    logger.error(f"New KG state: {len(knowledge_graph.entities)} entities, {len(knowledge_graph.relationships)} relationships")
+                    print_info(f"Document '{doc_name}' KG appears corrupted - skipping merge")
                 except Exception as e:
                     print()
-                    print_info(f"[WARNING]  Merge failed: {e}")
-                    print_info("Continuing without merge...")
+                    print_info(f"[ERROR] Unexpected merge failure: {e}")
+                    logger.error(f"KG merge unexpected error: {e}", exc_info=True)
+                    logger.error(f"Document: {doc_name}, Merge target: {merge_target}")
                     import traceback
-                    logger.debug(traceback.format_exc())
+                    logger.error(traceback.format_exc())
+                    print_info(f"Document '{doc_name}' KG not merged - indexing will continue")
 
         # Print comprehensive statistics
         print_header("INDEXING COMPLETE")
