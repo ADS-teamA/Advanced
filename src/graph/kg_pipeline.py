@@ -299,6 +299,46 @@ class KnowledgeGraphPipeline:
 
         return kg
 
+    def merge_graphs(self, other_pipeline: "KnowledgeGraphPipeline") -> Dict[str, Any]:
+        """
+        Merge another knowledge graph pipeline's graph into this one.
+
+        Entities are deduplicated using (type, normalized_value) matching.
+        Relationships are updated to reference merged entity IDs.
+
+        Args:
+            other_pipeline: KnowledgeGraphPipeline to merge from
+
+        Returns:
+            Merge statistics with entity/relationship counts
+
+        Example:
+            >>> target_pipeline = KnowledgeGraphPipeline(config)
+            >>> target_pipeline.build_from_phase3_file("doc1.json")
+            >>>
+            >>> source_pipeline = KnowledgeGraphPipeline(config)
+            >>> source_pipeline.build_from_phase3_file("doc2.json")
+            >>>
+            >>> stats = target_pipeline.merge_graphs(source_pipeline)
+            >>> print(f"Merged: +{stats['entities_added']} entities")
+        """
+        if not hasattr(self.graph_builder, "merge"):
+            raise NotImplementedError(
+                f"Graph builder {type(self.graph_builder).__name__} does not support merge"
+            )
+
+        logger.info("Merging knowledge graphs...")
+        stats = self.graph_builder.merge(other_pipeline.graph_builder)
+
+        logger.info(
+            f"Merge complete: "
+            f"+{stats['entities_added']} entities, "
+            f"~{stats['entities_deduplicated']} deduplicated, "
+            f"+{stats['relationships_added']} relationships"
+        )
+
+        return stats
+
     def query_graph(self, entity_id: str) -> Dict[str, Any]:
         """
         Query graph for entity and its relationships.

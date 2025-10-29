@@ -200,6 +200,11 @@ class IndexingConfig:
     max_context_tokens: int = 4000  # Max tokens in assembled context (~16K chars)
     include_chunk_metadata: bool = True  # Include document/section/page metadata
 
+    # Duplicate Detection (semantic similarity before indexing)
+    enable_duplicate_detection: bool = True  # Detect semantic duplicates before indexing
+    duplicate_similarity_threshold: float = 0.98  # 98% cosine similarity threshold
+    duplicate_sample_pages: int = 1  # Pages to sample for detection (1 = first page)
+
     def __post_init__(self):
         """Configure speed mode and validate settings."""
         # Validate speed mode
@@ -254,6 +259,13 @@ class IndexingConfig:
             embedding_config=EmbeddingConfig.from_env(),
             enable_knowledge_graph=os.getenv("ENABLE_KNOWLEDGE_GRAPH", "true").lower() == "true",
             enable_hybrid_search=os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true",
+            enable_duplicate_detection=(
+                os.getenv("ENABLE_DUPLICATE_DETECTION", "true").lower() == "true"
+            ),
+            duplicate_similarity_threshold=float(
+                os.getenv("DUPLICATE_SIMILARITY_THRESHOLD", "0.98")
+            ),
+            duplicate_sample_pages=int(os.getenv("DUPLICATE_SAMPLE_PAGES", "1")),
             **overrides,
         )
 
@@ -408,6 +420,62 @@ class IndexingPipeline:
 
         # Reset cost tracker for this document
         reset_global_tracker()
+
+        # Semantic Duplicate Detection (before extraction to save time)
+        if self.config.enable_duplicate_detection:
+            logger.info("")
+            logger.info("=" * 80)
+            logger.info("PRE-CHECK: Semantic Duplicate Detection")
+            logger.info("=" * 80)
+
+            try:
+                from src.duplicate_detector import DuplicateDetector, DuplicateDetectionConfig
+
+                # Create detector config
+                dup_config = DuplicateDetectionConfig(
+                    enabled=True,
+                    similarity_threshold=self.config.duplicate_similarity_threshold,
+                    sample_pages=self.config.duplicate_sample_pages,
+                )
+
+                # Initialize detector (lazy-loads embedder and vector store)
+                detector = DuplicateDetector(
+                    config=dup_config,
+                    vector_store_path="vector_db",
+                )
+
+                # Check for duplicate
+                is_duplicate, similarity, match_doc_id = detector.check_duplicate(
+                    file_path=str(document_path),
+                    document_id=None,  # We don't have document_id yet (before extraction)
+                )
+
+                if is_duplicate:
+                    logger.warning("")
+                    logger.warning("❌ DUPLICATE DETECTED!")
+                    logger.warning(f"   Document: {document_path.name}")
+                    logger.warning(f"   Matches existing: {match_doc_id}")
+                    logger.warning(f"   Similarity: {similarity:.1%}")
+                    logger.warning(
+                        f"   Threshold: {self.config.duplicate_similarity_threshold:.1%}"
+                    )
+                    logger.warning("")
+                    logger.warning(
+                        "⏭️  SKIPPING indexing to prevent duplicates in vector_db/"
+                    )
+                    logger.info("=" * 80)
+                    return None
+
+                logger.info(f"✓ No duplicate found (highest similarity: {similarity:.1%})")
+                logger.info("=" * 80)
+                logger.info("")
+
+            except Exception as e:
+                logger.error(f"Duplicate detection failed: {e}")
+                logger.warning("Continuing with indexing...")
+                import traceback
+
+                logger.debug(traceback.format_exc())
 
         # PHASE 1+2: Extract + Summaries
         logger.info("PHASE 1+2: Extraction + Summaries")

@@ -82,6 +82,8 @@ class SimpleGraphBuilder(GraphBuilder):
         self.entity_by_type: Dict[EntityType, Set[str]] = {}
         self.relationships_by_source: Dict[str, Set[str]] = {}
         self.relationships_by_target: Dict[str, Set[str]] = {}
+        # Index for O(1) deduplication: (type, normalized_value) -> entity_id
+        self.entity_by_normalized_value: Dict[tuple, str] = {}
 
         logger.info("Initialized SimpleGraphBuilder")
 
@@ -95,6 +97,10 @@ class SimpleGraphBuilder(GraphBuilder):
             if entity.type not in self.entity_by_type:
                 self.entity_by_type[entity.type] = set()
             self.entity_by_type[entity.type].add(entity.id)
+
+            # Index by (type, normalized_value) for deduplication
+            key = (entity.type, entity.normalized_value)
+            self.entity_by_normalized_value[key] = entity.id
 
         logger.info(f"Added {len(entities)} entities to graph (total: {len(self.entities)})")
 
@@ -230,6 +236,114 @@ class SimpleGraphBuilder(GraphBuilder):
             "entity_type_counts": entity_type_counts,
             "relationship_type_counts": relationship_type_counts,
         }
+
+    def merge(self, other: "SimpleGraphBuilder") -> Dict[str, Any]:
+        """
+        Merge another graph into this one with entity deduplication.
+
+        Deduplication strategy:
+        - Exact match on (entity_type, normalized_value)
+        - Merge source_chunk_ids for duplicate entities
+        - Update relationship entity IDs after remapping
+
+        Args:
+            other: Graph to merge into this one
+
+        Returns:
+            Merge statistics with deduplication counts
+
+        Example:
+            >>> target_graph = SimpleGraphBuilder(config)
+            >>> source_graph = SimpleGraphBuilder(config)
+            >>> stats = target_graph.merge(source_graph)
+            >>> print(f"Added {stats['entities_added']} entities")
+        """
+        from .deduplicator import EntityDeduplicator
+
+        deduplicator = EntityDeduplicator()
+
+        # Track statistics
+        stats = {
+            "entities_added": 0,
+            "entities_deduplicated": 0,
+            "relationships_added": 0,
+            "entity_id_remapping": {},  # old_id -> new_id
+        }
+
+        # Phase 1: Merge entities with deduplication
+        for entity in other.entities.values():
+            # Check for duplicate
+            duplicate_id = deduplicator.find_duplicate(entity, self)
+
+            if duplicate_id:
+                # Found duplicate - merge source_chunk_ids
+                existing_entity = self.entities[duplicate_id]
+
+                # Merge source_chunk_ids (deduplicate)
+                merged_chunk_ids = list(
+                    set(existing_entity.source_chunk_ids + entity.source_chunk_ids)
+                )
+                existing_entity.source_chunk_ids = merged_chunk_ids
+
+                # Track remapping
+                stats["entity_id_remapping"][entity.id] = duplicate_id
+                stats["entities_deduplicated"] += 1
+
+                logger.debug(
+                    f"Deduplicated entity: {entity.type.value}='{entity.value}' "
+                    f"({entity.id} -> {duplicate_id})"
+                )
+            else:
+                # No duplicate - add entity
+                self.entities[entity.id] = entity
+
+                # Update indexes
+                if entity.type not in self.entity_by_type:
+                    self.entity_by_type[entity.type] = set()
+                self.entity_by_type[entity.type].add(entity.id)
+
+                # Update normalized_value index
+                key = (entity.type, entity.normalized_value)
+                self.entity_by_normalized_value[key] = entity.id
+
+                stats["entities_added"] += 1
+
+        # Phase 2: Merge relationships with entity ID remapping
+        for rel in other.relationships.values():
+            # Remap source entity ID if deduplicated
+            source_id = stats["entity_id_remapping"].get(
+                rel.source_entity_id, rel.source_entity_id
+            )
+            target_id = stats["entity_id_remapping"].get(
+                rel.target_entity_id, rel.target_entity_id
+            )
+
+            # Update relationship entity IDs
+            rel.source_entity_id = source_id
+            rel.target_entity_id = target_id
+
+            # Add relationship
+            self.relationships[rel.id] = rel
+
+            # Update indexes
+            if source_id not in self.relationships_by_source:
+                self.relationships_by_source[source_id] = set()
+            self.relationships_by_source[source_id].add(rel.id)
+
+            if target_id not in self.relationships_by_target:
+                self.relationships_by_target[target_id] = set()
+            self.relationships_by_target[target_id].add(rel.id)
+
+            stats["relationships_added"] += 1
+
+        logger.info(
+            f"Graph merge complete: "
+            f"+{stats['entities_added']} entities, "
+            f"~{stats['entities_deduplicated']} deduplicated, "
+            f"+{stats['relationships_added']} relationships"
+        )
+
+        return stats
 
 
 class Neo4jGraphBuilder(GraphBuilder):

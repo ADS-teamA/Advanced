@@ -21,7 +21,13 @@ Usage:
 """
 
 from .models import Entity, EntityType, Relationship, RelationshipType, KnowledgeGraph
-from .config import KnowledgeGraphConfig
+from .config import (
+    KnowledgeGraphConfig,
+    EntityExtractionConfig,
+    RelationshipExtractionConfig,
+    GraphStorageConfig,
+    GraphBackend,
+)
 from .entity_extractor import EntityExtractor
 from .relationship_extractor import RelationshipExtractor
 from .graph_builder import GraphBuilder, Neo4jGraphBuilder, SimpleGraphBuilder
@@ -36,6 +42,10 @@ __all__ = [
     "KnowledgeGraph",
     # Config
     "KnowledgeGraphConfig",
+    "EntityExtractionConfig",
+    "RelationshipExtractionConfig",
+    "GraphStorageConfig",
+    "GraphBackend",
     # Extractors
     "EntityExtractor",
     "RelationshipExtractor",

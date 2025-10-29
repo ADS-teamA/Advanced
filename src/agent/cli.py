@@ -224,21 +224,55 @@ class AgentCLI:
             try:
                 from src.graph.models import KnowledgeGraph
                 from src.graph_retrieval import GraphEnhancedRetriever
+                from pathlib import Path
 
-                knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
-                print(
-                    f"   Entities: {len(knowledge_graph.entities)}, "
-                    f"Relationships: {len(knowledge_graph.relationships)}"
-                )
+                kg_path = Path(self.config.knowledge_graph_path)
+
+                # Check if path is a directory (vector_db/) or a single file
+                if kg_path.is_dir():
+                    # Load all *_kg.json files from directory
+                    kg_files = sorted(kg_path.glob("*_kg.json"))
+                    if not kg_files:
+                        raise FileNotFoundError(f"No knowledge graph files (*_kg.json) found in {kg_path}")
+
+                    print(f"   Found {len(kg_files)} knowledge graph files")
+
+                    # Load and merge all KG files
+                    knowledge_graph = None
+                    total_entities = 0
+                    total_relationships = 0
+
+                    for kg_file in kg_files:
+                        kg = KnowledgeGraph.load_json(str(kg_file))
+                        if knowledge_graph is None:
+                            knowledge_graph = kg
+                        else:
+                            # Merge graphs by combining entities and relationships
+                            knowledge_graph.entities.extend(kg.entities)
+                            knowledge_graph.relationships.extend(kg.relationships)
+
+                        total_entities += len(kg.entities)
+                        total_relationships += len(kg.relationships)
+                        print(f"   Loaded {kg_file.name}: {len(kg.entities)} entities, {len(kg.relationships)} relationships")
+
+                    print(
+                        f"   Total: {total_entities} entities, "
+                        f"{total_relationships} relationships"
+                    )
+                else:
+                    # Load single file
+                    knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
+                    print(
+                        f"   Entities: {len(knowledge_graph.entities)}, "
+                        f"Relationships: {len(knowledge_graph.relationships)}"
+                    )
 
                 graph_retriever = GraphEnhancedRetriever(
                     vector_store=vector_store, knowledge_graph=knowledge_graph
                 )
-            except FileNotFoundError:
-                logger.warning(
-                    f"Knowledge graph file not found: {self.config.knowledge_graph_path}"
-                )
-                print(f"   ⚠️  Knowledge graph file not found: {self.config.knowledge_graph_path}")
+            except FileNotFoundError as e:
+                logger.warning(f"Knowledge graph file not found: {e}")
+                print(f"   ⚠️  Knowledge graph file not found: {e}")
                 print("   Continuing without knowledge graph (graph tools will be unavailable)")
                 self.config.enable_knowledge_graph = False
             except ImportError as e:
@@ -769,7 +803,8 @@ if __name__ == "__main__":
 
     from .config import CLIConfig
 
-    config = AgentConfig(
+    # Load config from environment with CLI arg overrides
+    config = AgentConfig.from_env(
         vector_store_path=Path(args.vector_store),
         model=args.model,
         debug_mode=args.debug,
