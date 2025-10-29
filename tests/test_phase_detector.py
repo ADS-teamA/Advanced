@@ -37,6 +37,7 @@ class TestPhaseDetector:
                     "depth": 0,
                     "path": "Section 1",
                     "page_number": 1,
+                    "content_length": 500,
                 }
             ],
             "hierarchy_depth": 2,

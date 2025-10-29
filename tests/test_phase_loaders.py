@@ -39,6 +39,7 @@ class TestPhaseLoaders:
                     "depth": 0,
                     "path": "Introduction",
                     "page_number": 1,
+                    "content_length": 500,
                 },
                 {
                     "section_id": "test_doc_sec_2",
@@ -47,6 +48,7 @@ class TestPhaseLoaders:
                     "depth": 0,
                     "path": "Methods",
                     "page_number": 2,
+                    "content_length": 750,
                 },
             ],
             "hierarchy_depth": 2,
