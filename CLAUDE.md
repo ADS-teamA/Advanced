@@ -747,3 +747,4 @@ logger.error("Errors that don't crash the program")
 - Visual Documentation (2025-10-26): Interactive HTML visualizations for indexing and search pipelines
 - Query Expansion (2025-10-26): Multi-query generation with `num_expands` parameter (research-based +15-25% recall improvement)
 - Tool Count Correction (2025-10-26): Corrected from 27 to 17 actual implemented tools
+- nepřidávej vector_db do .gitignore nikdy!
