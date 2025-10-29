@@ -230,35 +230,47 @@ class AgentCLI:
 
                 # Check if path is a directory (vector_db/) or a single file
                 if kg_path.is_dir():
-                    # Load all *_kg.json files from directory
-                    kg_files = sorted(kg_path.glob("*_kg.json"))
-                    if not kg_files:
-                        raise FileNotFoundError(f"No knowledge graph files (*_kg.json) found in {kg_path}")
+                    # Prefer unified_kg.json if it exists
+                    unified_kg_path = kg_path / "unified_kg.json"
 
-                    print(f"   Found {len(kg_files)} knowledge graph files")
+                    if unified_kg_path.exists():
+                        # Load unified KG (already deduplicated with cross-doc relationships)
+                        print(f"   Loading unified knowledge graph...")
+                        knowledge_graph = KnowledgeGraph.load_json(str(unified_kg_path))
+                        print(
+                            f"   Unified KG: {len(knowledge_graph.entities)} entities, "
+                            f"{len(knowledge_graph.relationships)} relationships"
+                        )
+                    else:
+                        # Fallback: Load all *_kg.json files from directory (old behavior)
+                        kg_files = sorted(kg_path.glob("*_kg.json"))
+                        if not kg_files:
+                            raise FileNotFoundError(f"No knowledge graph files (*_kg.json) found in {kg_path}")
 
-                    # Load and merge all KG files
-                    knowledge_graph = None
-                    total_entities = 0
-                    total_relationships = 0
+                        print(f"   Found {len(kg_files)} knowledge graph files (unified_kg.json not found)")
 
-                    for kg_file in kg_files:
-                        kg = KnowledgeGraph.load_json(str(kg_file))
-                        if knowledge_graph is None:
-                            knowledge_graph = kg
-                        else:
-                            # Merge graphs by combining entities and relationships
-                            knowledge_graph.entities.extend(kg.entities)
-                            knowledge_graph.relationships.extend(kg.relationships)
+                        # Load and merge all KG files (naive merge without deduplication)
+                        knowledge_graph = None
+                        total_entities = 0
+                        total_relationships = 0
 
-                        total_entities += len(kg.entities)
-                        total_relationships += len(kg.relationships)
-                        print(f"   Loaded {kg_file.name}: {len(kg.entities)} entities, {len(kg.relationships)} relationships")
+                        for kg_file in kg_files:
+                            kg = KnowledgeGraph.load_json(str(kg_file))
+                            if knowledge_graph is None:
+                                knowledge_graph = kg
+                            else:
+                                # Merge graphs by combining entities and relationships
+                                knowledge_graph.entities.extend(kg.entities)
+                                knowledge_graph.relationships.extend(kg.relationships)
 
-                    print(
-                        f"   Total: {total_entities} entities, "
-                        f"{total_relationships} relationships"
-                    )
+                            total_entities += len(kg.entities)
+                            total_relationships += len(kg.relationships)
+                            print(f"   Loaded {kg_file.name}: {len(kg.entities)} entities, {len(kg.relationships)} relationships")
+
+                        print(
+                            f"   Total: {total_entities} entities, "
+                            f"{total_relationships} relationships (naive merge - consider building unified_kg.json)"
+                        )
                 else:
                     # Load single file
                     knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))

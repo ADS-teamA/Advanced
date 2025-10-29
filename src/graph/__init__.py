@@ -32,6 +32,9 @@ from .entity_extractor import EntityExtractor
 from .relationship_extractor import RelationshipExtractor
 from .graph_builder import GraphBuilder, Neo4jGraphBuilder, SimpleGraphBuilder
 from .kg_pipeline import KnowledgeGraphPipeline
+from .unified_kg_manager import UnifiedKnowledgeGraphManager
+from .cross_doc_detector import CrossDocumentRelationshipDetector
+from .deduplicator import EntityDeduplicator
 
 __all__ = [
     # Models
@@ -55,4 +58,8 @@ __all__ = [
     "SimpleGraphBuilder",
     # Pipeline
     "KnowledgeGraphPipeline",
+    # Unified KG (Phase 5: Cross-Document)
+    "UnifiedKnowledgeGraphManager",
+    "CrossDocumentRelationshipDetector",
+    "EntityDeduplicator",
 ]

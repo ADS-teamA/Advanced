@@ -39,7 +39,6 @@ import sys
 import logging
 import argparse
 from pathlib import Path
-from datetime import datetime
 
 # Setup logging
 logging.basicConfig(
@@ -172,7 +171,7 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
         output_base = Path(__file__).parent / "output"
 
     doc_name = document_path.stem.replace(" ", "_").replace("(", "").replace(")", "")
-    output_dir = output_base / doc_name / datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = output_base / doc_name  # No timestamp - enables resume functionality
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print_header(f"SOTA 2025 RAG PIPELINE - {document_path.name}")
@@ -265,9 +264,11 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
                     print_info(f"New store: {stats['vector_store']['total_vectors']} vectors, "
                               f"{stats['vector_store']['documents']} documents")
 
-                    # Merge vector stores
-                    print_info("Merging FAISS indexes...")
-                    existing_store.faiss_store.merge(vector_store if isinstance(vector_store, FAISSVectorStore) else vector_store.faiss_store)
+                    # Merge vector stores with deduplication
+                    print_info("Merging FAISS indexes with deduplication...")
+                    faiss_merge_stats = existing_store.faiss_store.merge(
+                        vector_store if isinstance(vector_store, FAISSVectorStore) else vector_store.faiss_store
+                    )
 
                     print_info("Merging BM25 indexes...")
                     if hasattr(existing_store, 'bm25_store') and hasattr(vector_store, 'bm25_store'):
@@ -281,62 +282,59 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
                     print_success(f"Merge complete!")
                     print_info(f"Merged store: {merged_stats['total_vectors']} vectors, "
                               f"{merged_stats['documents']} documents")
-                    print_info(f"Added: {merged_stats['total_vectors'] - existing_stats_before['total_vectors']} vectors")
+                    print_info(f"Added: {faiss_merge_stats['added']} vectors, "
+                              f"Skipped: {faiss_merge_stats['skipped']} duplicates")
 
-                    # Merge Knowledge Graphs (if both exist)
+                    # Merge Knowledge Graphs with cross-document relationships
                     if knowledge_graph and config.enable_knowledge_graph:
                         print()
-                        print_info("Merging knowledge graphs...")
+                        print_info("Merging knowledge graphs with cross-document deduplication...")
 
-                        # Find existing KG file
-                        existing_kg_files = list(merge_target.parent.glob("*.json"))
-                        existing_kg_file = None
-                        for f in existing_kg_files:
-                            if "kg.json" in f.name or "knowledge_graph" in f.name:
-                                existing_kg_file = f
-                                break
+                        from src.graph import (
+                            KnowledgeGraph,
+                            UnifiedKnowledgeGraphManager,
+                            CrossDocumentRelationshipDetector
+                        )
 
-                        if existing_kg_file and existing_kg_file.exists():
-                            from src.graph import KnowledgeGraph, KnowledgeGraphPipeline, KnowledgeGraphConfig
+                        # Initialize unified KG manager (uses merge_target directory for storage)
+                        storage_dir = merge_target.parent if merge_target.parent.name != 'phase4_vector_store' else merge_target.parent.parent
+                        manager = UnifiedKnowledgeGraphManager(storage_dir=str(storage_dir))
 
-                            # Load existing KG
-                            print_info(f"Loading existing KG from: {existing_kg_file.name}")
-                            existing_kg = KnowledgeGraph.load_json(str(existing_kg_file))
+                        # Initialize cross-document detector
+                        detector = CrossDocumentRelationshipDetector(
+                            use_llm_validation=False,  # Fast pattern-based detection
+                            confidence_threshold=0.7
+                        )
 
-                            # Create pipelines for merge
-                            kg_config = KnowledgeGraphConfig.from_env()
-                            existing_pipeline = KnowledgeGraphPipeline(kg_config)
-                            new_pipeline = KnowledgeGraphPipeline(kg_config)
+                        # Load or create unified KG
+                        unified_kg = manager.load_or_create()
 
-                            # Load graphs into pipelines
-                            existing_pipeline.graph_builder.add_entities(existing_kg.entities)
-                            existing_pipeline.graph_builder.add_relationships(existing_kg.relationships)
+                        print_info(f"Current unified KG: {len(unified_kg.entities)} entities, "
+                                  f"{len(unified_kg.relationships)} relationships")
+                        print_info(f"New document KG: {len(knowledge_graph.entities)} entities, "
+                                  f"{len(knowledge_graph.relationships)} relationships")
 
-                            new_pipeline.graph_builder.add_entities(knowledge_graph.entities)
-                            new_pipeline.graph_builder.add_relationships(knowledge_graph.relationships)
+                        # Merge with deduplication and cross-doc detection
+                        unified_kg = manager.merge_document_graph(
+                            unified_kg=unified_kg,
+                            document_kg=knowledge_graph,
+                            document_id=doc_name,
+                            cross_doc_detector=detector
+                        )
 
-                            # Merge
-                            print_info(f"Existing KG: {len(existing_kg.entities)} entities, "
-                                      f"{len(existing_kg.relationships)} relationships")
-                            print_info(f"New KG: {len(knowledge_graph.entities)} entities, "
-                                      f"{len(knowledge_graph.relationships)} relationships")
+                        # Save unified KG + per-document backup
+                        manager.save(unified_kg, document_id=doc_name)
 
-                            merge_stats = existing_pipeline.merge_graphs(new_pipeline)
+                        # Get statistics
+                        doc_stats = manager.get_document_statistics(unified_kg)
 
-                            print_success(f"KG merge complete!")
-                            print_info(f"+{merge_stats['entities_added']} entities, "
-                                      f"~{merge_stats['entities_deduplicated']} deduplicated, "
-                                      f"+{merge_stats['relationships_added']} relationships")
-
-                            # Save merged KG
-                            merged_kg = existing_pipeline.graph_builder.export_to_knowledge_graph()
-                            merged_kg.save_json(str(existing_kg_file))
-                            print_info(f"Merged KG saved: {existing_kg_file}")
-                        else:
-                            print_info("No existing KG found, saving new KG...")
-                            kg_target = merge_target.parent / f"merged_kg.json"
-                            knowledge_graph.save_json(str(kg_target))
-                            print_info(f"New KG saved: {kg_target}")
+                        print_success(f"KG merge complete with cross-document relationships!")
+                        print_info(f"Unified KG: {len(unified_kg.entities)} entities, "
+                                  f"{len(unified_kg.relationships)} relationships")
+                        print_info(f"Documents in unified KG: {doc_stats['total_documents']}")
+                        print_info(f"Cross-document entities: {doc_stats['cross_document_entities']} "
+                                  f"({doc_stats['cross_document_entity_percentage']:.1f}%)")
+                        print_info(f"Saved: {storage_dir / 'unified_kg.json'}")
 
                 except Exception as e:
                     print()

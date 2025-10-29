@@ -361,10 +361,11 @@ class FAISSVectorStore:
 
     def merge(self, other: "FAISSVectorStore"):
         """
-        Merge another vector store into this one (incremental indexing).
+        Merge another vector store into this one with deduplication.
 
         This allows adding new documents to an existing vector store without
-        rebuilding from scratch.
+        rebuilding from scratch. Automatically detects and skips duplicate
+        chunk_ids to prevent data duplication.
 
         Args:
             other: Another FAISSVectorStore to merge into this one
@@ -380,52 +381,147 @@ class FAISSVectorStore:
 
         logger.info(f"Merging vector store with {other.get_stats()['documents']} documents...")
 
-        # Merge Layer 1
+        # Track deduplication statistics
+        stats = {"added": 0, "skipped": 0, "layers": {}}
+
+        # Merge Layer 1 with deduplication
         if other.index_layer1.ntotal > 0:
-            vectors = other.index_layer1.reconstruct_n(0, other.index_layer1.ntotal)
-            vectors = vectors.reshape(other.index_layer1.ntotal, self.dimensions).astype(np.float32)
-
-            base_idx = self.index_layer1.ntotal
-            self.index_layer1.add(vectors)
-            self.metadata_layer1.extend(other.metadata_layer1)
-
-            # Update doc_id_to_indices using centralized utility
-            PersistenceManager.update_doc_id_indices(
-                self.doc_id_to_indices[1], other.doc_id_to_indices[1], base_idx
+            layer_stats = self._merge_layer_with_deduplication(
+                layer=1,
+                other_index=other.index_layer1,
+                other_metadata=other.metadata_layer1,
+                other_doc_indices=other.doc_id_to_indices[1]
             )
+            stats["layers"][1] = layer_stats
+            stats["added"] += layer_stats["added"]
+            stats["skipped"] += layer_stats["skipped"]
 
-        # Merge Layer 2
+        # Merge Layer 2 with deduplication
         if other.index_layer2.ntotal > 0:
-            vectors = other.index_layer2.reconstruct_n(0, other.index_layer2.ntotal)
-            vectors = vectors.reshape(other.index_layer2.ntotal, self.dimensions).astype(np.float32)
-
-            base_idx = self.index_layer2.ntotal
-            self.index_layer2.add(vectors)
-            self.metadata_layer2.extend(other.metadata_layer2)
-
-            # Update doc_id_to_indices using centralized utility
-            PersistenceManager.update_doc_id_indices(
-                self.doc_id_to_indices[2], other.doc_id_to_indices[2], base_idx
+            layer_stats = self._merge_layer_with_deduplication(
+                layer=2,
+                other_index=other.index_layer2,
+                other_metadata=other.metadata_layer2,
+                other_doc_indices=other.doc_id_to_indices[2]
             )
+            stats["layers"][2] = layer_stats
+            stats["added"] += layer_stats["added"]
+            stats["skipped"] += layer_stats["skipped"]
 
-        # Merge Layer 3
+        # Merge Layer 3 with deduplication
         if other.index_layer3.ntotal > 0:
-            vectors = other.index_layer3.reconstruct_n(0, other.index_layer3.ntotal)
-            vectors = vectors.reshape(other.index_layer3.ntotal, self.dimensions).astype(np.float32)
-
-            base_idx = self.index_layer3.ntotal
-            self.index_layer3.add(vectors)
-            self.metadata_layer3.extend(other.metadata_layer3)
-
-            # Update doc_id_to_indices using centralized utility
-            PersistenceManager.update_doc_id_indices(
-                self.doc_id_to_indices[3], other.doc_id_to_indices[3], base_idx
+            layer_stats = self._merge_layer_with_deduplication(
+                layer=3,
+                other_index=other.index_layer3,
+                other_metadata=other.metadata_layer3,
+                other_doc_indices=other.doc_id_to_indices[3]
             )
+            stats["layers"][3] = layer_stats
+            stats["added"] += layer_stats["added"]
+            stats["skipped"] += layer_stats["skipped"]
 
-        stats = self.get_stats()
+        final_stats = self.get_stats()
         logger.info(
-            f"Merge complete: {stats['documents']} total documents, {stats['total_vectors']} vectors"
+            f"Merge complete: {stats['added']} vectors added, {stats['skipped']} duplicates skipped"
         )
+        logger.info(
+            f"Total: {final_stats['documents']} documents, {final_stats['total_vectors']} vectors"
+        )
+
+        return stats
+
+    def _merge_layer_with_deduplication(
+        self, layer: int, other_index, other_metadata: List[Dict], other_doc_indices: Dict
+    ) -> Dict:
+        """
+        Merge a single layer with chunk_id deduplication.
+
+        Args:
+            layer: Layer number (1, 2, or 3)
+            other_index: Other layer's FAISS index
+            other_metadata: Other layer's metadata list
+            other_doc_indices: Other layer's doc_id_to_indices mapping
+
+        Returns:
+            Dict with 'added' and 'skipped' counts
+        """
+        # Select current layer's structures
+        if layer == 1:
+            current_index = self.index_layer1
+            current_metadata = self.metadata_layer1
+            current_doc_indices = self.doc_id_to_indices[1]
+        elif layer == 2:
+            current_index = self.index_layer2
+            current_metadata = self.metadata_layer2
+            current_doc_indices = self.doc_id_to_indices[2]
+        elif layer == 3:
+            current_index = self.index_layer3
+            current_metadata = self.metadata_layer3
+            current_doc_indices = self.doc_id_to_indices[3]
+        else:
+            raise ValueError(f"Invalid layer: {layer}")
+
+        # Build set of existing chunk_ids for O(1) lookup
+        existing_chunk_ids = set()
+        for meta in current_metadata:
+            if "chunk_id" in meta:
+                existing_chunk_ids.add(meta["chunk_id"])
+
+        # Track which vectors to add
+        vectors_to_add = []
+        metadata_to_add = []
+        new_doc_indices = {}
+
+        # Iterate through other's vectors
+        vectors = other_index.reconstruct_n(0, other_index.ntotal)
+        vectors = vectors.reshape(other_index.ntotal, self.dimensions).astype(np.float32)
+
+        added = 0
+        skipped = 0
+
+        for i, (vector, meta) in enumerate(zip(vectors, other_metadata)):
+            chunk_id = meta.get("chunk_id")
+
+            # Check for duplicate
+            if chunk_id and chunk_id in existing_chunk_ids:
+                skipped += 1
+                logger.debug(f"Layer {layer}: Skipping duplicate chunk_id: {chunk_id}")
+                continue
+
+            # Not a duplicate - add it
+            vectors_to_add.append(vector)
+            metadata_to_add.append(meta)
+
+            # Track for doc_id_to_indices update
+            doc_id = meta.get("document_id")
+            if doc_id:
+                if doc_id not in new_doc_indices:
+                    new_doc_indices[doc_id] = []
+                # Index will be: current_index.ntotal + position in vectors_to_add
+                new_idx = current_index.ntotal + len(vectors_to_add) - 1
+                new_doc_indices[doc_id].append(new_idx)
+
+            # Add to existing_chunk_ids to prevent duplicates within same merge
+            if chunk_id:
+                existing_chunk_ids.add(chunk_id)
+
+            added += 1
+
+        # Add vectors to FAISS index
+        if vectors_to_add:
+            vectors_array = np.array(vectors_to_add).astype(np.float32)
+            current_index.add(vectors_array)
+            current_metadata.extend(metadata_to_add)
+
+            # Update doc_id_to_indices
+            for doc_id, indices in new_doc_indices.items():
+                if doc_id not in current_doc_indices:
+                    current_doc_indices[doc_id] = []
+                current_doc_indices[doc_id].extend(indices)
+
+        logger.info(f"Layer {layer}: +{added} vectors, ~{skipped} duplicates skipped")
+
+        return {"added": added, "skipped": skipped}
 
     def get_stats(self) -> Dict:
         """Get statistics about the vector store."""

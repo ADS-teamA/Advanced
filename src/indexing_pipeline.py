@@ -376,9 +376,10 @@ class IndexingPipeline:
         document_path: Path,
         save_intermediate: bool = False,
         output_dir: Optional[Path] = None,
+        resume: bool = True,
     ) -> Dict:
         """
-        Index a single document.
+        Index a single document with automatic resume support.
 
         Supported formats: PDF, DOCX, PPTX, XLSX, HTML
 
@@ -393,6 +394,7 @@ class IndexingPipeline:
             document_path: Path to document file (PDF, DOCX, PPTX, XLSX, HTML)
             save_intermediate: Save intermediate results (chunks, embeddings)
             output_dir: Directory for intermediate results
+            resume: Enable resume from existing phases (default: True)
 
         Returns:
             Dict with:
@@ -420,6 +422,52 @@ class IndexingPipeline:
 
         # Reset cost tracker for this document
         reset_global_tracker()
+
+        # RESUME DETECTION: Check for existing phases
+        from src.phase_detector import PhaseDetector
+        from src.phase_loaders import PhaseLoaders
+
+        phase_status = None
+        cached_extraction = None
+        cached_chunks = None
+
+        if resume and output_dir and output_dir.exists():
+            phase_status = PhaseDetector.detect(output_dir)
+
+            if phase_status.completed_phase > 0:
+                logger.info("")
+                logger.info("=" * 80)
+                logger.info("RESUME MODE: Detected existing phases")
+                logger.info("=" * 80)
+                logger.info(f"Phase 1 (extraction): {'✓ EXISTS' if 1 in phase_status.phase_files else '✗ MISSING'}")
+                logger.info(f"Phase 2 (summaries):  {'✓ EXISTS' if 2 in phase_status.phase_files else '✗ MISSING'}")
+                logger.info(f"Phase 3 (chunks):     {'✓ EXISTS' if 3 in phase_status.phase_files else '✗ MISSING'}")
+                logger.info(f"Phase 4 (vectors):    {'✓ EXISTS' if 4 in phase_status.phase_files else '✗ MISSING'}")
+                logger.info("")
+                logger.info(f"Will resume from Phase {phase_status.completed_phase + 1}")
+                logger.info("=" * 80)
+                logger.info("")
+
+                # Load cached phases
+                try:
+                    if phase_status.completed_phase >= 1:
+                        cached_extraction = PhaseLoaders.load_phase1(phase_status.phase_files[1])
+
+                    if phase_status.completed_phase >= 2:
+                        cached_extraction = PhaseLoaders.load_phase2(
+                            phase_status.phase_files[2],
+                            cached_extraction
+                        )
+
+                    if phase_status.completed_phase >= 3:
+                        cached_chunks = PhaseLoaders.load_phase3(phase_status.phase_files[3])
+
+                except Exception as e:
+                    logger.error(f"Failed to load cached phases: {e}")
+                    logger.warning("Starting from phase 1 due to load error")
+                    cached_extraction = None
+                    cached_chunks = None
+                    phase_status = None
 
         # Semantic Duplicate Detection (before extraction to save time)
         if self.config.enable_duplicate_detection:
@@ -477,12 +525,20 @@ class IndexingPipeline:
 
                 logger.debug(traceback.format_exc())
 
-        # PHASE 1+2: Extract + Summaries
-        logger.info("PHASE 1+2: Extraction + Summaries")
-        result = self.extractor.extract(document_path)
-        logger.info(
-            f"✓ Extracted: {result.num_sections} sections, " f"depth={result.hierarchy_depth}"
-        )
+        # PHASE 1+2: Extract + Summaries (skip if cached)
+        if cached_extraction is not None and phase_status and phase_status.completed_phase >= 2:
+            logger.info("PHASE 1+2: ⏭️  SKIPPING - Loaded from cache")
+            result = cached_extraction
+            logger.info(
+                f"✓ Cached extraction: {result.num_sections} sections, "
+                f"depth={result.hierarchy_depth}"
+            )
+        else:
+            logger.info("PHASE 1+2: Extraction + Summaries")
+            result = self.extractor.extract(document_path)
+            logger.info(
+                f"✓ Extracted: {result.num_sections} sections, " f"depth={result.hierarchy_depth}"
+            )
 
         # Check existing components in vector_db AFTER extraction
         logger.info("")
@@ -511,15 +567,25 @@ class IndexingPipeline:
         skip_bm25 = existing["has_bm25"]
         skip_kg = existing["has_kg"]
 
-        # PHASE 3: Multi-layer chunking + SAC
-        logger.info("PHASE 3: Multi-Layer Chunking + SAC")
-        chunks = self.chunker.chunk_document(result)
-        chunking_stats = self.chunker.get_chunking_stats(chunks)
-        logger.info(
-            f"✓ Chunked: L1={chunking_stats['layer1_count']}, "
-            f"L2={chunking_stats['layer2_count']}, "
-            f"L3={chunking_stats['layer3_count']} (PRIMARY)"
-        )
+        # PHASE 3: Multi-layer chunking + SAC (skip if cached)
+        if cached_chunks is not None and phase_status and phase_status.completed_phase >= 3:
+            logger.info("PHASE 3: ⏭️  SKIPPING - Loaded from cache")
+            chunks = cached_chunks
+            chunking_stats = self.chunker.get_chunking_stats(chunks)
+            logger.info(
+                f"✓ Cached chunks: L1={chunking_stats['layer1_count']}, "
+                f"L2={chunking_stats['layer2_count']}, "
+                f"L3={chunking_stats['layer3_count']} (PRIMARY)"
+            )
+        else:
+            logger.info("PHASE 3: Multi-Layer Chunking + SAC")
+            chunks = self.chunker.chunk_document(result)
+            chunking_stats = self.chunker.get_chunking_stats(chunks)
+            logger.info(
+                f"✓ Chunked: L1={chunking_stats['layer1_count']}, "
+                f"L2={chunking_stats['layer2_count']}, "
+                f"L3={chunking_stats['layer3_count']} (PRIMARY)"
+            )
 
         # PHASE 4: Embedding & FAISS (skip if exists)
         vector_store = None
