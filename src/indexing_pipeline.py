@@ -469,7 +469,7 @@ class IndexingPipeline:
                         logger.debug(f"Loading Phase 3 from {phase_status.phase_files[3]}")
                         cached_chunks = PhaseLoaders.load_phase3(phase_status.phase_files[3])
 
-                except (FileNotFoundError, ValueError, KeyError) as e:
+                except (FileNotFoundError, ValueError, KeyError, UnicodeDecodeError) as e:
                     logger.error(f"Failed to load cached phases: {e}")
                     logger.warning("Phase cache corrupted or incomplete - reprocessing from scratch")
                     logger.warning(f"Error details: {type(e).__name__}: {str(e)}")
@@ -526,12 +526,16 @@ class IndexingPipeline:
                 logger.info("=" * 80)
                 logger.info("")
 
-            except Exception as e:
+            except (ImportError, RuntimeError, PermissionError, OSError) as e:
                 logger.error(f"Duplicate detection failed: {e}")
                 logger.warning("Continuing with indexing...")
                 import traceback
 
                 logger.debug(traceback.format_exc())
+            except KeyboardInterrupt:
+                raise  # Always re-raise user interrupts
+            except SystemExit:
+                raise  # Always re-raise system exits
 
         # PHASE 1+2: Extract + Summaries (skip if cached)
         if cached_extraction is not None and phase_status and phase_status.completed_phase >= 2:
@@ -608,8 +612,8 @@ class IndexingPipeline:
                     f"Loaded existing: {store_stats['total_vectors']} vectors "
                     f"({store_stats['documents']} documents)"
                 )
-            except Exception as e:
-                logger.error(f"✗ Failed to load existing vector_db: {e}")
+            except (FileNotFoundError, ValueError, RuntimeError, PermissionError) as e:
+                logger.error(f"[ERROR] Failed to load existing vector_db: {e}")
                 logger.info("Falling back to creating new embeddings...")
                 skip_dense = False
 
@@ -670,8 +674,8 @@ class IndexingPipeline:
 
                     logger.info(f"Hybrid Search enabled: RRF k={self.config.hybrid_fusion_k}")
 
-                except Exception as e:
-                    logger.error(f"✗ Hybrid Search failed: {e}")
+                except (ImportError, RuntimeError, ValueError, MemoryError) as e:
+                    logger.error(f"[ERROR] Hybrid Search failed: {e}")
                     logger.warning("Continuing with dense-only retrieval...")
                     import traceback
 
@@ -728,7 +732,7 @@ class IndexingPipeline:
                     )
 
                 except Exception as e:
-                    logger.error(f"✗ Knowledge Graph construction failed: {e}", exc_info=True)
+                    logger.error(f"[ERROR] Knowledge Graph construction failed: {e}", exc_info=True)
                     if self.config.enable_knowledge_graph:
                         logger.error(
                             f"ERROR: Knowledge Graph was enabled in config but construction failed.\n"
@@ -819,6 +823,11 @@ class IndexingPipeline:
                     output_dir=output_dir if save_per_document else None,
                 )
 
+                # Handle None return (duplicate document skipped)
+                if result is None:
+                    logger.info(f"[SKIPPED] Duplicate document: {document_path}")
+                    continue
+
                 # Extract components
                 doc_store = result["vector_store"]
                 doc_kg = result.get("knowledge_graph")
@@ -844,7 +853,7 @@ class IndexingPipeline:
                     logger.info(f"Saved individual store: {doc_output}")
 
             except Exception as e:
-                logger.error(f"✗ Failed to index {document_path}: {e}")
+                logger.error(f"[ERROR] Failed to index {document_path}: {e}")
                 continue
 
         # Save combined store
@@ -855,7 +864,7 @@ class IndexingPipeline:
         if knowledge_graphs and self.kg_pipeline:
             try:
                 # Merge all KGs
-                from graph import KnowledgeGraph
+                from src.graph import KnowledgeGraph
 
                 combined_kg = KnowledgeGraph(
                     entities=[e for kg in knowledge_graphs for e in kg.entities],
@@ -871,7 +880,7 @@ class IndexingPipeline:
                     f"{len(combined_kg.relationships)} relationships"
                 )
             except Exception as e:
-                logger.error(f"✗ Failed to save combined KG: {e}")
+                logger.error(f"[ERROR] Failed to save combined KG: {e}")
 
         logger.info(f"\nBatch indexing complete: {vector_store.get_stats()}")
         logger.info(f"Saved to: {combined_output}")

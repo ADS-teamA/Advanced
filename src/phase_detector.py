@@ -58,6 +58,12 @@ class PhaseStatus:
                     f"Incomplete phase sequence: expected phases {sorted(expected_phases)}, "
                     f"but got {sorted(actual_phases)}"
                 )
+        else:
+            # If completed_phase=0, phase_files must be empty
+            if self.phase_files:
+                raise ValueError(
+                    f"Invalid state: completed_phase=0 but phase_files is not empty: {list(self.phase_files.keys())}"
+                )
 
 
 class PhaseDetector:

@@ -54,6 +54,8 @@ class DuplicateDetectionConfig:
             )
         if self.sample_pages < 1:
             raise ValueError(f"sample_pages must be >= 1, got {self.sample_pages}")
+        if self.cache_size < 0:
+            raise ValueError(f"cache_size must be >= 0, got {self.cache_size}")
 
 
 class DuplicateDetector:
