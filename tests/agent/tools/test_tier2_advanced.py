@@ -24,15 +24,23 @@ from unittest.mock import Mock, MagicMock, patch
 import numpy as np
 
 from src.agent.tools.tier2_advanced import (
-    MultiHopSearchTool,
+    # MultiHopSearchTool,  # REMOVED - replaced by GraphSearchTool
     CompareDocumentsTool,
-    FindRelatedChunksTool,
-    TemporalSearchTool,
-    HybridSearchWithFiltersTool,
-    CrossReferenceSearchTool,
-    ExpandSearchContextTool,
-    ChunkSimilaritySearchTool,
+    # FindRelatedChunksTool,  # TODO: Check if this tool exists
+    # TemporalSearchTool,  # TODO: Check if this tool exists
+    # HybridSearchWithFiltersTool,  # REMOVED - replaced by FilteredSearchTool
+    # CrossReferenceSearchTool,  # TODO: Check if this tool exists
+    # ExpandSearchContextTool,  # TODO: Check if exists (might be ExpandContextTool)
+    # ChunkSimilaritySearchTool,  # REMOVED - replaced by SimilaritySearchTool
     ExplainSearchResultsTool,
+)
+
+# New consolidated tools (to be tested):
+from src.agent.tools.tier2_advanced import (
+    GraphSearchTool,  # Replaces MultiHopSearchTool + EntityTool
+    FilteredSearchTool,  # Replaces HybridSearchWithFiltersTool
+    SimilaritySearchTool,  # Replaces ChunkSimilaritySearchTool
+    ExpandContextTool,  # Check if this replaces ExpandSearchContextTool
 )
 from src.agent.tools.base import ToolResult
 

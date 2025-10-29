@@ -8,11 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SUJBOT2** is a production-ready RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. It implements state-of-the-art techniques from 4 research papers (2024-2025) and features a 7-phase pipeline with an interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 16-Tool Agent)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 14-Tool Agent)
 
 **Visual Documentation:**
 - 📥 **Indexing Pipeline (Phase 1-5):** [`indexing_pipeline.html`](indexing_pipeline.html) - Complete indexing process from PDF to searchable vector store
-- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 16 agent tools breakdown
+- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 14 agent tools breakdown
 
 **Core Technologies:**
 - Document processing: IBM Docling (hierarchical structure extraction)
@@ -234,7 +234,7 @@ These decisions are backed by research papers and extensive testing:
 **📊 Visual Tool Reference:** See [`user_search_pipeline.html`](user_search_pipeline.html) for interactive tool documentation with examples and use cases.
 
 **Tool Tiers (Speed/Quality Tradeoff):**
-- **TIER 1** (6 tools): Fast (100-300ms), basic retrieval - Use first
+- **TIER 1** (5 tools): Fast (100-300ms), basic retrieval - Use first
   - Key tool: **`search`** (unified hybrid search with optional query expansion) ✅ **Query Expansion**
     - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total (default)
     - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total (+15-25% recall est.)
@@ -242,9 +242,10 @@ These decisions are backed by research papers and extensive testing:
     - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total (max quality)
     - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
     - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py`
-  - Other tools: `get_document_list`, `get_document_info`, `exact_match_search`, `get_tool_help`, `list_available_tools`
-- **TIER 2** (7 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
-  - Tools: `multi_hop_search` (KG), `compare_documents`, `explain_search_results`, `filtered_search`, `similarity_search`, `entity_tool` (KG), `expand_context`
+  - Other tools: `get_document_list`, `get_document_info`, `get_tool_help`, `list_available_tools`
+- **TIER 2** (6 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
+  - Tools: `graph_search` (4 modes: entity_mentions, entity_details, relationships, multi_hop), `compare_documents`, `explain_search_results`, `filtered_search` (3 search methods), `similarity_search`, `expand_context`
+  - **Consolidated:** `graph_search` replaces `multi_hop_search` + `entity_tool`; `filtered_search` replaces `exact_match_search`
 - **TIER 3** (3 tools): Deep (1-3s), analysis and insights - Use sparingly
   - Tools: `timeline_view`, `summarize_section`, `get_stats`
 
@@ -266,7 +267,7 @@ These decisions are backed by research papers and extensive testing:
 
 **Automatic Caching Points:**
 - System prompt (agent instructions)
-- Tool definitions (16 tools)
+- Tool definitions (14 tools)
 - Initial messages (document list)
 - Long tool results (>1024 tokens)
 
@@ -735,17 +736,20 @@ logger.error("Errors that don't crash the program")
 
 ## Version & Status
 
-**Last Updated:** 2025-10-26
-**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Interactive Visual Documentation ✅
-**Agent Tools:** 16 (6 basic + 7 advanced + 3 analysis)
+**Last Updated:** 2025-10-29
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + Interactive Visual Documentation ✅
+**Agent Tools:** 14 (5 basic + 6 advanced + 3 analysis)
 **Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Context Assembly)
 **Visual Documentation:**
 - [`indexing_pipeline.html`](indexing_pipeline.html) - Detailed indexing process (Phase 1-5)
 - [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
 
 **Recent Updates:**
+- Tool Consolidation (2025-10-29): Reduced from 16 to 14 tools by consolidating duplicate functionality
+  - `graph_search` (4 modes) replaces `multi_hop_search` + `entity_tool`
+  - `filtered_search` (3 search methods) replaces `exact_match_search`
+  - Complete BFS multi-hop implementation (no longer stubbed)
 - Visual Documentation (2025-10-26): Interactive HTML visualizations for indexing and search pipelines
 - Query Expansion (2025-10-26): Multi-query generation with `num_expands` parameter (research-based +15-25% recall improvement)
-- Tool Count Correction (2025-10-26): Corrected from 27 to 17 actual implemented tools
 
 **Note:** Never add vector_db/ to .gitignore - it contains tracked merged vector stores.
