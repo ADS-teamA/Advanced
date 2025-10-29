@@ -767,27 +767,35 @@ class CompareDocumentsTool(BaseTool):
     ) -> ToolResult:
         """Compare two documents."""
         try:
-            # Retrieve all chunks from both documents
-            doc1_results = self.vector_store.hierarchical_search(
-                query_text=doc_id_1,
-                query_embedding=None,
-                k_layer1=1,
-                k_layer2=0,
-                k_layer3=50,
-                document_filter=doc_id_1,
-            )
+            # Retrieve all chunks from both documents using direct layer search
+            # Note: We can't use hierarchical_search() because it doesn't accept document_filter
+            # Instead, use the same pattern as document_search (fixed in commit 420df25)
 
-            doc2_results = self.vector_store.hierarchical_search(
-                query_text=doc_id_2,
+            # Get doc1 chunks
+            doc1_dense = self.vector_store.faiss_store.search_layer3(
                 query_embedding=None,
-                k_layer1=1,
-                k_layer2=0,
-                k_layer3=50,
-                document_filter=doc_id_2,
+                k=50,
+                document_filter=doc_id_1
             )
+            doc1_sparse = self.vector_store.bm25_store.search_layer3(
+                query=doc_id_1,
+                k=50,
+                document_filter=doc_id_1
+            )
+            doc1_chunks = self.vector_store._rrf_fusion(doc1_dense, doc1_sparse, k=50)
 
-            doc1_chunks = doc1_results.get("layer3", [])
-            doc2_chunks = doc2_results.get("layer3", [])
+            # Get doc2 chunks
+            doc2_dense = self.vector_store.faiss_store.search_layer3(
+                query_embedding=None,
+                k=50,
+                document_filter=doc_id_2
+            )
+            doc2_sparse = self.vector_store.bm25_store.search_layer3(
+                query=doc_id_2,
+                k=50,
+                document_filter=doc_id_2
+            )
+            doc2_chunks = self.vector_store._rrf_fusion(doc2_dense, doc2_sparse, k=50)
 
             if not doc1_chunks:
                 return ToolResult(
@@ -1097,6 +1105,14 @@ class FilteredSearchTool(BaseTool):
                 success=False,
                 data=None,
                 error=f"Invalid filter_type: {filter_type}. Must be 'document', 'section', 'metadata', or 'temporal'"
+            )
+
+        # Validate filter_value is provided when filter_type is set (except for temporal)
+        if filter_type and filter_type != "temporal" and not filter_value:
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"filter_value is required when filter_type='{filter_type}' is set"
             )
 
         try:

@@ -621,33 +621,40 @@ class TestCompareDocumentsTool:
     def test_compare_documents_basic(self, tool_dependencies, mock_vector_store):
         """Test basic document comparison."""
 
-        # Setup mock to return different results for each document
-        def custom_search(**kwargs):
-            doc_filter = kwargs.get("document_filter")
-            if doc_filter == "doc1":
-                return {
-                    "layer3": [
-                        {
-                            "chunk_id": "doc1:sec1:0",
-                            "doc_id": "doc1",
-                            "document_id": "doc1",
-                            "content": "Doc1 content.",
-                        }
-                    ]
-                }
-            else:
-                return {
-                    "layer3": [
-                        {
-                            "chunk_id": "doc2:sec1:0",
-                            "doc_id": "doc2",
-                            "document_id": "doc2",
-                            "content": "Doc2 content.",
-                        }
-                    ]
-                }
+        # Mock the new direct layer search approach
+        doc1_chunks = [
+            {
+                "chunk_id": "doc1:sec1:0",
+                "doc_id": "doc1",
+                "document_id": "doc1",
+                "content": "Doc1 content.",
+            }
+        ]
+        doc2_chunks = [
+            {
+                "chunk_id": "doc2:sec1:0",
+                "doc_id": "doc2",
+                "document_id": "doc2",
+                "content": "Doc2 content.",
+            }
+        ]
 
-        mock_vector_store.hierarchical_search.side_effect = custom_search
+        # Mock faiss_store and bm25_store
+        mock_vector_store.faiss_store = Mock()
+        mock_vector_store.bm25_store = Mock()
+        mock_vector_store._rrf_fusion = Mock()
+
+        # Setup side_effect to return appropriate chunks
+        def rrf_fusion_side_effect(dense, sparse, k):
+            # Determine which document based on call order
+            if not hasattr(rrf_fusion_side_effect, 'call_count'):
+                rrf_fusion_side_effect.call_count = 0
+            rrf_fusion_side_effect.call_count += 1
+            return doc1_chunks if rrf_fusion_side_effect.call_count == 1 else doc2_chunks
+
+        mock_vector_store._rrf_fusion.side_effect = rrf_fusion_side_effect
+        mock_vector_store.faiss_store.search_layer3.return_value = []
+        mock_vector_store.bm25_store.search_layer3.return_value = []
 
         tool = CompareDocumentsTool(**tool_dependencies)
         result = tool.execute(doc_id_1="doc1", doc_id_2="doc2")
@@ -662,6 +669,15 @@ class TestCompareDocumentsTool:
 
     def test_compare_documents_with_aspect(self, tool_dependencies, mock_vector_store):
         """Test document comparison with specific aspect."""
+        # Mock the new direct layer search approach
+        mock_vector_store.faiss_store = Mock()
+        mock_vector_store.bm25_store = Mock()
+        mock_vector_store._rrf_fusion = Mock(return_value=[
+            {"chunk_id": "doc1:sec1:0", "doc_id": "doc1", "content": "Requirements content."}
+        ])
+        mock_vector_store.faiss_store.search_layer3.return_value = []
+        mock_vector_store.bm25_store.search_layer3.return_value = []
+
         tool = CompareDocumentsTool(**tool_dependencies)
 
         result = tool.execute(doc_id_1="doc1", doc_id_2="doc2", comparison_aspect="requirements")
@@ -675,7 +691,11 @@ class TestCompareDocumentsTool:
         """Test comparison when first document not found."""
         # Create fresh mock that returns empty for all calls
         mock_vs = Mock()
-        mock_vs.hierarchical_search.return_value = {"layer3": []}
+        mock_vs.faiss_store = Mock()
+        mock_vs.bm25_store = Mock()
+        mock_vs._rrf_fusion = Mock(return_value=[])
+        mock_vs.faiss_store.search_layer3.return_value = []
+        mock_vs.bm25_store.search_layer3.return_value = []
         tool_dependencies["vector_store"] = mock_vs
 
         tool = CompareDocumentsTool(**tool_dependencies)
@@ -686,18 +706,26 @@ class TestCompareDocumentsTool:
 
     def test_compare_documents_second_not_found(self, tool_dependencies, mock_vector_store):
         """Test comparison when second document not found."""
-        call_count = [0]
 
-        def custom_search(**kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First call returns results (doc1)
-                return {"layer3": [{"chunk_id": "doc1:sec1:0", "doc_id": "doc1"}]}
-            else:
-                # Second call returns empty (doc2 not found)
-                return {"layer3": []}
+        # Mock the new direct layer search approach
+        doc1_chunks = [{"chunk_id": "doc1:sec1:0", "doc_id": "doc1"}]
+        doc2_chunks = []  # Empty - doc2 not found
 
-        mock_vector_store.hierarchical_search.side_effect = custom_search
+        # Mock faiss_store and bm25_store
+        mock_vector_store.faiss_store = Mock()
+        mock_vector_store.bm25_store = Mock()
+        mock_vector_store._rrf_fusion = Mock()
+
+        # Setup side_effect to return doc1 chunks first, then empty for doc2
+        def rrf_fusion_side_effect(dense, sparse, k):
+            if not hasattr(rrf_fusion_side_effect, 'call_count'):
+                rrf_fusion_side_effect.call_count = 0
+            rrf_fusion_side_effect.call_count += 1
+            return doc1_chunks if rrf_fusion_side_effect.call_count == 1 else doc2_chunks
+
+        mock_vector_store._rrf_fusion.side_effect = rrf_fusion_side_effect
+        mock_vector_store.faiss_store.search_layer3.return_value = []
+        mock_vector_store.bm25_store.search_layer3.return_value = []
 
         tool = CompareDocumentsTool(**tool_dependencies)
         result = tool.execute(doc_id_1="doc1", doc_id_2="nonexistent")
