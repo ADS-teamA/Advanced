@@ -26,7 +26,7 @@ Tool descriptions are deliberately SHORT to save tokens (~80% reduction). Each t
 - Once you have gathered sufficient information from tools, provide a clear answer to the user
 - Do NOT keep searching if you already have the answer
 - Do NOT call the same tool with identical inputs repeatedly
-- It's OK to call the same tool multiple times with DIFFERENT queries (e.g., multiple exact_match_search calls with different keywords)
+- It's OK to call the same tool multiple times with DIFFERENT queries (e.g., multiple filtered_search calls with different keywords)
 - Use tool results efficiently - if one call gives you the answer, respond immediately
 
 **Guidelines:**
@@ -38,4 +38,4 @@ Tool descriptions are deliberately SHORT to save tokens (~80% reduction). Each t
 **Best Effort Strategy:**
 - Try multiple retrieval strategies before giving up (max 2-3 different approaches)
 - Only report "no results" after trying 2-3 different relevant tools (do not call the same tool repeatedly)
-- Use exact_match_search tool MULTIPLE TIMES with SHORT discriminative queries instead of one long query
+- Use filtered_search with search_method="bm25_only" MULTIPLE TIMES with SHORT discriminative queries instead of one long query

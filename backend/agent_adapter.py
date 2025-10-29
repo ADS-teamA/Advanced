@@ -148,7 +148,60 @@ class AgentAdapter:
                 from src.graph.models import KnowledgeGraph
                 from src.graph_retrieval import GraphEnhancedRetriever
 
-                knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
+                kg_path = self.config.knowledge_graph_path
+
+                # Check if path is a directory (vector_db/) or a single file
+                # Same logic as CLI (src/agent/cli.py:229-280)
+                if kg_path.is_dir():
+                    # Prefer unified_kg.json if it exists (same as CLI)
+                    unified_kg_path = kg_path / "unified_kg.json"
+
+                    if unified_kg_path.exists():
+                        # Load unified KG (already deduplicated with cross-doc relationships)
+                        logger.info(f"Loading unified knowledge graph from {unified_kg_path}...")
+                        knowledge_graph = KnowledgeGraph.load_json(str(unified_kg_path))
+                        logger.info(
+                            f"Unified KG loaded: {len(knowledge_graph.entities)} entities, "
+                            f"{len(knowledge_graph.relationships)} relationships"
+                        )
+                    else:
+                        # Fallback: Load all *_kg.json files from directory (old behavior)
+                        kg_files = sorted(kg_path.glob("*_kg.json"))
+                        if not kg_files:
+                            raise FileNotFoundError(
+                                f"No knowledge graph files (*_kg.json or unified_kg.json) found in {kg_path}"
+                            )
+
+                        logger.info(f"Found {len(kg_files)} knowledge graph files (unified_kg.json not found)")
+
+                        # Load and merge all KG files (naive merge without deduplication)
+                        knowledge_graph = None
+                        total_entities = 0
+                        total_relationships = 0
+
+                        for kg_file in kg_files:
+                            kg = KnowledgeGraph.load_json(str(kg_file))
+                            if knowledge_graph is None:
+                                knowledge_graph = kg
+                            else:
+                                # Merge graphs by combining entities and relationships
+                                knowledge_graph.entities.extend(kg.entities)
+                                knowledge_graph.relationships.extend(kg.relationships)
+
+                            total_entities += len(kg.entities)
+                            total_relationships += len(kg.relationships)
+                            logger.debug(
+                                f"Loaded {kg_file.name}: {len(kg.entities)} entities, "
+                                f"{len(kg.relationships)} relationships"
+                            )
+
+                        logger.info(
+                            f"Total: {total_entities} entities, "
+                            f"{total_relationships} relationships (naive merge - consider building unified_kg.json)"
+                        )
+                else:
+                    # Load single file
+                    knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
                 graph_retriever = GraphEnhancedRetriever(
                     vector_store=vector_store, knowledge_graph=knowledge_graph
                 )
@@ -163,14 +216,15 @@ class AgentAdapter:
                     "error": f"Missing dependencies: {e}"
                 })
             except FileNotFoundError as e:
-                logger.error(
-                    f"Knowledge graph file not found: {e}. "
-                    f"Expected path: {self.config.knowledge_graph_path}"
+                logger.warning(
+                    f"Knowledge graph file not found at: {self.config.knowledge_graph_path}. "
+                    f"Run indexing with ENABLE_KNOWLEDGE_GRAPH=true to generate it: "
+                    f"uv run python run_pipeline.py data/your_docs/"
                 )
                 self.config.enable_knowledge_graph = False
                 self.degraded_components.append({
                     "component": "knowledge_graph",
-                    "error": f"File not found: {e}"
+                    "error": f"File not found - run indexing to generate"
                 })
             except (ValueError, KeyError, TypeError) as e:
                 logger.error(
