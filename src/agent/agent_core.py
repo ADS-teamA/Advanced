@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, Generator, List, Optional
 
 import anthropic
+import numpy as np
 
 from .config import AgentConfig
 from .providers import create_provider, AnthropicProvider, GeminiProvider, OpenAIProvider
