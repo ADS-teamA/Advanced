@@ -37,8 +37,9 @@ Configuration: All settings controlled via .env file
 
 import sys
 import logging
+import argparse
+import shutil
 from pathlib import Path
-from datetime import datetime
 
 # Setup logging
 logging.basicConfig(
@@ -62,7 +63,7 @@ def print_header(text: str):
 
 def print_success(text: str):
     """Print success message."""
-    print(f"✓ {text}")
+    print(f"[OK]{text}")
 
 
 def print_info(text: str):
@@ -93,7 +94,7 @@ def get_supported_documents(directory: Path) -> list:
     return documents
 
 
-def run_complete_pipeline(input_path: Path, output_base: Path = None):
+def run_complete_pipeline(input_path: Path, output_base: Path = None, merge_target: Path = None):
     """
     Run complete SOTA 2025 RAG pipeline.
 
@@ -103,10 +104,12 @@ def run_complete_pipeline(input_path: Path, output_base: Path = None):
     - Contextual retrieval (SAC)
     - Hybrid search (BM25 + Dense + RRF)
     - Knowledge graph extraction
+    - Automatic merge with existing vector store
 
     Args:
         input_path: Path to document file or directory
         output_base: Base output directory (default: output/)
+        merge_target: Path to existing vector store to merge into (e.g., vector_db/)
     """
     input_path = Path(input_path)
 
@@ -135,7 +138,7 @@ def run_complete_pipeline(input_path: Path, output_base: Path = None):
             print(f"PROCESSING [{i}/{len(documents)}]: {document_path.name}")
             print("=" * 80)
             print()
-            run_single_document(document_path, output_base)
+            run_single_document(document_path, output_base, merge_target)
 
         print_header("BATCH PROCESSING COMPLETE")
         print_success(f"Processed {len(documents)} documents")
@@ -143,16 +146,17 @@ def run_complete_pipeline(input_path: Path, output_base: Path = None):
         return
 
     # Single document processing
-    run_single_document(input_path, output_base)
+    run_single_document(input_path, output_base, merge_target)
 
 
-def run_single_document(document_path: Path, output_base: Path = None):
+def run_single_document(document_path: Path, output_base: Path = None, merge_target: Path = None):
     """
     Process single document through complete SOTA 2025 pipeline.
 
     Args:
         document_path: Path to document file
         output_base: Base output directory (default: output/)
+        merge_target: Path to existing vector store to merge into (e.g., vector_db/)
     """
     document_path = Path(document_path)
 
@@ -168,7 +172,7 @@ def run_single_document(document_path: Path, output_base: Path = None):
         output_base = Path(__file__).parent / "output"
 
     doc_name = document_path.stem.replace(" ", "_").replace("(", "").replace(")", "")
-    output_dir = output_base / doc_name / datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = output_base / doc_name  # No timestamp - enables resume functionality
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print_header(f"SOTA 2025 RAG PIPELINE - {document_path.name}")
@@ -202,6 +206,13 @@ def run_single_document(document_path: Path, output_base: Path = None):
             output_dir=output_dir
         )
 
+        # Check if indexing was skipped due to duplicate detection
+        if result is None:
+            print_header("DOCUMENT SKIPPED")
+            print_info("Document was identified as duplicate and skipped")
+            print_info("No indexing or merging performed")
+            return
+
         vector_store = result["vector_store"]
         knowledge_graph = result["knowledge_graph"]
         stats = result["stats"]
@@ -213,10 +224,124 @@ def run_single_document(document_path: Path, output_base: Path = None):
         print_success(f"Vector store saved: {vs_path}")
 
         # Save PHASE 5A: Knowledge Graph (if enabled)
+        kg_path = None
         if knowledge_graph:
             kg_path = output_dir / f"{doc_name}_kg.json"
             knowledge_graph.save_json(str(kg_path))
             print_success(f"Knowledge graph saved: {kg_path}")
+
+        # MERGE with existing vector store (if --merge flag provided)
+        if merge_target:
+            merge_target = Path(merge_target)
+
+            if not merge_target.exists():
+                print()
+                print_info(f"Creating new vector store at: {merge_target}")
+                merge_target.mkdir(parents=True, exist_ok=True)
+                # Copy new store to merge target
+                for item in vs_path.iterdir():
+                    if item.is_file():
+                        shutil.copy2(item, merge_target / item.name)
+                    elif item.is_dir():
+                        shutil.copytree(item, merge_target / item.name, dirs_exist_ok=True)
+                print_success(f"Initialized vector store at: {merge_target}")
+            else:
+                print()
+                print_header("MERGING WITH EXISTING VECTOR STORE")
+                print_info(f"Target: {merge_target}")
+
+                try:
+                    # Load existing vector store
+                    from src.hybrid_search import HybridVectorStore
+                    from src.faiss_vector_store import FAISSVectorStore
+
+                    print_info("Loading existing vector store...")
+                    existing_store = HybridVectorStore.load(merge_target)
+                    existing_stats_before = existing_store.get_stats()
+
+                    print_info(f"Existing store: {existing_stats_before['total_vectors']} vectors, "
+                              f"{existing_stats_before['documents']} documents")
+                    print_info(f"New store: {stats['vector_store']['total_vectors']} vectors, "
+                              f"{stats['vector_store']['documents']} documents")
+
+                    # Merge vector stores with deduplication
+                    print_info("Merging FAISS indexes with deduplication...")
+                    faiss_merge_stats = existing_store.faiss_store.merge(
+                        vector_store if isinstance(vector_store, FAISSVectorStore) else vector_store.faiss_store
+                    )
+
+                    print_info("Merging BM25 indexes...")
+                    if hasattr(existing_store, 'bm25_store') and hasattr(vector_store, 'bm25_store'):
+                        existing_store.bm25_store.merge(vector_store.bm25_store)
+
+                    # Save merged store
+                    print_info("Saving merged vector store...")
+                    existing_store.save(merge_target)
+
+                    merged_stats = existing_store.get_stats()
+                    print_success(f"Merge complete!")
+                    print_info(f"Merged store: {merged_stats['total_vectors']} vectors, "
+                              f"{merged_stats['documents']} documents")
+                    print_info(f"Added: {faiss_merge_stats['added']} vectors, "
+                              f"Skipped: {faiss_merge_stats['skipped']} duplicates")
+
+                    # Merge Knowledge Graphs with cross-document relationships
+                    if knowledge_graph and config.enable_knowledge_graph:
+                        print()
+                        print_info("Merging knowledge graphs with cross-document deduplication...")
+
+                        from src.graph import (
+                            KnowledgeGraph,
+                            UnifiedKnowledgeGraphManager,
+                            CrossDocumentRelationshipDetector
+                        )
+
+                        # Initialize unified KG manager (uses merge_target directory for storage)
+                        storage_dir = merge_target.parent if merge_target.parent.name != 'phase4_vector_store' else merge_target.parent.parent
+                        manager = UnifiedKnowledgeGraphManager(storage_dir=str(storage_dir))
+
+                        # Initialize cross-document detector
+                        detector = CrossDocumentRelationshipDetector(
+                            use_llm_validation=False,  # Fast pattern-based detection
+                            confidence_threshold=0.7
+                        )
+
+                        # Load or create unified KG
+                        unified_kg = manager.load_or_create()
+
+                        print_info(f"Current unified KG: {len(unified_kg.entities)} entities, "
+                                  f"{len(unified_kg.relationships)} relationships")
+                        print_info(f"New document KG: {len(knowledge_graph.entities)} entities, "
+                                  f"{len(knowledge_graph.relationships)} relationships")
+
+                        # Merge with deduplication and cross-doc detection
+                        unified_kg = manager.merge_document_graph(
+                            unified_kg=unified_kg,
+                            document_kg=knowledge_graph,
+                            document_id=doc_name,
+                            cross_doc_detector=detector
+                        )
+
+                        # Save unified KG + per-document backup
+                        manager.save(unified_kg, document_id=doc_name)
+
+                        # Get statistics
+                        doc_stats = manager.get_document_statistics(unified_kg)
+
+                        print_success(f"KG merge complete with cross-document relationships!")
+                        print_info(f"Unified KG: {len(unified_kg.entities)} entities, "
+                                  f"{len(unified_kg.relationships)} relationships")
+                        print_info(f"Documents in unified KG: {doc_stats['total_documents']}")
+                        print_info(f"Cross-document entities: {doc_stats['cross_document_entities']} "
+                                  f"({doc_stats['cross_document_entity_percentage']:.1f}%)")
+                        print_info(f"Saved: {storage_dir / 'unified_kg.json'}")
+
+                except Exception as e:
+                    print()
+                    print_info(f"[WARNING]  Merge failed: {e}")
+                    print_info("Continuing without merge...")
+                    import traceback
+                    logger.debug(traceback.format_exc())
 
         # Print comprehensive statistics
         print_header("INDEXING COMPLETE")
@@ -256,12 +381,12 @@ def run_single_document(document_path: Path, output_base: Path = None):
             print_info(f"   RRF Fusion k:      {config.hybrid_fusion_k}")
         else:
             print()
-            print_info("ℹ️  Hybrid Search: DISABLED (dense-only retrieval)")
+            print_info("[INFO]  Hybrid Search: DISABLED (dense-only retrieval)")
 
         # Knowledge graph stats
         if stats.get("kg_construction_failed"):
             print()
-            print_info("❌ Knowledge Graph: FAILED")
+            print_info("[FAILED]Knowledge Graph: FAILED")
             print_info(f"   Error: {stats.get('kg_error', 'Unknown error')}")
             print_info("   Continuing with vector search only")
         elif stats.get("kg_enabled") and knowledge_graph:
@@ -271,10 +396,10 @@ def run_single_document(document_path: Path, output_base: Path = None):
             print_info(f"   Relationships:     {stats['kg_relationships']}")
         elif stats.get("kg_enabled"):
             print()
-            print_info("⚠️  Knowledge Graph: ENABLED but no graph generated")
+            print_info("[WARNING]  Knowledge Graph: ENABLED but no graph generated")
         else:
             print()
-            print_info("ℹ️  Knowledge Graph: DISABLED")
+            print_info("[INFO]  Knowledge Graph: DISABLED")
 
         print()
 
@@ -308,7 +433,7 @@ def run_single_document(document_path: Path, output_base: Path = None):
 
     except KeyboardInterrupt:
         logger.info("Pipeline interrupted by user")
-        print("\n\n⚠️  Pipeline interrupted by user (Ctrl+C)")
+        print("\n\n[WARNING]  Pipeline interrupted by user (Ctrl+C)")
         sys.exit(130)
 
     except Exception as e:
@@ -378,13 +503,41 @@ def run_single_document(document_path: Path, output_base: Path = None):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python run_pipeline.py <document_path_or_directory>")
-        print()
-        print("Examples:")
-        print("  python run_pipeline.py data/document.pdf")
-        print("  python run_pipeline.py data/documents/")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Complete SOTA 2025 RAG Pipeline - Index documents with automatic merge support",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Index single document
+  python run_pipeline.py data/document.pdf
 
-    input_path = Path(sys.argv[1])
-    run_complete_pipeline(input_path)
+  # Index directory (batch)
+  python run_pipeline.py data/documents/
+
+  # Index and merge into existing vector_db
+  python run_pipeline.py data/document.pdf --merge vector_db
+
+  # Batch index with merge
+  python run_pipeline.py data/documents/ --merge vector_db
+        """
+    )
+
+    parser.add_argument(
+        "input_path",
+        type=str,
+        help="Path to document file or directory to index"
+    )
+
+    parser.add_argument(
+        "--merge",
+        type=str,
+        metavar="TARGET",
+        help="Merge indexed documents into existing vector store at TARGET path (e.g., vector_db)"
+    )
+
+    args = parser.parse_args()
+
+    input_path = Path(args.input_path)
+    merge_target = Path(args.merge) if args.merge else None
+
+    run_complete_pipeline(input_path, merge_target=merge_target)
