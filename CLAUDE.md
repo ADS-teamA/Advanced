@@ -8,11 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SUJBOT2** is a production-ready RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. It implements state-of-the-art techniques from 4 research papers (2024-2025) and features a 7-phase pipeline with an interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 14-Tool Agent)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 15-Tool Agent + RAG Confidence Scoring)
 
 **Visual Documentation:**
 - 📥 **Indexing Pipeline (Phase 1-5):** [`indexing_pipeline.html`](indexing_pipeline.html) - Complete indexing process from PDF to searchable vector store
-- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 14 agent tools breakdown
+- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 15 agent tools breakdown
 
 **Core Technologies:**
 - Document processing: IBM Docling (hierarchical structure extraction)
@@ -20,7 +20,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Vector store: FAISS (3-layer indexing)
 - Retrieval: Hybrid (BM25 + Dense + RRF fusion) with cross-encoder reranking
 - Knowledge Graph: Entity/relationship extraction with NetworkX/Neo4j
-- Agent: Claude SDK with 14 specialized tools (Anthropic Sonnet/Haiku)
+- Agent: Claude SDK with 15 specialized tools (Anthropic Sonnet/Haiku)
+- **RAG Confidence Scoring:** Real-time retrieval quality assessment with 7 metrics
 
 ---
 
@@ -148,9 +149,10 @@ The system processes documents through 7 distinct phases:
 
 **PHASE 7: RAG Agent**
 - Framework: Claude SDK (official Anthropic SDK)
-- Tools: 14 specialized tools (5 basic + 6 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
-- Features: Streaming, prompt caching (90% savings), cost tracking, **query expansion**
+- Tools: 15 specialized tools (5 basic + 7 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
+- Features: Streaming, prompt caching (90% savings), cost tracking, **query expansion**, **RAG confidence scoring**
 - Query Expansion: Multi-query generation (+15-25% recall) with `num_expands` parameter
+- Confidence Scoring: 7-metric system (RAGAS-based) for retrieval quality assessment
 - Files: `src/agent/`, `src/agent/query_expander.py`
 
 ### Configuration Architecture
@@ -267,7 +269,7 @@ These decisions are backed by research papers and extensive testing:
 
 **Automatic Caching Points:**
 - System prompt (agent instructions)
-- Tool definitions (14 tools)
+- Tool definitions (15 tools)
 - Initial messages (document list)
 - Long tool results (>1024 tokens)
 
@@ -306,11 +308,11 @@ See `src/agent/agent_core.py:_create_messages()` for cache control block formatt
 - `src/agent/agent_core.py` - Core agent with streaming
 - `src/agent/config.py` - Agent configuration
 - `src/agent/validation.py` - Comprehensive validation
-- `src/agent/tools/` - 14 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
+- `src/agent/tools/` - 15 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
   - `base.py` - Base classes
   - `registry.py` - Tool registry
   - `tier1_basic.py` - 5 fast tools (search, get_document_list, get_document_info, get_tool_help, list_available_tools)
-  - `tier2_advanced.py` - 6 quality tools (graph_search, compare_documents, explain_search_results, filtered_search, similarity_search, expand_context)
+  - `tier2_advanced.py` - 7 quality tools (graph_search, compare_documents, explain_search_results, filtered_search, similarity_search, expand_context, assess_retrieval_confidence)
   - `tier3_analysis.py` - 3 analysis tools (timeline_view, summarize_section, get_stats)
   - `token_manager.py` - Token estimation
   - `utils.py` - Shared utilities
@@ -737,14 +739,19 @@ logger.error("Errors that don't crash the program")
 ## Version & Status
 
 **Last Updated:** 2025-10-29
-**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + Interactive Visual Documentation ✅
-**Agent Tools:** 14 (5 basic + 6 advanced + 3 analysis)
-**Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Context Assembly)
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + RAG Confidence Scoring ✅ + Interactive Visual Documentation ✅
+**Agent Tools:** 15 (5 basic + 7 advanced + 3 analysis)
+**Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Confidence Scoring + Context Assembly)
 **Visual Documentation:**
 - [`indexing_pipeline.html`](indexing_pipeline.html) - Detailed indexing process (Phase 1-5)
 - [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
 
 **Recent Updates:**
+- RAG Confidence Scoring (2025-10-29): Added 7-metric confidence scoring system (15 tools now)
+  - New tool: `assess_retrieval_confidence` - Explicit confidence assessment
+  - Automatic confidence display in search results
+  - Legal compliance thresholds: HIGH (≥0.85), MEDIUM (0.70-0.84), LOW (0.50-0.69)
+  - Comprehensive error handling and validation fixes applied
 - Tool Consolidation (2025-10-29): Reduced from 16 to 14 tools by consolidating duplicate functionality
   - `graph_search` (4 modes) replaces `multi_hop_search` + `entity_tool`
   - `filtered_search` (3 search methods) replaces `exact_match_search`

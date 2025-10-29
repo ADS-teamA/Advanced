@@ -406,6 +406,31 @@ class AgentCLI:
                     response = self.agent.process_message(user_input, stream=False)
                     print(f"\n{COLOR_GREEN}A: {response}{COLOR_RESET}")
 
+                # Show RAG confidence if available
+                rag_confidence = self.agent.get_latest_rag_confidence()
+
+                # Debug: Log what we found
+                if self.config.debug_mode:
+                    logger.debug(f"Tool call history length: {len(self.agent.tool_call_history)}")
+                    logger.debug(f"RAG confidence retrieved: {rag_confidence is not None}")
+                    if rag_confidence:
+                        logger.debug(f"Confidence data: {rag_confidence}")
+
+                if rag_confidence:
+                    conf_score = rag_confidence.get("overall_confidence", 0.0)
+                    conf_interp = rag_confidence.get("interpretation", "Unknown")
+                    should_review = rag_confidence.get("should_flag_for_review", False)
+
+                    # Color code based on confidence level
+                    if should_review:
+                        conf_color = "\033[93m"  # Yellow for warning
+                        emoji = "⚠️"
+                    else:
+                        conf_color = "\033[92m"  # Green for good
+                        emoji = "✓"
+
+                    print(f"\n{conf_color}📊 RAG Confidence: {emoji} {conf_interp} ({conf_score:.2f}){COLOR_RESET}")
+
                 # Show session cost after each response
                 cost_summary = self.agent.tracker.get_session_cost_summary()
                 print(f"\n{cost_summary}")
