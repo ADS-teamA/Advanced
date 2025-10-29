@@ -416,10 +416,10 @@ class AssessRetrievalConfidenceTool(BaseTool):
 
             if not chunks:
                 return ToolResult(
-                    success=True,
+                    success=False,
                     data=None,
                     metadata={"chunk_ids": chunk_ids, "found": False},
-                    error="No chunks found with provided IDs",
+                    error=f"No chunks found with provided IDs: {chunk_ids[:5]}{'...' if len(chunk_ids) > 5 else ''}",
                 )
 
             # Score confidence
@@ -435,9 +435,7 @@ class AssessRetrievalConfidenceTool(BaseTool):
                 recommendations.append(
                     "CRITICAL: Very low confidence. Consider query expansion or alternative retrieval methods."
                 )
-                recommendations.append(
-                    "Try: Use 'search' with num_expands=3-5 for better recall."
-                )
+                recommendations.append("Try: Use 'search' with num_expands=3-5 for better recall.")
             elif confidence.overall_confidence < 0.70:
                 recommendations.append(
                     "WARNING: Low confidence. Recommend manual review before using results."
@@ -463,19 +461,49 @@ class AssessRetrievalConfidenceTool(BaseTool):
 
             response_data["recommendations"] = recommendations
 
+            # Safely extract confidence level
+            interpretation = confidence.interpretation
+            if " - " in interpretation:
+                confidence_level = interpretation.split(" - ")[0]
+            else:
+                # Fallback: extract from interpretation directly
+                if "HIGH" in interpretation:
+                    confidence_level = "HIGH"
+                elif "MEDIUM" in interpretation:
+                    confidence_level = "MEDIUM"
+                elif "LOW" in interpretation:
+                    confidence_level = "LOW"
+                elif "VERY LOW" in interpretation:
+                    confidence_level = "VERY LOW"
+                else:
+                    logger.warning(f"Unknown confidence interpretation format: {interpretation}")
+                    confidence_level = "UNKNOWN"
+
             return ToolResult(
                 success=True,
                 data=response_data,
                 metadata={
                     "chunk_count": len(chunks),
-                    "confidence_level": confidence.interpretation.split(" - ")[0],
+                    "confidence_level": confidence_level,
                     "should_flag": confidence.should_flag,
                 },
             )
 
         except Exception as e:
-            logger.error(f"Assess retrieval confidence failed: {e}", exc_info=True)
-            return ToolResult(success=False, data=None, error=str(e))
+            logger.error(
+                f"Assess retrieval confidence failed for chunks {chunk_ids}: {e}",
+                exc_info=True,
+                extra={
+                    "chunk_ids": chunk_ids,
+                    "error_type": type(e).__name__,
+                },
+            )
+            return ToolResult(
+                success=False,
+                data=None,
+                error=f"Failed to assess confidence for {len(chunk_ids)} chunks: {type(e).__name__}: {str(e)[:200]}. "
+                f"This may indicate a data integrity issue. Try refreshing the search or using a different tool.",
+            )
 
 
 # ============================================================================

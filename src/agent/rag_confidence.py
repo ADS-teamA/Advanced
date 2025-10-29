@@ -55,20 +55,54 @@ class RAGConfidenceScore:
     details: Dict
 
     def to_dict(self) -> Dict:
-        """Convert to dict for JSON serialization."""
+        """Convert to dict for JSON serialization with validation."""
+
+        def validate_score(
+            value: float, min_val: float = 0.0, max_val: float = 1.0, field_name: str = "score"
+        ) -> float:
+            """Validate and clamp a score value."""
+            if not isinstance(value, (int, float)):
+                logger.warning(f"Invalid {field_name} type: {type(value)}. Using 0.0.")
+                return 0.0
+
+            if np.isnan(value) or np.isinf(value):
+                logger.warning(
+                    f"Invalid {field_name} value: {value} (NaN or infinity). Using {min_val}."
+                )
+                return min_val
+
+            # Clamp to range
+            if value < min_val or value > max_val:
+                logger.warning(
+                    f"{field_name} {value} out of range [{min_val}, {max_val}]. Clamping."
+                )
+                return max(min_val, min(max_val, value))
+
+            return value
+
         return {
-            "overall_confidence": round(self.overall_confidence, 3),
-            "top_score": round(self.top_score, 3),
-            "score_gap": round(self.score_gap, 3),
-            "score_spread": round(self.score_spread, 3),
-            "consensus_count": self.consensus_count,
-            "bm25_dense_agreement": round(self.bm25_dense_agreement, 3),
-            "reranker_impact": round(self.reranker_impact, 3),
-            "graph_support": self.graph_support,
-            "document_diversity": round(self.document_diversity, 3),
-            "interpretation": self.interpretation,
-            "should_flag_for_review": self.should_flag,
-            "details": self.details,
+            "overall_confidence": round(
+                validate_score(self.overall_confidence, 0.0, 1.0, "overall_confidence"), 3
+            ),
+            "top_score": round(validate_score(self.top_score, 0.0, float("inf"), "top_score"), 3),
+            "score_gap": round(validate_score(self.score_gap, 0.0, float("inf"), "score_gap"), 3),
+            "score_spread": round(
+                validate_score(self.score_spread, 0.0, float("inf"), "score_spread"), 3
+            ),
+            "consensus_count": max(0, int(self.consensus_count)),  # Non-negative integer
+            "bm25_dense_agreement": round(
+                validate_score(self.bm25_dense_agreement, 0.0, 1.0, "bm25_dense_agreement"), 3
+            ),
+            "reranker_impact": round(
+                validate_score(self.reranker_impact, 0.0, 1.0, "reranker_impact"), 3
+            ),
+            "graph_support": bool(self.graph_support),
+            "document_diversity": round(
+                validate_score(self.document_diversity, 0.0, 1.0, "document_diversity"), 3
+            ),
+            "interpretation": str(self.interpretation) if self.interpretation else "Unknown",
+            "should_flag_for_review": bool(self.should_flag),
+            "details": self.details or {},
         }
 
 
@@ -199,9 +233,16 @@ class RAGConfidenceScorer:
 
     def _extract_scores(self, chunks: List[Dict]) -> List[float]:
         """
-        Extract primary scores from chunks.
+        Extract primary scores from chunks in priority order.
 
-        Priority: rerank_score > boosted_score > rrf_score > score
+        Priority (highest to lowest):
+        1. rerank_score: Cross-encoder reranker score (best for ranking)
+        2. boosted_score: Graph-boosted RRF score (includes KG relevance)
+        3. rrf_score: Reciprocal Rank Fusion score (BM25 + Dense fusion)
+        4. score: Fallback generic score (BM25 for exact_match_search)
+
+        Returns:
+            List of normalized scores (0-1) from chunks, defaults to 0.0 if missing
         """
         scores = []
         for chunk in chunks:
@@ -270,27 +311,68 @@ class RAGConfidenceScorer:
         if len(rerank_scores) < 2:
             return 0.0  # No reranking applied
 
-        # Calculate rank correlation (Spearman)
+        # Validate no NaN/inf in input
+        if any(np.isnan(s) or np.isinf(s) for s in rerank_scores) or any(
+            np.isnan(s) or np.isinf(s) for s in rrf_scores
+        ):
+            logger.warning(
+                "Reranker impact calculation has NaN/inf in scores. Returning 0.0 (no impact)."
+            )
+            return 0.0
+
+        # Try scipy first (better algorithm)
         try:
             from scipy.stats import spearmanr
 
-            correlation, _ = spearmanr(rerank_scores, rrf_scores)
+            try:
+                correlation, p_value = spearmanr(rerank_scores, rrf_scores)
+            except (ValueError, RuntimeError) as e:
+                logger.warning(
+                    f"spearmanr failed with {type(e).__name__}: {e}. Falling back to Pearson correlation."
+                )
+                correlation = None
 
-            # Handle NaN
-            if np.isnan(correlation):
-                return 0.0
-
-            # Impact = 1 - correlation (high correlation = low impact)
-            impact = 1.0 - abs(correlation)
-
-            return float(impact)
+            if correlation is None or np.isnan(correlation) or np.isinf(correlation):
+                logger.warning(
+                    f"Spearman correlation invalid: {correlation}. Falling back to Pearson."
+                )
+                correlation = None
         except ImportError:
-            # Fallback: use Pearson correlation if scipy not available
-            correlation = float(np.corrcoef(rerank_scores, rrf_scores)[0, 1])
-            if np.isnan(correlation):
+            logger.debug("scipy.stats.spearmanr not available. Using Pearson correlation fallback.")
+            correlation = None
+
+        # Fallback: Pearson correlation
+        if correlation is None:
+            try:
+                correlation_matrix = np.corrcoef(rerank_scores, rrf_scores)
+                correlation = float(correlation_matrix[0, 1])
+
+                if np.isnan(correlation) or np.isinf(correlation):
+                    logger.warning(
+                        f"Pearson correlation invalid: {correlation}. Using 0.0 (no impact)."
+                    )
+                    return 0.0
+
+            except (ValueError, RuntimeError, IndexError) as e:
+                logger.error(
+                    f"Both correlation methods failed: {type(e).__name__}: {e}. Using 0.0 (no impact)."
+                )
                 return 0.0
+
+        # Calculate impact
+        try:
             impact = 1.0 - abs(correlation)
+
+            # Validate result
+            if not (0.0 <= impact <= 1.0):
+                logger.warning(f"Calculated impact {impact} out of range [0, 1]. Clamping.")
+                impact = max(0.0, min(1.0, impact))
+
             return float(impact)
+
+        except (ValueError, TypeError) as e:
+            logger.error(f"Failed to calculate impact from correlation: {e}. Using 0.0.")
+            return 0.0
 
     def _calculate_document_diversity(self, chunks: List[Dict]) -> float:
         """
@@ -324,17 +406,50 @@ class RAGConfidenceScorer:
 
         Weights based on legal compliance research and RAGAS framework.
         """
-        # Normalize inputs to 0-1 range
+        # Validate all inputs are finite
+        inputs = {
+            "top_score": top_score,
+            "score_gap": score_gap,
+            "score_spread": score_spread,
+            "consensus_count": consensus_count,
+            "total_chunks": total_chunks,
+            "bm25_dense_agreement": bm25_dense_agreement,
+            "reranker_impact": reranker_impact,
+            "document_diversity": document_diversity,
+        }
+
+        for name, value in inputs.items():
+            if isinstance(value, float):
+                if np.isnan(value) or np.isinf(value):
+                    logger.error(
+                        f"Invalid confidence input '{name}': {value} (NaN or infinity). "
+                        f"Clamping to 0.0 to continue."
+                    )
+                    inputs[name] = 0.0
+
+        # Extract validated inputs
+        top_score = inputs["top_score"]
+        score_gap = inputs["score_gap"]
+        score_spread = inputs["score_spread"]
+        consensus_count = inputs["consensus_count"]
+        total_chunks = inputs["total_chunks"]
+        bm25_dense_agreement = inputs["bm25_dense_agreement"]
+        reranker_impact = inputs["reranker_impact"]
+        document_diversity = inputs["document_diversity"]
+
+        # Normalize inputs to 0-1 range (with safeguards)
 
         # 1. Top score (weight: 0.30) - Most important
-        top_score_norm = min(1.0, top_score)
+        top_score_norm = min(1.0, max(0.0, top_score))
 
         # 2. Score gap (weight: 0.20) - Clear winner?
-        # Typical gap: 0.0-0.3, normalize to 0-1
-        score_gap_norm = min(1.0, score_gap / 0.3)
+        # Typical gap: 0.0-0.3, normalize to 0-1, gaps > 0.3 clamp to 1.0
+        score_gap_norm = min(1.0, max(0.0, score_gap / 0.3))
 
         # 3. Consensus (weight: 0.15) - Multiple high-confidence chunks?
-        consensus_norm = consensus_count / total_chunks if total_chunks > 0 else 0.0
+        consensus_norm = max(
+            0.0, min(1.0, consensus_count / total_chunks if total_chunks > 0 else 0.0)
+        )
 
         # 4. BM25-Dense agreement (weight: 0.15) - Methods agree?
         agreement_norm = bm25_dense_agreement
@@ -350,18 +465,44 @@ class RAGConfidenceScorer:
         # Low diversity = high confidence (for legal docs)
         diversity_norm = 1.0 - document_diversity
 
+        # Clamp all normalized values to [0, 1]
+        normalized_inputs = {
+            "top_score_norm": top_score_norm,
+            "score_gap_norm": score_gap_norm,
+            "consensus_norm": consensus_norm,
+            "agreement_norm": agreement_norm,
+            "spread_norm": spread_norm,
+            "graph_norm": graph_norm,
+            "diversity_norm": diversity_norm,
+        }
+
+        for name, value in normalized_inputs.items():
+            if np.isnan(value) or np.isinf(value):
+                logger.error(f"Invalid normalized value '{name}': {value}. Using 0.5 (neutral).")
+                normalized_inputs[name] = 0.5
+            else:
+                # Clamp to [0, 1]
+                normalized_inputs[name] = max(0.0, min(1.0, value))
+
         # Weighted combination
         confidence = (
-            0.30 * top_score_norm
-            + 0.20 * score_gap_norm
-            + 0.15 * consensus_norm
-            + 0.15 * agreement_norm
-            + 0.10 * spread_norm
-            + 0.05 * graph_norm
-            + 0.05 * diversity_norm
+            0.30 * normalized_inputs["top_score_norm"]
+            + 0.20 * normalized_inputs["score_gap_norm"]
+            + 0.15 * normalized_inputs["consensus_norm"]
+            + 0.15 * normalized_inputs["agreement_norm"]
+            + 0.10 * normalized_inputs["spread_norm"]
+            + 0.05 * normalized_inputs["graph_norm"]
+            + 0.05 * normalized_inputs["diversity_norm"]
         )
 
-        return confidence
+        # Final validation - ensure result is in [0, 1]
+        if np.isnan(confidence) or np.isinf(confidence):
+            logger.error(
+                f"Confidence calculation produced invalid result: {confidence}. Using 0.5 (neutral)."
+            )
+            confidence = 0.5
+
+        return max(0.0, min(1.0, confidence))
 
     def _interpret_confidence(self, confidence: float) -> Tuple[str, bool]:
         """
@@ -410,4 +551,3 @@ class RAGConfidenceScorer:
             should_flag=True,
             details={"total_chunks": 0},
         )
-

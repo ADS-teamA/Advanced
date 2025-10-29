@@ -24,8 +24,7 @@ class GetToolHelpInput(ToolInput):
     """Input for get_tool_help tool."""
 
     tool_name: str = Field(
-        ...,
-        description="Name of tool to get help for (e.g., 'search', 'compare_documents')"
+        ..., description="Name of tool to get help for (e.g., 'search', 'compare_documents')"
     )
 
 
@@ -258,13 +257,15 @@ class SearchTool(BaseTool):
                     # Result will be [original] + num_expands paraphrases
                     expansion_result = expander.expand(query, num_expansions=num_expands)
                     queries = expansion_result.expanded_queries
-                    expansion_metadata.update({
-                        "expansion_method": expansion_result.expansion_method,
-                        "model_used": expansion_result.model_used,
-                        "queries_generated": len(queries),
-                        "paraphrases_requested": num_expands,
-                        "paraphrases_generated": len(queries) - 1,  # Exclude original
-                    })
+                    expansion_metadata.update(
+                        {
+                            "expansion_method": expansion_result.expansion_method,
+                            "model_used": expansion_result.model_used,
+                            "queries_generated": len(queries),
+                            "paraphrases_requested": num_expands,
+                            "paraphrases_generated": len(queries) - 1,  # Exclude original
+                        }
+                    )
                     logger.info(
                         f"Query expansion: original='{query}' + {num_expands} paraphrases "
                         f"→ {len(queries)} queries total: {queries}"
@@ -308,14 +309,14 @@ class SearchTool(BaseTool):
             all_chunks.extend(chunks)
 
             # Track search metadata
-            search_metadata.append({
-                "query": q,
-                "chunks_retrieved": len(chunks),
-            })
-
-            logger.info(
-                f"Query {idx} retrieved {len(chunks)} chunks from layer3"
+            search_metadata.append(
+                {
+                    "query": q,
+                    "chunks_retrieved": len(chunks),
+                }
             )
+
+            logger.info(f"Query {idx} retrieved {len(chunks)} chunks from layer3")
 
         # Log total candidates before fusion/reranking
         logger.info(
@@ -354,9 +355,7 @@ class SearchTool(BaseTool):
             logger.info(f"Reranking {len(chunks)} candidates to top {k}...")
             chunks = self.reranker.rerank(query=query, candidates=chunks, top_k=k)
             reranking_applied = True
-            logger.info(
-                f"Reranking complete: {chunks_before_rerank} → {len(chunks)} chunks"
-            )
+            logger.info(f"Reranking complete: {chunks_before_rerank} → {len(chunks)} chunks")
         else:
             chunks = chunks[:k]
             reranking_applied = False
@@ -386,8 +385,39 @@ class SearchTool(BaseTool):
             if confidence.should_flag:
                 citations.insert(0, f"⚠️ {confidence.interpretation}")
 
+        except (AttributeError, KeyError) as e:
+            # Data structure issue - chunks missing required fields
+            logger.error(
+                f"RAG confidence scoring failed - data structure error: {e}. "
+                f"Chunks may be missing required fields (bm25_score, dense_score, etc.). "
+                f"Continuing without confidence data.",
+                exc_info=False,
+            )
+            confidence = None
+        except ImportError as e:
+            # Should not happen in production - indicates setup error
+            logger.error(
+                f"RAG confidence module missing: {e}. This indicates a setup issue. "
+                f"Continuing without confidence data.",
+                exc_info=False,
+            )
+            confidence = None
+        except ValueError as e:
+            # Likely from numpy operations with invalid data
+            logger.error(
+                f"RAG confidence calculation error - invalid data: {e}. "
+                f"Retrieved chunks may contain malformed scores. "
+                f"Continuing without confidence data.",
+                exc_info=False,
+            )
+            confidence = None
         except Exception as e:
-            logger.warning(f"RAG confidence scoring failed: {e}")
+            # Unexpected error - log with full traceback for debugging
+            logger.error(
+                f"Unexpected error in RAG confidence scoring ({type(e).__name__}): {e}. "
+                f"This may indicate a bug. Continuing without confidence data.",
+                exc_info=True,
+            )
             confidence = None
 
         # Enhanced metadata with debug info
@@ -398,7 +428,11 @@ class SearchTool(BaseTool):
             "expansion_metadata": expansion_metadata,
             "fusion_method": fusion_method,
             "reranking_applied": reranking_applied,
-            "method": "hybrid+expansion+rerank" if num_expands > 1 and self.reranker else "hybrid+rerank" if self.reranker else "hybrid",
+            "method": (
+                "hybrid+expansion+rerank"
+                if num_expands > 1 and self.reranker
+                else "hybrid+rerank" if self.reranker else "hybrid"
+            ),
             "candidates_retrieved": len(all_chunks),
             "chunks_before_rerank": chunks_before_rerank,
             "chunks_after_rerank": final_count,
@@ -469,11 +503,13 @@ class SearchTool(BaseTool):
             # RRF score: sum of 1/(k + rank) for all occurrences
             rrf_score = sum(1.0 / (k + rank) for rank, _ in data["ranks"])
 
-            rrf_scores.append({
-                "chunk": data["chunk"],
-                "rrf_score": rrf_score,
-                "appearances": len(data["ranks"]),
-            })
+            rrf_scores.append(
+                {
+                    "chunk": data["chunk"],
+                    "rrf_score": rrf_score,
+                    "appearances": len(data["ranks"]),
+                }
+            )
 
         # Sort by RRF score (descending)
         rrf_scores.sort(key=lambda x: x["rrf_score"], reverse=True)
@@ -1119,8 +1155,39 @@ class ExactMatchSearchTool(BaseTool):
                 if confidence.should_flag:
                     citations.insert(0, f"⚠️ {confidence.interpretation}")
 
+            except (AttributeError, KeyError) as e:
+                # Data structure issue - chunks missing required fields
+                logger.error(
+                    f"RAG confidence scoring failed - data structure error: {e}. "
+                    f"Chunks may be missing required fields (bm25_score, dense_score, etc.). "
+                    f"Continuing without confidence data.",
+                    exc_info=False,
+                )
+                confidence = None
+            except ImportError as e:
+                # Should not happen in production - indicates setup error
+                logger.error(
+                    f"RAG confidence module missing: {e}. This indicates a setup issue. "
+                    f"Continuing without confidence data.",
+                    exc_info=False,
+                )
+                confidence = None
+            except ValueError as e:
+                # Likely from numpy operations with invalid data
+                logger.error(
+                    f"RAG confidence calculation error - invalid data: {e}. "
+                    f"Retrieved chunks may contain malformed scores. "
+                    f"Continuing without confidence data.",
+                    exc_info=False,
+                )
+                confidence = None
             except Exception as e:
-                logger.warning(f"RAG confidence scoring failed: {e}")
+                # Unexpected error - log with full traceback for debugging
+                logger.error(
+                    f"Unexpected error in RAG confidence scoring ({type(e).__name__}): {e}. "
+                    f"This may indicate a bug. Continuing without confidence data.",
+                    exc_info=True,
+                )
                 confidence = None
 
             # Build metadata

@@ -325,7 +325,9 @@ class AgentCore:
                     # If this is an intermediate message (minimal text), remove text too
                     if total_text_length < 50:  # Threshold for "substantial" text
                         # Replace with minimal placeholder
-                        msg["content"] = [{"type": "text", "text": "[Intermediate reasoning removed]"}]
+                        msg["content"] = [
+                            {"type": "text", "text": "[Intermediate reasoning removed]"}
+                        ]
                         tokens_saved_estimate += total_text_length // 4  # Estimate tokens
                     else:
                         # Keep substantial text, remove only tool_use blocks
@@ -428,7 +430,9 @@ class AgentCore:
             system_block = {"type": "text", "text": self.config.system_prompt}
 
             # Add cache control if enabled and supported
-            if self.config.enable_prompt_caching and self.provider.supports_feature("prompt_caching"):
+            if self.config.enable_prompt_caching and self.provider.supports_feature(
+                "prompt_caching"
+            ):
                 system_block["cache_control"] = {"type": "ephemeral"}
 
             return [system_block]
@@ -581,6 +585,7 @@ class AgentCore:
         try:
             # Import anthropic for error handling
             import anthropic
+
             # Import openai for error handling
             import openai
 
@@ -605,12 +610,13 @@ class AgentCore:
                     # Check if this is the organization verification error for streaming
                     # Use error code if available, otherwise fall back to message checking
                     error_message = str(e)
-                    error_code = getattr(e, 'code', None)
+                    error_code = getattr(e, "code", None)
 
                     # Only fallback for known streaming verification errors
-                    is_verification_error = (
-                        error_code == "organization_not_verified" or
-                        ("organization" in error_message.lower() and "verified" in error_message.lower() and "stream" in error_message.lower())
+                    is_verification_error = error_code == "organization_not_verified" or (
+                        "organization" in error_message.lower()
+                        and "verified" in error_message.lower()
+                        and "stream" in error_message.lower()
                     )
 
                     if is_verification_error:
@@ -628,7 +634,7 @@ class AgentCore:
                         # Log the actual error before re-raising
                         logger.error(
                             f"OpenAI API error during streaming initialization: {error_message[:200]}",
-                            exc_info=True
+                            exc_info=True,
                         )
                         # Re-raise if it's a different error
                         raise
@@ -645,7 +651,9 @@ class AgentCore:
                         for event in anthropic_stream:
                             if event.type == "content_block_start":
                                 if event.content_block.type == "text":
-                                    assistant_message["content"].append({"type": "text", "text": ""})
+                                    assistant_message["content"].append(
+                                        {"type": "text", "text": ""}
+                                    )
                                 elif event.content_block.type == "tool_use":
                                     # Stream tool call notification immediately
                                     tool_name = event.content_block.name
@@ -682,7 +690,9 @@ class AgentCore:
                         final_message = anthropic_stream.get_final_message()
 
                         # Track cost (including cache statistics if available)
-                        cache_creation = getattr(final_message.usage, "cache_creation_input_tokens", 0)
+                        cache_creation = getattr(
+                            final_message.usage, "cache_creation_input_tokens", 0
+                        )
                         cache_read = getattr(final_message.usage, "cache_read_input_tokens", 0)
 
                         self.tracker.track_llm(
@@ -720,29 +730,36 @@ class AgentCore:
                     # Iterate Gemini stream
                     for chunk in stream:
                         # Gemini stream format: chunks with candidates
-                        if not hasattr(chunk, 'candidates') or not chunk.candidates:
+                        if not hasattr(chunk, "candidates") or not chunk.candidates:
                             logger.warning(f"Gemini chunk missing candidates: {chunk}")
                             # Check for safety blocks
-                            if hasattr(chunk, 'prompt_feedback') and chunk.prompt_feedback:
-                                logger.error(f"Gemini content blocked: {chunk.prompt_feedback.block_reason}")
+                            if hasattr(chunk, "prompt_feedback") and chunk.prompt_feedback:
+                                logger.error(
+                                    f"Gemini content blocked: {chunk.prompt_feedback.block_reason}"
+                                )
                                 yield "\n\n⚠️ [Content blocked by Gemini safety filters]\n\n"
                             continue
 
                         candidate = chunk.candidates[0]
-                        if not hasattr(candidate, 'content') or not candidate.content.parts:
-                            logger.warning(f"Gemini candidate missing content: candidate={candidate}")
+                        if not hasattr(candidate, "content") or not candidate.content.parts:
+                            logger.warning(
+                                f"Gemini candidate missing content: candidate={candidate}"
+                            )
                             continue
 
                         for part in candidate.content.parts:
                             # Stream text content
-                            if hasattr(part, 'text') and part.text:
+                            if hasattr(part, "text") and part.text:
                                 yield part.text
                                 full_text += part.text
 
                             # Collect tool calls
-                            elif hasattr(part, 'function_call') and part.function_call:
+                            elif hasattr(part, "function_call") and part.function_call:
                                 # Validate function_call has required attributes
-                                if not hasattr(part.function_call, 'name') or not part.function_call.name:
+                                if (
+                                    not hasattr(part.function_call, "name")
+                                    or not part.function_call.name
+                                ):
                                     logger.error(
                                         f"Gemini returned malformed function_call missing 'name': {part.function_call}"
                                     )
@@ -758,7 +775,10 @@ class AgentCore:
 
                                 # Extract arguments with error handling (consistent with OpenAI path)
                                 tool_input = {}
-                                if hasattr(part.function_call, 'args') and part.function_call.args is not None:
+                                if (
+                                    hasattr(part.function_call, "args")
+                                    and part.function_call.args is not None
+                                ):
                                     try:
                                         tool_input = dict(part.function_call.args)
                                     except (TypeError, ValueError) as e:
@@ -785,11 +805,13 @@ class AgentCore:
                                 )
 
                         # Extract usage from chunk if available
-                        if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
+                        if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
                             input_tokens = chunk.usage_metadata.prompt_token_count or 0
                             output_tokens = chunk.usage_metadata.candidates_token_count or 0
-                            if hasattr(chunk.usage_metadata, 'cached_content_token_count'):
-                                cache_read_tokens = chunk.usage_metadata.cached_content_token_count or 0
+                            if hasattr(chunk.usage_metadata, "cached_content_token_count"):
+                                cache_read_tokens = (
+                                    chunk.usage_metadata.cached_content_token_count or 0
+                                )
 
                     # Build assistant message content
                     if full_text:
@@ -798,16 +820,24 @@ class AgentCore:
                     # Add tool uses to message (with validation)
                     for tool_use in tool_uses:
                         # Validate tool_use has required attributes
-                        if not hasattr(tool_use, 'id') or not hasattr(tool_use, 'name') or not hasattr(tool_use, 'input'):
-                            logger.error(f"Malformed tool_use object - skipping. Attributes: {dir(tool_use)}")
+                        if (
+                            not hasattr(tool_use, "id")
+                            or not hasattr(tool_use, "name")
+                            or not hasattr(tool_use, "input")
+                        ):
+                            logger.error(
+                                f"Malformed tool_use object - skipping. Attributes: {dir(tool_use)}"
+                            )
                             continue
 
-                        assistant_message["content"].append({
-                            "type": "tool_use",
-                            "id": tool_use.id,
-                            "name": tool_use.name,
-                            "input": tool_use.input,
-                        })
+                        assistant_message["content"].append(
+                            {
+                                "type": "tool_use",
+                                "id": tool_use.id,
+                                "name": tool_use.name,
+                                "input": tool_use.input,
+                            }
+                        )
 
                     # Track cost (with cache support)
                     self.tracker.track_llm(
@@ -877,7 +907,9 @@ class AgentCore:
                                                 yield f"\n{COLOR_BLUE}[Using {tool_name}...]{COLOR_RESET}\n"
 
                                     if tool_call.function.arguments:
-                                        tool_calls_buffer[idx]["arguments"] += tool_call.function.arguments
+                                        tool_calls_buffer[idx][
+                                            "arguments"
+                                        ] += tool_call.function.arguments
 
                     # Build assistant message content
                     if full_text:
@@ -997,15 +1029,46 @@ class AgentCore:
 
                         # Display RAG confidence if available (for search tool)
                         if result.metadata and "rag_confidence" in result.metadata:
-                            confidence = result.metadata["rag_confidence"]
-                            conf_score = confidence.get("overall_confidence", 0.0)
+                            confidence = result.metadata.get("rag_confidence", {})
+
+                            # Validate confidence dict structure
+                            if not isinstance(confidence, dict):
+                                logger.error(
+                                    f"Invalid confidence data type: {type(confidence)}. "
+                                    f"Expected dict from RAGConfidenceScore.to_dict()."
+                                )
+                                confidence = {}
+
+                            # Extract with defaults
+                            conf_score = confidence.get("overall_confidence", None)
                             conf_interp = confidence.get("interpretation", "Unknown")
                             should_review = confidence.get("should_flag_for_review", False)
+
+                            # Validate confidence score is numeric and finite
+                            if conf_score is None or (
+                                isinstance(conf_score, float)
+                                and (np.isnan(conf_score) or np.isinf(conf_score))
+                            ):
+                                logger.error(
+                                    f"Invalid confidence score: {conf_score}. Using 0.0 (unknown confidence)."
+                                )
+                                conf_score = 0.0
+
+                            # Validate interpretation is string
+                            if not isinstance(conf_interp, str):
+                                logger.warning(
+                                    f"Invalid interpretation type: {type(conf_interp)}. Using 'Unknown'."
+                                )
+                                conf_interp = "Unknown"
 
                             # Show confidence in blue (tool notification color)
                             if self.config.cli_config.show_tool_calls:
                                 emoji = "⚠️" if should_review else "✓"
-                                yield f"{COLOR_BLUE}[{emoji} RAG Confidence: {conf_interp} ({conf_score:.2f})]{COLOR_RESET}\n"
+                                try:
+                                    yield f"{COLOR_BLUE}[{emoji} RAG Confidence: {conf_interp} ({conf_score:.2f})]{COLOR_RESET}\n"
+                                except (ValueError, TypeError) as e:
+                                    logger.error(f"Failed to format confidence display: {e}")
+                                    yield f"{COLOR_BLUE}[⚠️ RAG Confidence: {conf_interp} (unavailable)]{COLOR_RESET}\n"
 
                         # Check for tool failure and alert user
                         if not result.success:
@@ -1194,7 +1257,9 @@ class AgentCore:
 
                             # Add RAG confidence if available
                             if result.metadata and "rag_confidence" in result.metadata:
-                                tool_call_record["rag_confidence"] = result.metadata["rag_confidence"]
+                                tool_call_record["rag_confidence"] = result.metadata[
+                                    "rag_confidence"
+                                ]
 
                             self.tool_call_history.append(tool_call_record)
 
@@ -1249,7 +1314,9 @@ class AgentCore:
             Formatted string for Claude
         """
         if not result.success:
-            return json.dumps({"error": result.error, "metadata": result.metadata}, indent=2, ensure_ascii=False)
+            return json.dumps(
+                {"error": result.error, "metadata": result.metadata}, indent=2, ensure_ascii=False
+            )
 
         # Format successful result
         formatted = {"data": result.data, "metadata": result.metadata}

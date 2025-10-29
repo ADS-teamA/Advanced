@@ -149,7 +149,7 @@ The system processes documents through 7 distinct phases:
 
 **PHASE 7: RAG Agent**
 - Framework: Claude SDK (official Anthropic SDK)
-- Tools: 16 specialized tools (6 basic + 7 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
+- Tools: 17 specialized tools (6 basic + 8 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
 - Features: Streaming, prompt caching (90% savings), cost tracking, **query expansion**
 - Query Expansion: Multi-query generation (+15-25% recall) with `num_expands` parameter
 - Files: `src/agent/`, `src/agent/query_expander.py`
@@ -267,7 +267,7 @@ These decisions are backed by research papers and extensive testing:
 
 **Automatic Caching Points:**
 - System prompt (agent instructions)
-- Tool definitions (16 tools)
+- Tool definitions (17 tools)
 - Initial messages (document list)
 - Long tool results (>1024 tokens)
 
@@ -306,11 +306,11 @@ See `src/agent/agent_core.py:_create_messages()` for cache control block formatt
 - `src/agent/agent_core.py` - Core agent with streaming
 - `src/agent/config.py` - Agent configuration
 - `src/agent/validation.py` - Comprehensive validation
-- `src/agent/tools/` - 16 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
+- `src/agent/tools/` - 17 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
   - `base.py` - Base classes
   - `registry.py` - Tool registry
   - `tier1_basic.py` - 6 fast tools (search, get_document_list, get_document_info, exact_match_search, get_tool_help, list_available_tools)
-  - `tier2_advanced.py` - 7 quality tools (multi_hop_search, compare_documents, explain_search_results, filtered_search, similarity_search, entity_tool, expand_context)
+  - `tier2_advanced.py` - 8 quality tools (multi_hop_search, compare_documents, explain_search_results, filtered_search, similarity_search, entity_tool, expand_context, assess_retrieval_confidence)
   - `tier3_analysis.py` - 3 analysis tools (timeline_view, summarize_section, get_stats)
   - `token_manager.py` - Token estimation
   - `utils.py` - Shared utilities
