@@ -38,6 +38,7 @@ Configuration: All settings controlled via .env file
 import sys
 import logging
 import argparse
+import shutil
 from pathlib import Path
 
 # Setup logging
@@ -62,7 +63,7 @@ def print_header(text: str):
 
 def print_success(text: str):
     """Print success message."""
-    print(f"✓ {text}")
+    print(f"[OK]{text}")
 
 
 def print_info(text: str):
@@ -238,7 +239,6 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
                 print_info(f"Creating new vector store at: {merge_target}")
                 merge_target.mkdir(parents=True, exist_ok=True)
                 # Copy new store to merge target
-                import shutil
                 for item in vs_path.iterdir():
                     if item.is_file():
                         shutil.copy2(item, merge_target / item.name)
@@ -338,7 +338,7 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
 
                 except Exception as e:
                     print()
-                    print_info(f"⚠️  Merge failed: {e}")
+                    print_info(f"[WARNING]  Merge failed: {e}")
                     print_info("Continuing without merge...")
                     import traceback
                     logger.debug(traceback.format_exc())
@@ -381,12 +381,12 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
             print_info(f"   RRF Fusion k:      {config.hybrid_fusion_k}")
         else:
             print()
-            print_info("ℹ️  Hybrid Search: DISABLED (dense-only retrieval)")
+            print_info("[INFO]  Hybrid Search: DISABLED (dense-only retrieval)")
 
         # Knowledge graph stats
         if stats.get("kg_construction_failed"):
             print()
-            print_info("❌ Knowledge Graph: FAILED")
+            print_info("[FAILED]Knowledge Graph: FAILED")
             print_info(f"   Error: {stats.get('kg_error', 'Unknown error')}")
             print_info("   Continuing with vector search only")
         elif stats.get("kg_enabled") and knowledge_graph:
@@ -396,10 +396,10 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
             print_info(f"   Relationships:     {stats['kg_relationships']}")
         elif stats.get("kg_enabled"):
             print()
-            print_info("⚠️  Knowledge Graph: ENABLED but no graph generated")
+            print_info("[WARNING]  Knowledge Graph: ENABLED but no graph generated")
         else:
             print()
-            print_info("ℹ️  Knowledge Graph: DISABLED")
+            print_info("[INFO]  Knowledge Graph: DISABLED")
 
         print()
 
@@ -433,7 +433,7 @@ def run_single_document(document_path: Path, output_base: Path = None, merge_tar
 
     except KeyboardInterrupt:
         logger.info("Pipeline interrupted by user")
-        print("\n\n⚠️  Pipeline interrupted by user (Ctrl+C)")
+        print("\n\n[WARNING]  Pipeline interrupted by user (Ctrl+C)")
         sys.exit(130)
 
     except Exception as e:

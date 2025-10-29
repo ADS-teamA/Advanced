@@ -290,7 +290,7 @@ class TestPhaseLoaders:
         with open(invalid_json, "w", encoding="utf-8") as f:
             f.write("{ invalid json ")
 
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(ValueError, match="Phase 1 JSON corrupted"):
             PhaseLoaders.load_phase1(invalid_json)
 
     def test_load_phase2_missing_sections(self, sample_phase1_json, temp_dir):

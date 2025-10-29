@@ -31,6 +31,34 @@ class PhaseStatus:
     is_valid: bool = True
     error: Optional[str] = None
 
+    def __post_init__(self):
+        """Validate invariants at construction time."""
+        # Validate phase range (0-5)
+        if not (0 <= self.completed_phase <= 5):
+            raise ValueError(
+                f"completed_phase must be in range [0, 5], got {self.completed_phase}"
+            )
+
+        # Enforce is_valid/error correlation
+        if self.is_valid and self.error is not None:
+            raise ValueError(
+                "Invalid state: is_valid=True but error is set"
+            )
+        if not self.is_valid and (self.error is None or not self.error.strip()):
+            raise ValueError(
+                "Invalid state: is_valid=False requires non-empty error message"
+            )
+
+        # Validate phase files completeness (no gaps in sequence)
+        if self.completed_phase > 0:
+            expected_phases = set(range(1, self.completed_phase + 1))
+            actual_phases = set(self.phase_files.keys())
+            if expected_phases != actual_phases:
+                raise ValueError(
+                    f"Incomplete phase sequence: expected phases {sorted(expected_phases)}, "
+                    f"but got {sorted(actual_phases)}"
+                )
+
 
 class PhaseDetector:
     """
@@ -115,10 +143,16 @@ class PhaseDetector:
                 else:
                     break
 
+            # Keep only phases up to the complete sequence (remove phases after gap)
+            complete_phase_files = {
+                phase: path for phase, path in phase_files.items()
+                if phase <= complete_phase
+            }
+
             return PhaseStatus(
                 completed_phase=complete_phase,
                 output_dir=output_dir,
-                phase_files=phase_files,
+                phase_files=complete_phase_files,
                 is_valid=False,
                 error="Incomplete phase sequence (missing intermediate phases)"
             )
