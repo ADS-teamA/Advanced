@@ -1,21 +1,20 @@
 """
 Tests for Tier 2 Advanced Retrieval Tools.
 
-Tests all 9 advanced retrieval tools:
-1. MultiHopSearchTool
+Tests all 6 Tier 2 tools (after consolidation):
+1. GraphSearchTool (consolidated: MultiHopSearchTool + EntityTool) - 4 modes, 16 tests
 2. CompareDocumentsTool
-3. FindRelatedChunksTool
-4. TemporalSearchTool
-5. HybridSearchWithFiltersTool
-6. CrossReferenceSearchTool
-7. ExpandSearchContextTool (Phase 7B)
-8. ChunkSimilaritySearchTool (Phase 7B)
-9. ExplainSearchResultsTool (Phase 7B)
+3. ExplainSearchResultsTool
+4. FilteredSearchTool (enhanced: HybridSearchWithFiltersTool + ExactMatchSearchTool) - 3 methods, 18 tests
+5. SimilaritySearchTool (renamed from ChunkSimilaritySearchTool)
+6. ExpandContextTool (renamed from ExpandSearchContextTool)
 
 Coverage:
 - Valid inputs and expected outputs
 - Error cases (missing KG, no results, invalid inputs)
-- Phase 7B features (context expansion, score preservation, similarity search)
+- Mode/method-based functionality (GraphSearchTool: 4 modes, FilteredSearchTool: 3 methods)
+- Legacy parameter compatibility
+- Edge cases and safety limits
 """
 
 import pytest
@@ -202,6 +201,10 @@ def mock_graph_retriever():
 def mock_knowledge_graph():
     """Create mock knowledge graph."""
     kg = Mock()
+    # Mock entities dict structure (knowledge_graph.entities.values())
+    kg.entities = {}
+    # Mock get_relationships_for_entity method
+    kg.get_relationships_for_entity.return_value = []
     return kg
 
 
@@ -220,72 +223,391 @@ def tool_dependencies(mock_vector_store, mock_embedder, mock_reranker):
 
 
 # ============================================================================
-# TEST 1: MultiHopSearchTool
+# TEST 1: GraphSearchTool (Consolidated from MultiHopSearchTool + EntityTool)
 # ============================================================================
 
 
-class TestMultiHopSearchTool:
-    """Test multi-hop search using knowledge graph traversal."""
+class TestGraphSearchTool:
+    """Test unified graph search with 4 modes: entity_mentions, entity_details, relationships, multi_hop."""
 
-    def test_multi_hop_search_without_kg_fails(self, tool_dependencies):
-        """Test that multi-hop search fails gracefully without KG."""
-        tool = MultiHopSearchTool(**tool_dependencies)
+    # ============================================================================
+    # Mode 1: entity_mentions
+    # ============================================================================
 
-        result = tool.execute(query="Find documents related to X through Y", max_hops=2, k=6)
+    def test_entity_mentions_without_kg_fails(self, tool_dependencies):
+        """Test that entity_mentions mode fails gracefully without KG."""
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="entity_mentions",
+            entity_value="Company X",
+            k=6
+        )
 
         assert isinstance(result, ToolResult)
         assert result.success is False
         assert "Knowledge graph not available" in result.error
 
-    def test_multi_hop_search_with_kg(self, tool_dependencies, mock_graph_retriever):
-        """Test multi-hop search with knowledge graph."""
-        tool_dependencies["graph_retriever"] = mock_graph_retriever
-        tool = MultiHopSearchTool(**tool_dependencies)
+    def test_entity_mentions_with_kg(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
+        """Test entity_mentions mode with knowledge graph."""
+        # Mock KG entities dict
+        entity = Mock(id="entity1", value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0", "doc1:sec1:1"], confidence=0.9)
+        mock_knowledge_graph.entities = {"entity1": entity}
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
 
-        result = tool.execute(query="Find waste disposal regulations", max_hops=2, k=6)
+        result = tool.execute(
+            mode="entity_mentions",
+            entity_value="Company X",
+            k=6
+        )
 
         assert isinstance(result, ToolResult)
         assert result.success is True
         assert len(result.data) > 0
-        assert result.data[0]["content"] == "Graph-boosted chunk 0."
-        assert len(result.citations) > 0
-        assert result.metadata["hops"] == 2
+        assert result.metadata["mode"] == "entity_mentions"
+        assert result.metadata["entity_value"] == "Company X"
 
-    def test_multi_hop_search_no_results(self, tool_dependencies, mock_reranker):
-        """Test multi-hop search when no results found."""
-        # Create a fresh mock for this test
-        mock_gr = Mock()
-        mock_gr.search_with_graph.return_value = []
+    def test_entity_mentions_with_type_filter(self, tool_dependencies, mock_knowledge_graph):
+        """Test entity_mentions with entity_type filter."""
+        mock_knowledge_graph.get_entities.return_value = [
+            Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        ]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
 
-        tool_dependencies["graph_retriever"] = mock_gr
-        tool_dependencies["reranker"] = mock_reranker
-
-        tool = MultiHopSearchTool(**tool_dependencies)
-        result = tool.execute(query="Nonexistent topic", max_hops=2, k=6)
+        result = tool.execute(
+            mode="entity_mentions",
+            entity_value="Company X",
+            entity_type="ORGANIZATION",
+            k=6
+        )
 
         assert result.success is True
-        # Empty list should be formatted
+        assert result.metadata["entity_type"] == "ORGANIZATION"
+
+    def test_entity_mentions_not_found(self, tool_dependencies, mock_knowledge_graph):
+        """Test entity_mentions when entity not found."""
+        mock_knowledge_graph.get_entities.return_value = []
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="entity_mentions",
+            entity_value="NonexistentEntity",
+            k=6
+        )
+
+        assert result.success is False
+        assert "not found" in result.error.lower()
+
+    # ============================================================================
+    # Mode 2: entity_details
+    # ============================================================================
+
+    def test_entity_details_with_relationships(self, tool_dependencies, mock_knowledge_graph):
+        """Test entity_details mode with relationships."""
+        mock_entity = Mock(
+            value="Company X",
+            type="ORGANIZATION",
+            chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        mock_knowledge_graph.get_relationships.return_value = [
+            Mock(
+                source_entity=mock_entity,
+                target_entity=Mock(value="Product Y", type="PRODUCT"),
+                relationship_type="PRODUCES",
+                chunk_ids=["doc1:sec1:1"],
+                confidence=0.85
+            )
+        ]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="entity_details",
+            entity_value="Company X",
+            include_relationships=True,
+            k=6
+        )
+
+        assert result.success is True
+        assert "entity" in result.data
+        assert "relationships" in result.data
+        assert len(result.data["relationships"]) > 0
+
+    def test_entity_details_without_relationships(self, tool_dependencies, mock_knowledge_graph):
+        """Test entity_details mode without relationships."""
+        mock_entity = Mock(
+            value="Company X",
+            type="ORGANIZATION",
+            chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="entity_details",
+            entity_value="Company X",
+            include_relationships=False,
+            k=6
+        )
+
+        assert result.success is True
+        assert "entity" in result.data
+        assert "relationships" not in result.data or len(result.data["relationships"]) == 0
+
+    def test_entity_details_with_direction_filter(self, tool_dependencies, mock_knowledge_graph):
+        """Test entity_details with direction filter."""
+        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        mock_knowledge_graph.get_relationships.return_value = []
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="entity_details",
+            entity_value="Company X",
+            include_relationships=True,
+            direction="outgoing",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["direction"] == "outgoing"
+
+    # ============================================================================
+    # Mode 3: relationships
+    # ============================================================================
+
+    def test_relationships_mode_basic(self, tool_dependencies, mock_knowledge_graph):
+        """Test relationships mode."""
+        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        mock_knowledge_graph.get_relationships.return_value = [
+            Mock(
+                source_entity=mock_entity,
+                target_entity=Mock(value="Product Y", type="PRODUCT"),
+                relationship_type="PRODUCES",
+                chunk_ids=["doc1:sec1:1"],
+                confidence=0.85
+            )
+        ]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="relationships",
+            entity_value="Company X",
+            k=6
+        )
+
+        assert result.success is True
+        assert isinstance(result.data, list)
+        assert len(result.data) > 0
+        assert result.metadata["mode"] == "relationships"
+
+    def test_relationships_with_type_filter(self, tool_dependencies, mock_knowledge_graph):
+        """Test relationships mode with type filter."""
+        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        mock_knowledge_graph.get_relationships.return_value = [
+            Mock(
+                source_entity=mock_entity,
+                target_entity=Mock(value="Product Y", type="PRODUCT"),
+                relationship_type="PRODUCES",
+                chunk_ids=["doc1:sec1:1"],
+                confidence=0.85
+            )
+        ]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="relationships",
+            entity_value="Company X",
+            relationship_types=["PRODUCES"],
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["relationship_types"] == ["PRODUCES"]
+
+    def test_relationships_no_results(self, tool_dependencies, mock_knowledge_graph):
+        """Test relationships mode when no relationships found."""
+        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        mock_knowledge_graph.get_relationships.return_value = []
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="relationships",
+            entity_value="Company X",
+            k=6
+        )
+
+        assert result.success is True
         assert isinstance(result.data, list)
         assert len(result.data) == 0
-        assert result.metadata["results_count"] == 0
 
-    def test_multi_hop_search_max_hops_validation(self, tool_dependencies, mock_graph_retriever):
+    # ============================================================================
+    # Mode 4: multi_hop
+    # ============================================================================
+
+    def test_multi_hop_bfs_traversal(self, tool_dependencies, mock_knowledge_graph):
+        """Test multi-hop BFS traversal."""
+        # Setup entity chain: A -> B -> C
+        entity_a = Mock(value="Company A", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        entity_b = Mock(value="Company B", type="ORGANIZATION", chunk_ids=["doc1:sec1:1"], confidence=0.85)
+        entity_c = Mock(value="Company C", type="ORGANIZATION", chunk_ids=["doc1:sec1:2"], confidence=0.8)
+
+        def mock_get_entities(value=None, entity_type=None):
+            if value == "Company A":
+                return [entity_a]
+            elif value == "Company B":
+                return [entity_b]
+            elif value == "Company C":
+                return [entity_c]
+            return []
+
+        def mock_get_relationships(entity=None, direction="both"):
+            if entity.value == "Company A":
+                return [Mock(source_entity=entity_a, target_entity=entity_b, relationship_type="PARTNER", chunk_ids=["doc1:sec1:1"], confidence=0.85)]
+            elif entity.value == "Company B":
+                return [Mock(source_entity=entity_b, target_entity=entity_c, relationship_type="SUBSIDIARY", chunk_ids=["doc1:sec1:2"], confidence=0.8)]
+            return []
+
+        mock_knowledge_graph.get_entities.side_effect = mock_get_entities
+        mock_knowledge_graph.get_relationships.side_effect = mock_get_relationships
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="multi_hop",
+            entity_value="Company A",
+            max_hops=2,
+            k=10
+        )
+
+        assert result.success is True
+        assert len(result.data) > 0
+        assert result.metadata["mode"] == "multi_hop"
+        assert result.metadata["max_hops"] == 2
+        assert result.metadata["actual_hops"] <= 2
+
+    def test_multi_hop_max_hops_validation(self, tool_dependencies, mock_knowledge_graph):
         """Test max_hops parameter validation."""
-        tool_dependencies["graph_retriever"] = mock_graph_retriever
-        tool = MultiHopSearchTool(**tool_dependencies)
+        mock_knowledge_graph.get_entities.return_value = [
+            Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        ]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
 
         # Valid: max_hops=1
-        result = tool.execute(query="test", max_hops=1, k=6)
+        result = tool.execute(mode="multi_hop", entity_value="Company X", max_hops=1, k=6)
         assert result.success is True
 
         # Valid: max_hops=3
-        result = tool.execute(query="test", max_hops=3, k=6)
+        result = tool.execute(mode="multi_hop", entity_value="Company X", max_hops=3, k=6)
         assert result.success is True
 
         # Invalid: max_hops=0 (should fail validation)
-        result = tool.execute(query="test", max_hops=0, k=6)
+        result = tool.execute(mode="multi_hop", entity_value="Company X", max_hops=0, k=6)
         assert result.success is False
         assert "validation" in result.error.lower()
+
+    def test_multi_hop_safety_limits(self, tool_dependencies, mock_knowledge_graph):
+        """Test multi-hop safety limits (20 entities/hop, 200 max)."""
+        # Create a large entity chain
+        entities = [Mock(value=f"Entity{i}", type="ORGANIZATION", chunk_ids=[f"doc1:sec1:{i}"], confidence=0.9) for i in range(100)]
+
+        def mock_get_entities(value=None, entity_type=None):
+            for entity in entities:
+                if entity.value == value:
+                    return [entity]
+            return []
+
+        def mock_get_relationships(entity=None, direction="both"):
+            # Return many relationships
+            return [
+                Mock(source_entity=entity, target_entity=entities[i], relationship_type="RELATED", chunk_ids=[f"doc1:sec1:{i}"], confidence=0.8)
+                for i in range(min(30, len(entities)))
+            ]
+
+        mock_knowledge_graph.get_entities.side_effect = mock_get_entities
+        mock_knowledge_graph.get_relationships.side_effect = mock_get_relationships
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="multi_hop",
+            entity_value="Entity0",
+            max_hops=2,
+            k=50
+        )
+
+        assert result.success is True
+        # Should hit safety limits
+        assert result.metadata["total_entities_visited"] <= 200
+
+    def test_multi_hop_circular_reference_handling(self, tool_dependencies, mock_knowledge_graph):
+        """Test circular reference handling in multi-hop."""
+        # Setup circular reference: A -> B -> A
+        entity_a = Mock(value="Company A", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        entity_b = Mock(value="Company B", type="ORGANIZATION", chunk_ids=["doc1:sec1:1"], confidence=0.85)
+
+        def mock_get_entities(value=None, entity_type=None):
+            if value == "Company A":
+                return [entity_a]
+            elif value == "Company B":
+                return [entity_b]
+            return []
+
+        def mock_get_relationships(entity=None, direction="both"):
+            if entity.value == "Company A":
+                return [Mock(source_entity=entity_a, target_entity=entity_b, relationship_type="PARTNER", chunk_ids=["doc1:sec1:1"], confidence=0.85)]
+            elif entity.value == "Company B":
+                return [Mock(source_entity=entity_b, target_entity=entity_a, relationship_type="PARTNER", chunk_ids=["doc1:sec1:0"], confidence=0.85)]
+            return []
+
+        mock_knowledge_graph.get_entities.side_effect = mock_get_entities
+        mock_knowledge_graph.get_relationships.side_effect = mock_get_relationships
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="multi_hop",
+            entity_value="Company A",
+            max_hops=3,
+            k=10
+        )
+
+        assert result.success is True
+        # Should not infinitely loop
+        assert result.metadata["total_entities_visited"] < 10
+
+    # ============================================================================
+    # General tests
+    # ============================================================================
+
+    def test_invalid_mode(self, tool_dependencies, mock_knowledge_graph):
+        """Test invalid mode parameter."""
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            mode="invalid_mode",
+            entity_value="Company X",
+            k=6
+        )
+
+        assert result.success is False
+        assert "validation" in result.error.lower() or "mode" in result.error.lower()
 
 
 # ============================================================================
@@ -701,7 +1023,428 @@ class TestHybridSearchWithFiltersTool:
 
 
 # ============================================================================
-# TEST 6: CrossReferenceSearchTool
+# TEST 6: FilteredSearchTool (Enhanced with 3 search methods)
+# ============================================================================
+
+
+class TestFilteredSearchTool:
+    """Test unified filtered search with 3 methods: hybrid, bm25_only, dense_only."""
+
+    # ============================================================================
+    # Method 1: hybrid (default)
+    # ============================================================================
+
+    def test_filtered_search_hybrid_basic(self, tool_dependencies):
+        """Test basic hybrid search without filters."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="waste disposal",
+            search_method="hybrid",
+            k=6
+        )
+
+        assert result.success is True
+        assert len(result.data) > 0
+        assert result.metadata["search_method"] == "hybrid"
+
+    def test_filtered_search_hybrid_with_document_filter(self, tool_dependencies, mock_vector_store):
+        """Test hybrid search with document filter."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="regulations",
+            search_method="hybrid",
+            filter_type="document",
+            filter_value="doc1",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["filter_type"] == "document"
+        assert result.metadata["filter_value"] == "doc1"
+
+    def test_filtered_search_hybrid_with_section_filter(self, tool_dependencies, mock_vector_store):
+        """Test hybrid search with section filter."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="requirements",
+            search_method="hybrid",
+            filter_type="section",
+            filter_value="Introduction",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["filter_type"] == "section"
+
+    def test_filtered_search_hybrid_with_temporal_filter(self, tool_dependencies, mock_reranker):
+        """Test hybrid search with temporal filter."""
+        # Create mock with date metadata
+        mock_vs = Mock()
+        mock_vs.hierarchical_search.return_value = {
+            "layer3": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "doc1",
+                    "document_id": "doc1",
+                    "section_id": "sec1",
+                    "content": "Content 1",
+                    "raw_content": "Content 1",
+                    "date": "2023-05-15",
+                    "rrf_score": 0.9,
+                },
+                {
+                    "chunk_id": "c2",
+                    "doc_id": "doc2",
+                    "document_id": "doc2",
+                    "section_id": "sec2",
+                    "content": "Content 2",
+                    "raw_content": "Content 2",
+                    "date": "2022-03-20",
+                    "rrf_score": 0.8,
+                },
+            ]
+        }
+        tool_dependencies["vector_store"] = mock_vs
+        tool_dependencies["reranker"] = mock_reranker
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="hybrid",
+            filter_type="temporal",
+            start_date="2023-01-01",
+            end_date="2023-12-31",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["filter_type"] == "temporal"
+        # Should only return chunks in date range
+        assert len(result.data) >= 1
+
+    def test_filtered_search_hybrid_with_metadata_filter(self, tool_dependencies, mock_reranker):
+        """Test hybrid search with metadata filter."""
+        mock_vs = Mock()
+        mock_vs.hierarchical_search.return_value = {
+            "layer3": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "doc1",
+                    "document_id": "doc1",
+                    "section_id": "sec1",
+                    "content": "Content 1",
+                    "raw_content": "Content 1",
+                    "doc_type": "regulation",
+                    "rrf_score": 0.9,
+                },
+                {
+                    "chunk_id": "c2",
+                    "doc_id": "doc2",
+                    "document_id": "doc2",
+                    "section_id": "sec2",
+                    "content": "Content 2",
+                    "raw_content": "Content 2",
+                    "doc_type": "contract",
+                    "rrf_score": 0.8,
+                },
+            ]
+        }
+        tool_dependencies["vector_store"] = mock_vs
+        tool_dependencies["reranker"] = mock_reranker
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="hybrid",
+            filter_type="metadata",
+            metadata_key="doc_type",
+            metadata_value="regulation",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["filter_type"] == "metadata"
+        # Should only return regulation chunks
+        assert len(result.data) >= 1
+
+    def test_filtered_search_hybrid_with_content_filter(self, tool_dependencies, mock_reranker):
+        """Test hybrid search with content filter (keyword)."""
+        mock_vs = Mock()
+        mock_vs.hierarchical_search.return_value = {
+            "layer3": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "doc1",
+                    "document_id": "doc1",
+                    "section_id": "sec1",
+                    "content": "This mentions Article 5.2 specifically.",
+                    "raw_content": "This mentions Article 5.2 specifically.",
+                    "rrf_score": 0.9,
+                },
+                {
+                    "chunk_id": "c2",
+                    "doc_id": "doc2",
+                    "document_id": "doc2",
+                    "section_id": "sec2",
+                    "content": "Different content here.",
+                    "raw_content": "Different content here.",
+                    "rrf_score": 0.8,
+                },
+            ]
+        }
+        tool_dependencies["vector_store"] = mock_vs
+        tool_dependencies["reranker"] = mock_reranker
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="hybrid",
+            filter_type="content",
+            filter_value="Article 5.2",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["filter_type"] == "content"
+        # Should only return chunks containing the keyword
+        assert len(result.data) >= 1
+
+    # ============================================================================
+    # Method 2: bm25_only
+    # ============================================================================
+
+    def test_filtered_search_bm25_only_basic(self, tool_dependencies, mock_vector_store):
+        """Test BM25-only search method."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="waste disposal",
+            search_method="bm25_only",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["search_method"] == "bm25_only"
+        # BM25 method should be faster (no dense search)
+        assert len(result.data) > 0
+
+    def test_filtered_search_bm25_with_document_filter(self, tool_dependencies, mock_vector_store):
+        """Test BM25-only with document filter."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="regulations",
+            search_method="bm25_only",
+            filter_type="document",
+            filter_value="doc1",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["search_method"] == "bm25_only"
+        assert result.metadata["filter_type"] == "document"
+
+    def test_filtered_search_bm25_with_post_filters(self, tool_dependencies, mock_reranker):
+        """Test BM25-only with post-filtering."""
+        mock_vs = Mock()
+        mock_vs.hierarchical_search.return_value = {
+            "layer3": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "doc1",
+                    "document_id": "doc1",
+                    "section_id": "sec1",
+                    "section_title": "Introduction",
+                    "content": "Content 1",
+                    "raw_content": "Content 1",
+                    "bm25_score": 0.9,
+                },
+                {
+                    "chunk_id": "c2",
+                    "doc_id": "doc2",
+                    "document_id": "doc2",
+                    "section_id": "sec2",
+                    "section_title": "Requirements",
+                    "content": "Content 2",
+                    "raw_content": "Content 2",
+                    "bm25_score": 0.8,
+                },
+            ]
+        }
+        tool_dependencies["vector_store"] = mock_vs
+        tool_dependencies["reranker"] = mock_reranker
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="bm25_only",
+            filter_type="section",
+            filter_value="Introduction",
+            k=6
+        )
+
+        assert result.success is True
+        # Should apply section filter after BM25 search
+        assert len(result.data) >= 1
+
+    # ============================================================================
+    # Method 3: dense_only
+    # ============================================================================
+
+    def test_filtered_search_dense_only_basic(self, tool_dependencies, mock_vector_store):
+        """Test dense-only (semantic) search method."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="waste disposal",
+            search_method="dense_only",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["search_method"] == "dense_only"
+        assert len(result.data) > 0
+
+    def test_filtered_search_dense_with_filters(self, tool_dependencies, mock_reranker):
+        """Test dense-only with post-filtering."""
+        mock_vs = Mock()
+        mock_vs.hierarchical_search.return_value = {
+            "layer3": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "doc1",
+                    "document_id": "doc1",
+                    "section_id": "sec1",
+                    "content": "Content 1",
+                    "raw_content": "Content 1",
+                    "dense_score": 0.9,
+                },
+                {
+                    "chunk_id": "c2",
+                    "doc_id": "doc2",
+                    "document_id": "doc2",
+                    "section_id": "sec2",
+                    "content": "Content 2",
+                    "raw_content": "Content 2",
+                    "dense_score": 0.8,
+                },
+            ]
+        }
+        tool_dependencies["vector_store"] = mock_vs
+        tool_dependencies["reranker"] = mock_reranker
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="dense_only",
+            filter_type="document",
+            filter_value="doc1",
+            k=6
+        )
+
+        assert result.success is True
+        assert result.metadata["search_method"] == "dense_only"
+        assert result.metadata["filter_type"] == "document"
+
+    # ============================================================================
+    # Legacy parameter mapping
+    # ============================================================================
+
+    def test_filtered_search_legacy_search_type(self, tool_dependencies, mock_vector_store):
+        """Test legacy search_type parameter maps to search_method."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        # Legacy: search_type="exact" should map to search_method="bm25_only"
+        result = tool.execute(
+            query="test",
+            search_type="exact",  # Legacy parameter
+            k=6
+        )
+
+        assert result.success is True
+        # Should use BM25 method
+        assert result.metadata.get("search_method") in ["bm25_only", "hybrid"]
+
+    def test_filtered_search_legacy_document_id(self, tool_dependencies, mock_vector_store):
+        """Test legacy document_id parameter maps to filter_type/filter_value."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            document_id="doc1",  # Legacy parameter
+            k=6
+        )
+
+        assert result.success is True
+        # Should apply document filter
+        assert result.metadata.get("filter_type") in ["document", None]
+
+    # ============================================================================
+    # Edge cases
+    # ============================================================================
+
+    def test_filtered_search_invalid_method(self, tool_dependencies, mock_vector_store):
+        """Test invalid search_method parameter."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="invalid_method",
+            k=6
+        )
+
+        assert result.success is False
+        assert "validation" in result.error.lower() or "method" in result.error.lower()
+
+    def test_filtered_search_missing_filter_value(self, tool_dependencies, mock_vector_store):
+        """Test filter_type without filter_value."""
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="hybrid",
+            filter_type="document",
+            # Missing filter_value
+            k=6
+        )
+
+        # Should either fail validation or ignore filter
+        assert isinstance(result, ToolResult)
+
+    def test_filtered_search_no_results_after_filtering(self, tool_dependencies, mock_vector_store):
+        """Test when filters eliminate all results."""
+        mock_vector_store.hierarchical_search.return_value = {
+            "layer3": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "doc2",
+                    "document_id": "doc2",
+                    "content": "Content",
+                    "raw_content": "Content",
+                    "rrf_score": 0.9,
+                }
+            ]
+        }
+        tool = FilteredSearchTool(**tool_dependencies)
+
+        result = tool.execute(
+            query="test",
+            search_method="hybrid",
+            filter_type="document",
+            filter_value="doc1",  # No chunks from doc1
+            k=6
+        )
+
+        assert result.success is True
+        assert len(result.data) == 0
+        assert result.metadata["results_count"] == 0
+
+
+# ============================================================================
+# TEST 7: CrossReferenceSearchTool
 # ============================================================================
 
 
@@ -1078,26 +1821,30 @@ class TestExplainSearchResultsTool:
 class TestEdgeCasesAndErrors:
     """Test edge cases and error handling across all tools."""
 
-    def test_invalid_k_parameter(self, tool_dependencies):
+    def test_invalid_k_parameter(self, tool_dependencies, mock_knowledge_graph):
         """Test that invalid k values are caught by validation."""
-        tool = MultiHopSearchTool(**{**tool_dependencies, "graph_retriever": Mock()})
+        mock_knowledge_graph.get_entities.return_value = [
+            Mock(value="Test", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        ]
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
 
         # k=0 should fail validation
-        result = tool.execute(query="test", k=0)
+        result = tool.execute(mode="entity_mentions", entity_value="Test", k=0)
         assert result.success is False
         assert "validation" in result.error.lower()
 
-        # k=21 (exceeds max) should fail validation
-        result = tool.execute(query="test", k=21)
+        # k=51 (exceeds max 50 for GraphSearchTool) should fail validation
+        result = tool.execute(mode="entity_mentions", entity_value="Test", k=51)
         assert result.success is False
 
     def test_empty_query_string(self, tool_dependencies):
         """Test handling of empty query strings."""
-        tool = TemporalSearchTool(**tool_dependencies)
+        tool = FilteredSearchTool(**tool_dependencies)
 
         # Empty string is technically valid in Pydantic (str type)
         # But we can test that it works without error
-        result = tool.execute(query="", k=6)
+        result = tool.execute(query="", search_method="hybrid", k=6)
         # Should succeed or fail gracefully, not crash
         assert isinstance(result, ToolResult)
 
@@ -1105,8 +1852,8 @@ class TestEdgeCasesAndErrors:
         """Test handling of embedder failures."""
         mock_embedder.embed_texts.side_effect = Exception("Embedder failed")
 
-        tool = TemporalSearchTool(**tool_dependencies)
-        result = tool.execute(query="test", k=6)
+        tool = FilteredSearchTool(**tool_dependencies)
+        result = tool.execute(query="test", search_method="hybrid", k=6)
 
         assert result.success is False
         # Error message should contain information about the failure
@@ -1117,22 +1864,22 @@ class TestEdgeCasesAndErrors:
         """Test handling of vector store failures."""
         mock_vector_store.hierarchical_search.side_effect = Exception("Vector store error")
 
-        tool = HybridSearchWithFiltersTool(**tool_dependencies)
-        result = tool.execute(query="test", k=6)
+        tool = FilteredSearchTool(**tool_dependencies)
+        result = tool.execute(query="test", search_method="hybrid", k=6)
 
         assert result.success is False
 
     def test_tool_statistics_tracking(self, tool_dependencies):
         """Test that tools track execution statistics."""
-        tool = CrossReferenceSearchTool(**tool_dependencies)
+        tool = CompareDocumentsTool(**tool_dependencies)
 
         # Execute tool multiple times
-        tool.execute(reference_text="Article 5", k=6)
-        tool.execute(reference_text="Article 6", k=6)
+        tool.execute(doc_id_1="doc1", doc_id_2="doc2")
+        tool.execute(doc_id_1="doc1", doc_id_2="doc3")
 
         stats = tool.get_stats()
         assert stats["execution_count"] == 2
-        assert stats["name"] == "cross_reference_search"
+        assert stats["name"] == "compare_documents"
         assert "avg_time_ms" in stats
 
 
@@ -1147,16 +1894,16 @@ class TestToolIntegration:
     def test_multi_tool_workflow(self, tool_dependencies):
         """Test typical workflow using multiple tools."""
         # 1. Initial search
-        search_tool = HybridSearchWithFiltersTool(**tool_dependencies)
-        search_result = search_tool.execute(query="waste disposal", k=6)
+        search_tool = FilteredSearchTool(**tool_dependencies)
+        search_result = search_tool.execute(query="waste disposal", search_method="hybrid", k=6)
         assert search_result.success is True
 
-        # 2. Find related chunks
+        # 2. Find similar chunks
         if search_result.data:
             chunk_id = search_result.data[0]["chunk_id"]
-            related_tool = FindRelatedChunksTool(**tool_dependencies)
-            related_result = related_tool.execute(chunk_id=chunk_id, k=3)
-            assert related_result.success is True
+            similarity_tool = SimilaritySearchTool(**tool_dependencies)
+            similarity_result = similarity_tool.execute(chunk_id=chunk_id, cross_document=True, k=3)
+            assert similarity_result.success is True
 
         # 3. Explain results
         if search_result.data:
@@ -1172,12 +1919,17 @@ class TestToolIntegration:
 
         # Each tool should handle the error gracefully
         tools = [
-            TemporalSearchTool(**tool_dependencies),
-            HybridSearchWithFiltersTool(**tool_dependencies),
-            CrossReferenceSearchTool(**tool_dependencies),
+            FilteredSearchTool(**tool_dependencies),
+            CompareDocumentsTool(**tool_dependencies),
+            ExplainSearchResultsTool(**tool_dependencies),
         ]
 
         for tool in tools:
-            result = tool.execute(query="test", k=6)
+            if tool.name == "compare_documents":
+                result = tool.execute(doc_id_1="doc1", doc_id_2="doc2")
+            elif tool.name == "explain_search_results":
+                result = tool.execute(chunk_ids=["doc1:sec1:0"])
+            else:
+                result = tool.execute(query="test", search_method="hybrid", k=6)
             assert result.success is False
             assert result.error is not None

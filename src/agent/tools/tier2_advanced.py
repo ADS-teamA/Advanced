@@ -250,7 +250,7 @@ class GraphSearchTool(BaseTool):
 
         # Search through all entities
         candidates = []
-        for entity in self.knowledge_graph.entities:
+        for entity in self.knowledge_graph.entities.values():
             if entity.confidence < min_confidence:
                 continue
 

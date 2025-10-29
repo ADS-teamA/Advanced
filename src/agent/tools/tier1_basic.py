@@ -624,11 +624,12 @@ class ListAvailableToolsTool(BaseTool):
                     ],
                     "selection_strategy": {
                         "most_queries": "search (with num_expands=0 for speed, 1-2 for recall)",
-                        "entity_focused": "Use 'search' with entity names, or multi_hop_search if KG available",
-                        "specific_document": "Use exact_match_search or filtered_search with document_id filter",
-                        "multi_hop_reasoning": "multi_hop_search (requires KG)",
+                        "entity_focused": "Use 'search' with entity names, or graph_search mode='entity_mentions' if KG available",
+                        "specific_document": "Use filtered_search with filter_type='document' and filter_value=doc_id",
+                        "multi_hop_reasoning": "graph_search mode='multi_hop' (requires KG)",
                         "comparison": "compare_documents",
                         "temporal_info": "filtered_search with filter_type='temporal' or timeline_view",
+                        "exact_keyword_matching": "filtered_search with search_method='bm25_only' (fast, keyword-based)",
                     },
                 },
             },
@@ -651,9 +652,7 @@ class ListAvailableToolsTool(BaseTool):
 #   - Replaces: get_document_summary, get_document_metadata, get_document_sections, get_section_details
 #   - Benefit: Single tool with info_type parameter instead of 4 separate tools
 #
-# exact_match_search:
-#   - Replaces: keyword_search, cross_reference_search, entity_search
-#   - Benefit: Unified interface with search_type parameter + ROI filtering
+# Note: exact_match_search was removed in favor of filtered_search (Tier 2) with search_method parameter
 
 
 class GetDocumentInfoInput(ToolInput):
