@@ -709,7 +709,7 @@ class IndexingPipeline:
                     # Prepare chunks for KG (use Layer 3 primary chunks)
                     kg_chunks = [
                         {
-                            "id": chunk.id,
+                            "id": chunk.chunk_id,  # Fixed: Use chunk_id instead of id
                             "content": chunk.content,
                             "raw_content": chunk.raw_content,
                             "metadata": {
@@ -731,7 +731,8 @@ class IndexingPipeline:
                         f"{len(knowledge_graph.relationships)} relationships"
                     )
 
-                except Exception as e:
+                except (ValueError, RuntimeError, KeyError) as e:
+                    # Expected KG construction errors (LLM API, data issues)
                     logger.error(f"[ERROR] Knowledge Graph construction failed: {e}", exc_info=True)
                     if self.config.enable_knowledge_graph:
                         logger.error(
@@ -741,6 +742,17 @@ class IndexingPipeline:
                         )
                     knowledge_graph = None
                     kg_error = str(e)
+                except (AttributeError, TypeError) as e:
+                    # Code bugs - should fail fast with diagnostics
+                    logger.error(f"[CRITICAL] Knowledge Graph code bug detected: {e}", exc_info=True)
+                    logger.error(f"Enabled entity types: {self.kg_config.entity_extraction.enabled_entity_types}")
+                    logger.error(f"Enabled relationship types: {self.kg_config.relationship_extraction.enabled_relationship_types}")
+                    raise  # Re-raise to stop execution
+                except MemoryError as e:
+                    # Resource exhaustion - specific guidance
+                    logger.error(f"[CRITICAL] Out of memory during KG construction: {e}", exc_info=True)
+                    logger.error("Try reducing batch_size in config or disabling KG for large documents")
+                    raise
 
         # Save intermediate results
         if save_intermediate and output_dir:

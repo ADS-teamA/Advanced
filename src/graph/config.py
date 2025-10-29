@@ -39,6 +39,9 @@ class EntityExtractionConfig:
             EntityType.CLAUSE,
             EntityType.TOPIC,
             EntityType.REGULATION,
+            EntityType.LOCATION,  # Added: For jurisdictions, countries, etc.
+            EntityType.PERSON,  # Added: For completeness (authors, signatories)
+            EntityType.CONTRACT,  # Added: For completeness (NDAs, MSAs)
         }
     )
 
@@ -70,13 +73,29 @@ class RelationshipExtractionConfig:
     # Enabled relationship types
     enabled_relationship_types: Set[RelationshipType] = field(
         default_factory=lambda: {
+            # Document relationships
             RelationshipType.SUPERSEDED_BY,
             RelationshipType.SUPERSEDES,
             RelationshipType.REFERENCES,
+            RelationshipType.REFERENCED_BY,
+            # Organizational relationships
             RelationshipType.ISSUED_BY,
+            RelationshipType.DEVELOPED_BY,
+            RelationshipType.PUBLISHED_BY,
+            # Temporal relationships
             RelationshipType.EFFECTIVE_DATE,
+            RelationshipType.EXPIRY_DATE,  # Added: For contract expiry dates
+            RelationshipType.SIGNED_ON,
+            # Content relationships
             RelationshipType.COVERS_TOPIC,
             RelationshipType.CONTAINS_CLAUSE,
+            RelationshipType.APPLIES_TO,  # Added: For regulation → location
+            # Structural relationships
+            RelationshipType.PART_OF,
+            RelationshipType.CONTAINS,
+            # Provenance relationships
+            RelationshipType.MENTIONED_IN,  # Added: Entity → Chunk provenance
+            RelationshipType.DEFINED_IN,
         }
     )
 
@@ -320,6 +339,7 @@ def get_development_config() -> KnowledgeGraphConfig:
                 EntityType.STANDARD,
                 EntityType.ORGANIZATION,
                 EntityType.TOPIC,
+                EntityType.LOCATION,  # Added for dev testing
             },
         ),
         relationship_extraction=RelationshipExtractionConfig(
@@ -330,6 +350,8 @@ def get_development_config() -> KnowledgeGraphConfig:
                 RelationshipType.SUPERSEDED_BY,
                 RelationshipType.REFERENCES,
                 RelationshipType.COVERS_TOPIC,
+                RelationshipType.MENTIONED_IN,  # Added for dev testing
+                RelationshipType.APPLIES_TO,  # Added for dev testing
             },
         ),
         verbose=True,
