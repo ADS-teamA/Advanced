@@ -353,6 +353,131 @@ class ExplainSearchResultsTool(BaseTool):
             return ToolResult(success=False, data=None, error=str(e))
 
 
+class AssessRetrievalConfidenceInput(ToolInput):
+    """Input for assess_retrieval_confidence tool."""
+
+    chunk_ids: List[str] = Field(..., description="Chunk IDs from search results to assess")
+
+
+@register_tool
+class AssessRetrievalConfidenceTool(BaseTool):
+    """Assess confidence of retrieval results."""
+
+    name = "assess_retrieval_confidence"
+    description = "Evaluate confidence in search results"
+    detailed_help = """
+    Assess the confidence/quality of retrieval results using multiple signals.
+
+    Analyzes:
+    - Retrieval scores (top score, gap, spread, consensus)
+    - Method agreement (BM25 vs Dense correlation)
+    - Context quality (document diversity, section diversity)
+    - Knowledge graph support
+
+    **When to use:**
+    - After search, to determine if results are reliable
+    - Before answering critical questions (legal, compliance, financial)
+    - When results seem uncertain or contradictory
+    - To decide if query expansion or alternative retrieval is needed
+
+    **Best practices:**
+    - Use AFTER a search (requires chunk IDs from search results)
+    - High confidence (≥0.85): Safe to use for automated response
+    - Medium confidence (0.70-0.84): Review recommended
+    - Low confidence (<0.70): Mandatory review or alternative retrieval
+
+    **Returns:** Confidence score (0-1) with detailed breakdown
+
+    **Method:** Score analysis from hybrid search metadata
+    **Speed:** <100ms (metadata lookup + analysis)
+    """
+    tier = 2
+    input_schema = AssessRetrievalConfidenceInput
+
+    def execute_impl(self, chunk_ids: List[str]) -> ToolResult:
+        """Assess confidence of specific chunks."""
+        try:
+            from src.agent.rag_confidence import RAGConfidenceScorer
+
+            # Get Layer 3 metadata
+            layer3_chunks = []
+            if hasattr(self.vector_store, "metadata_layer3"):
+                layer3_chunks = self.vector_store.metadata_layer3
+            elif hasattr(self.vector_store, "faiss_store"):
+                layer3_chunks = self.vector_store.faiss_store.metadata_layer3
+
+            # Find chunks by ID
+            chunks = []
+            for chunk_id in chunk_ids:
+                for meta in layer3_chunks:
+                    if meta.get("chunk_id") == chunk_id:
+                        chunks.append(meta)
+                        break
+
+            if not chunks:
+                return ToolResult(
+                    success=True,
+                    data=None,
+                    metadata={"chunk_ids": chunk_ids, "found": False},
+                    error="No chunks found with provided IDs",
+                )
+
+            # Score confidence
+            scorer = RAGConfidenceScorer()
+            confidence = scorer.score_retrieval(chunks)
+
+            # Build response
+            response_data = confidence.to_dict()
+
+            # Add actionable recommendations
+            recommendations = []
+            if confidence.overall_confidence < 0.50:
+                recommendations.append(
+                    "CRITICAL: Very low confidence. Consider query expansion or alternative retrieval methods."
+                )
+                recommendations.append(
+                    "Try: Use 'search' with num_expands=3-5 for better recall."
+                )
+            elif confidence.overall_confidence < 0.70:
+                recommendations.append(
+                    "WARNING: Low confidence. Recommend manual review before using results."
+                )
+                if confidence.bm25_dense_agreement < 0.5:
+                    recommendations.append(
+                        "BM25 and Dense retrieval disagree. Try exact_match_search for keyword-based retrieval."
+                    )
+            elif confidence.overall_confidence < 0.85:
+                recommendations.append(
+                    "MODERATE: Medium confidence. Review recommended for critical use cases."
+                )
+
+            if confidence.document_diversity > 0.7:
+                recommendations.append(
+                    "High document diversity detected. Results may be scattered across multiple sources."
+                )
+
+            if not confidence.graph_support and hasattr(self, "knowledge_graph"):
+                recommendations.append(
+                    "No knowledge graph support. Consider using multi_hop_search for graph-based retrieval."
+                )
+
+            response_data["recommendations"] = recommendations
+
+            return ToolResult(
+                success=True,
+                data=response_data,
+                metadata={
+                    "chunk_count": len(chunks),
+                    "confidence_level": confidence.interpretation.split(" - ")[0],
+                    "should_flag": confidence.should_flag,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Assess retrieval confidence failed: {e}", exc_info=True)
+            return ToolResult(success=False, data=None, error=str(e))
+
+
 # ============================================================================
 # UNIFIED TOOLS (Consolidated from multiple similar tools)
 # ============================================================================

@@ -371,6 +371,25 @@ class SearchTool(BaseTool):
             f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
         ]
 
+        # === STEP 6: RAG Confidence Scoring ===
+        try:
+            from src.agent.rag_confidence import RAGConfidenceScorer
+
+            confidence_scorer = RAGConfidenceScorer()
+            confidence = confidence_scorer.score_retrieval(chunks, query=query)
+
+            logger.info(
+                f"RAG Confidence: {confidence.interpretation} ({confidence.overall_confidence:.3f})"
+            )
+
+            # Add warning to citations if low confidence
+            if confidence.should_flag:
+                citations.insert(0, f"⚠️ {confidence.interpretation}")
+
+        except Exception as e:
+            logger.warning(f"RAG confidence scoring failed: {e}")
+            confidence = None
+
         # Enhanced metadata with debug info
         result_metadata = {
             "query": query,
@@ -388,6 +407,10 @@ class SearchTool(BaseTool):
             "queries_used": queries,
             "search_metadata": search_metadata,
         }
+
+        # Add RAG confidence to metadata
+        if confidence:
+            result_metadata["rag_confidence"] = confidence.to_dict()
 
         # Log final summary
         logger.info(
@@ -1081,19 +1104,45 @@ class ExactMatchSearchTool(BaseTool):
                 f"[{i+1}] {c['document_id']}: {c['section_title']}" for i, c in enumerate(formatted)
             ]
 
+            # === RAG Confidence Scoring ===
+            try:
+                from src.agent.rag_confidence import RAGConfidenceScorer
+
+                confidence_scorer = RAGConfidenceScorer()
+                confidence = confidence_scorer.score_retrieval(results, query=query)
+
+                logger.info(
+                    f"RAG Confidence: {confidence.interpretation} ({confidence.overall_confidence:.3f})"
+                )
+
+                # Add warning to citations if low confidence
+                if confidence.should_flag:
+                    citations.insert(0, f"⚠️ {confidence.interpretation}")
+
+            except Exception as e:
+                logger.warning(f"RAG confidence scoring failed: {e}")
+                confidence = None
+
+            # Build metadata
+            result_metadata = {
+                "query": query,
+                "search_type": search_type,
+                "method": "bm25",
+                "search_scope": search_scope,
+                "document_id": document_id,
+                "section_id": section_id,
+                "results_count": len(formatted),
+            }
+
+            # Add RAG confidence to metadata
+            if confidence:
+                result_metadata["rag_confidence"] = confidence.to_dict()
+
             return ToolResult(
                 success=True,
                 data=formatted,
                 citations=citations,
-                metadata={
-                    "query": query,
-                    "search_type": search_type,
-                    "method": "bm25",
-                    "search_scope": search_scope,
-                    "document_id": document_id,
-                    "section_id": section_id,
-                    "results_count": len(formatted),
-                },
+                metadata=result_metadata,
             )
 
         except Exception as e:

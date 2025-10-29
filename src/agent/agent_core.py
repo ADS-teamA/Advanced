@@ -256,6 +256,19 @@ class AgentCore:
             "tools_used": list(set(t["tool_name"] for t in self.tool_call_history)),
         }
 
+    def get_latest_rag_confidence(self) -> Optional[Dict[str, Any]]:
+        """
+        Get RAG confidence from the most recent tool call (if available).
+
+        Returns:
+            Dict with confidence data, or None if no confidence available
+        """
+        # Search backwards through tool call history for most recent confidence
+        for tool_call in reversed(self.tool_call_history):
+            if "rag_confidence" in tool_call:
+                return tool_call["rag_confidence"]
+        return None
+
     def _prune_tool_results(self, keep_last_n: int = 3):
         """
         Remove tool calls, intermediate messages, and results from old messages.
@@ -982,6 +995,18 @@ class AgentCore:
                             f"~${estimated_cost:.6f} cost estimate"
                         )
 
+                        # Display RAG confidence if available (for search tool)
+                        if result.metadata and "rag_confidence" in result.metadata:
+                            confidence = result.metadata["rag_confidence"]
+                            conf_score = confidence.get("overall_confidence", 0.0)
+                            conf_interp = confidence.get("interpretation", "Unknown")
+                            should_review = confidence.get("should_flag_for_review", False)
+
+                            # Show confidence in blue (tool notification color)
+                            if self.config.cli_config.show_tool_calls:
+                                emoji = "⚠️" if should_review else "✓"
+                                yield f"{COLOR_BLUE}[{emoji} RAG Confidence: {conf_interp} ({conf_score:.2f})]{COLOR_RESET}\n"
+
                         # Check for tool failure and alert user
                         if not result.success:
                             logger.error(
@@ -992,17 +1017,21 @@ class AgentCore:
                             if self.config.cli_config.show_tool_calls:
                                 yield f"{COLOR_BLUE}[⚠️  Tool '{tool_name}' failed: {result.error}]{COLOR_RESET}\n"
 
-                        # Track in history
-                        self.tool_call_history.append(
-                            {
-                                "tool_name": tool_name,
-                                "input": tool_input,
-                                "success": result.success,
-                                "execution_time_ms": result.execution_time_ms,
-                                "estimated_tokens": result.estimated_tokens,
-                                "estimated_cost": estimated_cost,
-                            }
-                        )
+                        # Track in history (including RAG confidence if available)
+                        tool_call_record = {
+                            "tool_name": tool_name,
+                            "input": tool_input,
+                            "success": result.success,
+                            "execution_time_ms": result.execution_time_ms,
+                            "estimated_tokens": result.estimated_tokens,
+                            "estimated_cost": estimated_cost,
+                        }
+
+                        # Add RAG confidence if available
+                        if result.metadata and "rag_confidence" in result.metadata:
+                            tool_call_record["rag_confidence"] = result.metadata["rag_confidence"]
+
+                        self.tool_call_history.append(tool_call_record)
 
                         # Format tool result for Claude
                         tool_result_content = self._format_tool_result(result)
@@ -1136,6 +1165,13 @@ class AgentCore:
                                 f"~${estimated_cost:.6f} cost estimate"
                             )
 
+                            # Log RAG confidence if available (for search tool)
+                            if result.metadata and "rag_confidence" in result.metadata:
+                                confidence = result.metadata["rag_confidence"]
+                                conf_score = confidence.get("overall_confidence", 0.0)
+                                conf_interp = confidence.get("interpretation", "Unknown")
+                                logger.info(f"RAG Confidence: {conf_interp} ({conf_score:.3f})")
+
                             # Check for tool failure and log error
                             if not result.success:
                                 error_msg = f"⚠️  Tool '{tool_name}' failed: {result.error}"
@@ -1146,17 +1182,21 @@ class AgentCore:
                                 # Show error to user in non-streaming mode
                                 full_response_text += f"\n[{error_msg}]\n"
 
-                            # Track in history
-                            self.tool_call_history.append(
-                                {
-                                    "tool_name": tool_name,
-                                    "input": tool_input,
-                                    "success": result.success,
-                                    "execution_time_ms": result.execution_time_ms,
-                                    "estimated_tokens": result.estimated_tokens,
-                                    "estimated_cost": estimated_cost,
-                                }
-                            )
+                            # Track in history (including RAG confidence if available)
+                            tool_call_record = {
+                                "tool_name": tool_name,
+                                "input": tool_input,
+                                "success": result.success,
+                                "execution_time_ms": result.execution_time_ms,
+                                "estimated_tokens": result.estimated_tokens,
+                                "estimated_cost": estimated_cost,
+                            }
+
+                            # Add RAG confidence if available
+                            if result.metadata and "rag_confidence" in result.metadata:
+                                tool_call_record["rag_confidence"] = result.metadata["rag_confidence"]
+
+                            self.tool_call_history.append(tool_call_record)
 
                             # Format tool result
                             tool_result_content = self._format_tool_result(result)
@@ -1216,5 +1256,14 @@ class AgentCore:
 
         if result.citations:
             formatted["citations"] = result.citations
+
+        # Add RAG confidence summary if available (for search tool)
+        if result.metadata and "rag_confidence" in result.metadata:
+            confidence = result.metadata["rag_confidence"]
+            formatted["rag_confidence_summary"] = {
+                "confidence": confidence.get("overall_confidence", 0.0),
+                "interpretation": confidence.get("interpretation", "Unknown"),
+                "should_review": confidence.get("should_flag_for_review", False),
+            }
 
         return json.dumps(formatted, indent=2, ensure_ascii=False)

@@ -8,11 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SUJBOT2** is a production-ready RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. It implements state-of-the-art techniques from 4 research papers (2024-2025) and features a 7-phase pipeline with an interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 16-Tool Agent)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 17-Tool Agent + RAG Confidence Scoring)
 
 **Visual Documentation:**
 - 📥 **Indexing Pipeline (Phase 1-5):** [`indexing_pipeline.html`](indexing_pipeline.html) - Complete indexing process from PDF to searchable vector store
-- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 16 agent tools breakdown
+- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 17 agent tools breakdown
 
 **Core Technologies:**
 - Document processing: IBM Docling (hierarchical structure extraction)
@@ -20,7 +20,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Vector store: FAISS (3-layer indexing)
 - Retrieval: Hybrid (BM25 + Dense + RRF fusion) with cross-encoder reranking
 - Knowledge Graph: Entity/relationship extraction with NetworkX/Neo4j
-- Agent: Claude SDK with 16 specialized tools (Anthropic Sonnet/Haiku)
+- Agent: Claude SDK with 17 specialized tools (Anthropic Sonnet/Haiku)
+- **RAG Confidence Scoring:** Real-time retrieval quality assessment (NEW ✨)
 
 ---
 
@@ -735,15 +736,16 @@ logger.error("Errors that don't crash the program")
 
 ## Version & Status
 
-**Last Updated:** 2025-10-26
-**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Interactive Visual Documentation ✅
-**Agent Tools:** 16 (6 basic + 7 advanced + 3 analysis)
-**Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Context Assembly)
+**Last Updated:** 2025-10-29
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Interactive Visual Documentation ✅ + RAG Confidence Scoring ✅
+**Agent Tools:** 17 (6 basic + 8 advanced + 3 analysis)
+**Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Context Assembly + Confidence Scoring)
 **Visual Documentation:**
 - [`indexing_pipeline.html`](indexing_pipeline.html) - Detailed indexing process (Phase 1-5)
 - [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
 
 **Recent Updates:**
+- **RAG Confidence Scoring (2025-10-29):** Real-time retrieval quality assessment with 7 metrics (score-based, agreement-based, context-based). Automatic scoring in `search` tool + dedicated `assess_retrieval_confidence` tool. See [`docs/rag-confidence.md`](docs/rag-confidence.md) for details.
 - Visual Documentation (2025-10-26): Interactive HTML visualizations for indexing and search pipelines
 - Query Expansion (2025-10-26): Multi-query generation with `num_expands` parameter (research-based +15-25% recall improvement)
 - Tool Count Correction (2025-10-26): Corrected from 27 to 17 actual implemented tools
