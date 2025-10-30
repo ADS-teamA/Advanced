@@ -102,6 +102,69 @@ uv run isort src/ tests/ --profile black
 uv run mypy src/
 ```
 
+### Neo4j Knowledge Graph (Optional Production Setup)
+
+**When to Use:**
+- Production deployments (recommended)
+- Multi-user environments (WebApp)
+- Requires `browse_entities` tool (entity discovery by type/confidence/search)
+- Requires efficient multi-hop graph traversal
+- Enables indexed queries (faster than JSON for large graphs)
+
+**Setup Steps:**
+1. **Create Neo4j Aura instance** (free tier available):
+   - Visit: https://console.neo4j.io/
+   - Click "New Instance" → Select "Free" tier
+   - **Save your password** (cannot be recovered!)
+   - Copy connection URI (format: `neo4j+s://xxxxx.databases.neo4j.io`)
+
+2. **Configure `.env`:**
+   ```bash
+   KG_BACKEND=neo4j
+   NEO4J_URI=neo4j+s://YOUR_INSTANCE_ID.databases.neo4j.io
+   NEO4J_USERNAME=neo4j  # Default username
+   NEO4J_PASSWORD=YOUR_PASSWORD  # From step 1
+   NEO4J_DATABASE=neo4j  # Default database name
+   ```
+
+3. **Migrate existing data:**
+   ```bash
+   # After running indexing pipeline
+   uv run python scripts/migrate_kg_to_neo4j.py --kg-file vector_db/unified_kg.json
+   ```
+
+4. **Verify connection:**
+   ```bash
+   uv run python -m src.agent.cli
+   # Should show: "✓ Connected to Neo4j: X entities, Y relationships"
+   ```
+
+**Fallback Behavior:**
+- **Automatic fallback** (KG_BACKEND not set or =simple): Falls back to JSON with warning if Neo4j fails
+- **Fail-fast** (KG_BACKEND=neo4j explicit): No fallback - fails with actionable error messages
+  - Auth errors: Check NEO4J_USERNAME, NEO4J_PASSWORD
+  - Connection errors: Check NEO4J_URI, server status
+  - Timeout errors: Check server load or query complexity
+
+**Degraded Mode Warning:**
+When fallback occurs, you'll see:
+```
+⚠️  WARNING: Running in degraded mode with JSON backend
+Some tools will not work optimally:
+- browse_entities: Unavailable (requires Neo4j indexed queries)
+- multi_hop_search: Slower (no graph database optimization)
+- graph_search: Limited to JSON export data
+```
+
+**JSON Backend (Development/Testing):**
+- Set `KG_BACKEND=simple` in `.env` (or leave unset)
+- No external dependencies (uses local JSON files)
+- Limited tool functionality:
+  - `browse_entities` unavailable
+  - `multi_hop_search` slower (linear search)
+  - `graph_search` works with reduced performance
+- Best for: Development, testing, single-user scenarios
+
 ---
 
 ## Architecture Overview
