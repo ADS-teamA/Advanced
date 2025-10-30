@@ -42,10 +42,14 @@ class GraphSearchInput(ToolInput):
         ),
     )
 
-    # Entity identification (required for all modes)
+    # Entity identification (REQUIRED for all modes - you MUST specify a concrete entity)
     entity_value: str = Field(
         ...,
-        description="Entity value to search for (e.g., 'GRI 306', 'GSSB', 'waste management')",
+        description=(
+            "REQUIRED: Specific entity name to search for (e.g., 'GRI 306', 'GSSB', 'waste management'). "
+            "This tool requires a concrete entity - it cannot search ALL entities at once. "
+            "Use browse_entities first to find entities, then use graph_search on each one."
+        ),
     )
 
     entity_type: Optional[str] = Field(
@@ -111,7 +115,11 @@ class GraphSearchTool(BaseTool):
     """Unified knowledge graph search with multiple modes."""
 
     name = "graph_search"
-    description = "Unified knowledge graph search (entity mentions, details, relationships, multi-hop)"
+    description = (
+        "Search knowledge graph for ONE specific entity (e.g., 'GRI 306'). "
+        "ALWAYS requires entity_value parameter - cannot search all entities at once. "
+        "For bulk: use browse_entities first, then call this for each entity."
+    )
     detailed_help = """
     Unified tool for searching the knowledge graph with 4 modes:
 
@@ -126,9 +134,11 @@ class GraphSearchTool(BaseTool):
     Use when: You need complete information about a specific entity.
 
     **Mode 3: relationships** (~400ms)
-    Query relationships between entities with filtering.
-    Example: Find all "superseded_by" relationships for standards, or what topics are "covered" by GRI 306.
-    Use when: You need to understand connections between entities.
+    Query relationships for a SPECIFIC entity with filtering.
+    Example: Find all "superseded_by" relationships for "GRI 306" standard.
+    ⚠️  Requires entity_value: Cannot search ALL relationships at once - must specify one entity.
+    For bulk: Use browse_entities first to get entity list, then call graph_search for each.
+    Use when: You need to understand connections of a specific entity.
 
     **Mode 4: multi_hop** (~1-2s)
     Multi-hop BFS traversal following relationships across the graph.
@@ -136,7 +146,7 @@ class GraphSearchTool(BaseTool):
     Use when: Complex queries requiring following chains of relationships.
 
     **Parameters:**
-    - entity_value: Entity to search for (e.g., "GRI 306", "GSSB")
+    - entity_value: REQUIRED - Specific entity to search (e.g., "GRI 306", "GSSB") ⚠️ CANNOT BE OMITTED
     - entity_type: Optional type filter (standard, organization, topic, etc.)
     - k: Max results to return (default: 6)
     - relationship_types: Filter relationships (e.g., ["superseded_by", "references"])
@@ -145,6 +155,11 @@ class GraphSearchTool(BaseTool):
     - min_confidence: Filter low-confidence extractions (0.0-1.0, default: 0.0)
     - cross_document: Allow cross-document traversal (default: True)
     - include_metadata: Include detailed metadata (default: True)
+
+    **⚠️  IMPORTANT: This tool works on ONE entity at a time**
+    To search multiple entities:
+    1. Use browse_entities to get list of entities
+    2. Loop: call graph_search for each entity individually
 
     **Entity Types:**
     standard, organization, date, clause, topic, person, location, regulation, contract
@@ -159,6 +174,14 @@ class GraphSearchTool(BaseTool):
     2. entity_details: {"mode": "entity_details", "entity_value": "GSSB", "entity_type": "organization"}
     3. relationships: {"mode": "relationships", "entity_value": "GRI 306", "relationship_types": ["superseded_by", "supersedes"]}
     4. multi_hop: {"mode": "multi_hop", "entity_value": "GSSB", "relationship_types": ["issued_by", "covers_topic"], "max_hops": 2}
+
+    **❌ WRONG - This will FAIL with validation error:**
+    {"mode": "relationships", "relationship_types": ["superseded_by"]}  # Missing entity_value!
+
+    **✅ CORRECT - For "find all regulations with supersession relationships":**
+    Step 1: browse_entities(entity_type="standard", limit=50)
+    Step 2: For each entity from step 1:
+            graph_search(mode="relationships", entity_value=<entity.value>, relationship_types=["superseded_by"])
     """
     tier = 2
     input_schema = GraphSearchInput
@@ -255,14 +278,32 @@ class GraphSearchTool(BaseTool):
                 continue
 
             # Check type match if specified
-            if entity_type and entity.type.value != entity_type:
-                continue
+            if entity_type:
+                # Handle both EntityType enum (entity.type.value) and string (mocks)
+                entity_type_value = entity.type.value if hasattr(entity.type, 'value') else entity.type
+                if entity_type_value != entity_type:
+                    continue
 
             # Check value match (normalized or original)
-            entity_norm_lower = entity.normalized_value.lower()
-            entity_val_lower = entity.value.lower()
+            # Handle None/missing values gracefully - use try/except for robustness
+            try:
+                # Ensure we have a string, not a Mock or other object
+                norm_val = entity.normalized_value
+                entity_norm_lower = norm_val.lower() if norm_val and isinstance(norm_val, str) else ""
+            except (AttributeError, TypeError):
+                entity_norm_lower = ""
 
-            if entity_value_lower in entity_norm_lower or entity_value_lower in entity_val_lower:
+            try:
+                # Ensure we have a string, not a Mock or other object
+                val = entity.value
+                entity_val_lower = val.lower() if val and isinstance(val, str) else ""
+            except (AttributeError, TypeError):
+                entity_val_lower = ""
+
+            # Match if query appears in either normalized or original value
+            # Check that we have actual strings before doing substring matching
+            if (entity_norm_lower and entity_value_lower in entity_norm_lower) or \
+               (entity_val_lower and entity_value_lower in entity_val_lower):
                 candidates.append(entity)
 
         # Return best match (highest confidence)
@@ -669,10 +710,22 @@ class GraphSearchTool(BaseTool):
         # Sort chunks by score and take top k
         sorted_chunks = sorted(chunk_scores.items(), key=lambda x: x[1], reverse=True)[:k]
 
+        # Get Layer 3 metadata for chunk retrieval
+        layer3_chunks = []
+        if hasattr(self.vector_store, "metadata_layer3"):
+            layer3_chunks = self.vector_store.metadata_layer3
+        elif hasattr(self.vector_store, "faiss_store"):
+            layer3_chunks = self.vector_store.faiss_store.metadata_layer3
+
+        # Build chunk lookup dictionary for O(1) access (avoid N+1 pattern)
+        chunk_lookup = {meta.get("chunk_id"): meta for meta in layer3_chunks if meta.get("chunk_id")}
+
         # Retrieve actual chunks
         chunks = []
         for chunk_id, score in sorted_chunks:
-            chunk = self.vector_store.get_chunk_by_id(chunk_id)
+            # Direct lookup instead of linear search
+            chunk = chunk_lookup.get(chunk_id)
+
             if chunk:
                 formatted = format_chunk_result(chunk, include_score=True)
                 formatted["graph_score"] = round(score, 4)
@@ -1944,3 +1997,239 @@ class ExpandContextTool(BaseTool):
         except Exception as e:
             logger.error(f"Similarity expansion failed: {e}", exc_info=True)
             raise
+
+
+# ----------------------------------------------------------------------------
+# Browse Entities Tool
+# ----------------------------------------------------------------------------
+
+
+class BrowseEntitiesInput(ToolInput):
+    """Input for browse_entities tool."""
+
+    entity_type: Optional[str] = Field(
+        None,
+        description=(
+            "Filter by entity type (e.g., 'regulation', 'standard', 'organization', "
+            "'clause', 'topic', 'date'). Leave empty to see all types."
+        ),
+    )
+
+    search_term: Optional[str] = Field(
+        None,
+        description=(
+            "Filter entities by value substring (case-insensitive). "
+            "Searches both entity.value and entity.normalized_value fields. "
+            "Example: 'waste' matches 'Waste Management', 'waste disposal', etc."
+        ),
+    )
+
+    min_confidence: float = Field(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence score (0.0-1.0). Default 0.0 shows all entities.",
+    )
+
+    limit: int = Field(
+        20,
+        ge=1,
+        le=50,
+        description="Maximum number of entities to return (max 50). Default 20.",
+    )
+
+
+@register_tool
+class BrowseEntitiesTool(BaseTool):
+    """
+    Browse and list entities from the knowledge graph without knowing specific names.
+
+    **Purpose**: Discover what entities exist in the knowledge graph by type, confidence,
+    or search term. Useful for exploratory queries like "list all regulations" or
+    "show me high-confidence standards about waste".
+
+    **Tier 2** (Advanced, ~200-500ms): Direct Neo4j queries using indexed fields.
+
+    **Use Cases**:
+    - "List all regulations in the knowledge graph"
+    - "Show me organizations with high confidence"
+    - "Find entities related to 'waste management'"
+    - "Browse standards about carbon emissions"
+
+    **Complements graph_search**: Use browse_entities to discover entities, then
+    graph_search to explore specific entities and their relationships.
+
+    **Returns**: List of entities with:
+    - Entity ID, type, value
+    - Confidence score
+    - Number of mentions (source chunks)
+    - Document origin
+
+    **Example**:
+    ```python
+    # List all regulations
+    browse_entities(entity_type="regulation")
+
+    # Find high-confidence standards
+    browse_entities(entity_type="standard", min_confidence=0.85)
+
+    # Search for waste-related entities
+    browse_entities(search_term="waste", min_confidence=0.7)
+
+    # Browse all entity types (top 20 by confidence)
+    browse_entities(limit=20)
+    ```
+    """
+
+    name = "browse_entities"
+    description = (
+        "Browse and list entities from the knowledge graph by type, confidence, or search term. "
+        "Useful for discovering what entities exist without knowing specific names. "
+        "Complements graph_search which requires a specific entity_value."
+    )
+    tier = 2
+    input_schema = BrowseEntitiesInput
+    requires_kg = True
+
+    def execute_impl(
+        self,
+        entity_type: Optional[str] = None,
+        search_term: Optional[str] = None,
+        min_confidence: float = 0.0,
+        limit: int = 20,
+    ) -> ToolResult:
+        """
+        Browse entities using GraphAdapter.find_entities() for efficient Neo4j queries.
+
+        Args:
+            entity_type: Filter by entity type (e.g., 'regulation', 'standard')
+            search_term: Filter by value substring (case-insensitive)
+            min_confidence: Minimum confidence score (0.0-1.0)
+            limit: Maximum results to return (max 50)
+
+        Returns:
+            ToolResult with list of entities and metadata
+        """
+        start_time = datetime.now()
+
+        # Validate knowledge graph availability
+        if not self.knowledge_graph:
+            return ToolResult(
+                success=False,
+                data=[],
+                error="Knowledge graph not available. Cannot browse entities.",
+                metadata={"requires": "knowledge_graph"},
+            )
+
+        # Validate that knowledge graph has find_entities method (GraphAdapter)
+        if not hasattr(self.knowledge_graph, "find_entities"):
+            return ToolResult(
+                success=False,
+                data=[],
+                error=(
+                    "Knowledge graph does not support find_entities(). "
+                    "This tool requires GraphAdapter with Neo4j backend."
+                ),
+                metadata={"kg_type": type(self.knowledge_graph).__name__},
+            )
+
+        try:
+            # Query Neo4j via GraphAdapter.find_entities()
+            logger.info(
+                f"Browsing entities: type={entity_type}, search={search_term}, "
+                f"min_conf={min_confidence}, limit={limit}"
+            )
+
+            entities = self.knowledge_graph.find_entities(
+                entity_type=entity_type,
+                min_confidence=min_confidence,
+                value_contains=search_term,
+            )
+
+            # Sort by confidence (descending) and limit results
+            entities.sort(key=lambda e: e.confidence, reverse=True)
+            entities = entities[:limit]
+
+            if not entities:
+                # Build helpful message about what was searched
+                filters = []
+                if entity_type:
+                    filters.append(f"type='{entity_type}'")
+                if search_term:
+                    filters.append(f"search='{search_term}'")
+                if min_confidence > 0.0:
+                    filters.append(f"confidence≥{min_confidence}")
+
+                filter_desc = " with " + ", ".join(filters) if filters else ""
+
+                return ToolResult(
+                    success=True,
+                    data=[],
+                    metadata={
+                        "count": 0,
+                        "filters": {
+                            "entity_type": entity_type,
+                            "search_term": search_term,
+                            "min_confidence": min_confidence,
+                        },
+                        "message": f"No entities found{filter_desc}",
+                    },
+                )
+
+            # Format results
+            formatted_entities = []
+            for entity in entities:
+                entity_data = {
+                    "id": entity.id,
+                    "type": entity.type.value if hasattr(entity.type, "value") else str(entity.type),
+                    "value": entity.value,
+                    "normalized_value": entity.normalized_value,
+                    "confidence": round(entity.confidence, 3),
+                    "mentions": len(entity.source_chunk_ids),
+                    "document_id": entity.document_id,
+                }
+                formatted_entities.append(entity_data)
+
+            # Calculate execution time
+            execution_time = (datetime.now() - start_time).total_seconds() * 1000
+
+            # Build filter description for metadata
+            filters_applied = []
+            if entity_type:
+                filters_applied.append(f"type={entity_type}")
+            if search_term:
+                filters_applied.append(f"search='{search_term}'")
+            if min_confidence > 0.0:
+                filters_applied.append(f"confidence≥{min_confidence}")
+
+            return ToolResult(
+                success=True,
+                data=formatted_entities,
+                metadata={
+                    "count": len(formatted_entities),
+                    "filters": {
+                        "entity_type": entity_type,
+                        "search_term": search_term,
+                        "min_confidence": min_confidence,
+                        "limit": limit,
+                    },
+                    "filters_description": ", ".join(filters_applied) if filters_applied else "none",
+                    "sorted_by": "confidence (descending)",
+                    "execution_time_ms": round(execution_time, 2),
+                },
+                citations=[],  # No document citations for entity browsing
+                execution_time_ms=execution_time,
+            )
+
+        except Exception as e:
+            logger.error(f"Browse entities failed: {e}", exc_info=True)
+            return ToolResult(
+                success=False,
+                data=[],
+                error=f"Failed to browse entities: {str(e)}",
+                metadata={
+                    "entity_type": entity_type,
+                    "search_term": search_term,
+                    "min_confidence": min_confidence,
+                },
+            )

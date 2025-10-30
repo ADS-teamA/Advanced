@@ -8,11 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SUJBOT2** is a production-ready RAG (Retrieval-Augmented Generation) system optimized for legal and technical documents. It implements state-of-the-art techniques from 4 research papers (2024-2025) and features a 7-phase pipeline with an interactive AI agent.
 
-**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 15-Tool Agent + RAG Confidence Scoring)
+**Status:** PHASE 1-7 COMPLETE ✅ (Full SOTA 2025 RAG System + 17-Tool Agent + RAG Confidence Scoring)
 
 **Visual Documentation:**
 - 📥 **Indexing Pipeline (Phase 1-5):** [`indexing_pipeline.html`](indexing_pipeline.html) - Complete indexing process from PDF to searchable vector store
-- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 15 agent tools breakdown
+- 💬 **User Search Pipeline (Phase 7):** [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with 17 agent tools breakdown
 
 **Core Technologies:**
 - Document processing: IBM Docling (hierarchical structure extraction)
@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Vector store: FAISS (3-layer indexing)
 - Retrieval: Hybrid (BM25 + Dense + RRF fusion) with cross-encoder reranking
 - Knowledge Graph: Entity/relationship extraction with NetworkX/Neo4j
-- Agent: Claude SDK with 15 specialized tools (Anthropic Sonnet/Haiku)
+- Agent: Claude SDK with 17 specialized tools (Anthropic Sonnet/Haiku)
 - **RAG Confidence Scoring:** Real-time retrieval quality assessment with 7 metrics
 
 ---
@@ -102,6 +102,69 @@ uv run isort src/ tests/ --profile black
 uv run mypy src/
 ```
 
+### Neo4j Knowledge Graph (Optional Production Setup)
+
+**When to Use:**
+- Production deployments (recommended)
+- Multi-user environments (WebApp)
+- Requires `browse_entities` tool (entity discovery by type/confidence/search)
+- Requires efficient multi-hop graph traversal
+- Enables indexed queries (faster than JSON for large graphs)
+
+**Setup Steps:**
+1. **Create Neo4j Aura instance** (free tier available):
+   - Visit: https://console.neo4j.io/
+   - Click "New Instance" → Select "Free" tier
+   - **Save your password** (cannot be recovered!)
+   - Copy connection URI (format: `neo4j+s://xxxxx.databases.neo4j.io`)
+
+2. **Configure `.env`:**
+   ```bash
+   KG_BACKEND=neo4j
+   NEO4J_URI=neo4j+s://YOUR_INSTANCE_ID.databases.neo4j.io
+   NEO4J_USERNAME=neo4j  # Default username
+   NEO4J_PASSWORD=YOUR_PASSWORD  # From step 1
+   NEO4J_DATABASE=neo4j  # Default database name
+   ```
+
+3. **Migrate existing data:**
+   ```bash
+   # After running indexing pipeline
+   uv run python scripts/migrate_kg_to_neo4j.py --kg-file vector_db/unified_kg.json
+   ```
+
+4. **Verify connection:**
+   ```bash
+   uv run python -m src.agent.cli
+   # Should show: "✓ Connected to Neo4j: X entities, Y relationships"
+   ```
+
+**Fallback Behavior:**
+- **Automatic fallback** (KG_BACKEND not set or =simple): Falls back to JSON with warning if Neo4j fails
+- **Fail-fast** (KG_BACKEND=neo4j explicit): No fallback - fails with actionable error messages
+  - Auth errors: Check NEO4J_USERNAME, NEO4J_PASSWORD
+  - Connection errors: Check NEO4J_URI, server status
+  - Timeout errors: Check server load or query complexity
+
+**Degraded Mode Warning:**
+When fallback occurs, you'll see:
+```
+⚠️  WARNING: Running in degraded mode with JSON backend
+Some tools will not work optimally:
+- browse_entities: Unavailable (requires Neo4j indexed queries)
+- multi_hop_search: Slower (no graph database optimization)
+- graph_search: Limited to JSON export data
+```
+
+**JSON Backend (Development/Testing):**
+- Set `KG_BACKEND=simple` in `.env` (or leave unset)
+- No external dependencies (uses local JSON files)
+- Limited tool functionality:
+  - `browse_entities` unavailable
+  - `multi_hop_search` slower (linear search)
+  - `graph_search` works with reduced performance
+- Best for: Development, testing, single-user scenarios
+
 ---
 
 ## Architecture Overview
@@ -149,7 +212,7 @@ The system processes documents through 7 distinct phases:
 
 **PHASE 7: RAG Agent**
 - Framework: Claude SDK (official Anthropic SDK)
-- Tools: 15 specialized tools (5 basic + 7 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
+- Tools: 17 specialized tools (6 basic + 8 advanced + 3 analysis) - see [`user_search_pipeline.html`](user_search_pipeline.html) for interactive breakdown
 - Features: Streaming, prompt caching (90% savings), cost tracking, **query expansion**, **RAG confidence scoring**
 - Query Expansion: Multi-query generation (+15-25% recall) with `num_expands` parameter
 - Confidence Scoring: 7-metric system (RAGAS-based) for retrieval quality assessment
@@ -236,7 +299,7 @@ These decisions are backed by research papers and extensive testing:
 **📊 Visual Tool Reference:** See [`user_search_pipeline.html`](user_search_pipeline.html) for interactive tool documentation with examples and use cases.
 
 **Tool Tiers (Speed/Quality Tradeoff):**
-- **TIER 1** (5 tools): Fast (100-300ms), basic retrieval - Use first
+- **TIER 1** (6 tools): Fast (100-300ms), basic retrieval - Use first
   - Key tool: **`search`** (unified hybrid search with optional query expansion) ✅ **Query Expansion**
     - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total (default)
     - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total (+15-25% recall est.)
@@ -244,10 +307,11 @@ These decisions are backed by research papers and extensive testing:
     - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total (max quality)
     - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
     - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py`
-  - Other tools: `get_document_list`, `get_document_info`, `get_tool_help`, `list_available_tools`
-- **TIER 2** (6 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
-  - Tools: `graph_search` (4 modes: entity_mentions, entity_details, relationships, multi_hop), `compare_documents`, `explain_search_results`, `filtered_search` (3 search methods), `similarity_search`, `expand_context`
+  - Other tools: `get_document_list`, `get_document_info`, `get_tool_help`, `list_available_tools`, `exact_match_search`
+- **TIER 2** (8 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
+  - Tools: `graph_search` (4 modes: entity_mentions, entity_details, relationships, multi_hop), `browse_entities` (NEW), `compare_documents`, `explain_search_results`, `assess_retrieval_confidence`, `filtered_search` (3 search methods), `similarity_search`, `expand_context`
   - **Consolidated:** `graph_search` replaces `multi_hop_search` + `entity_tool`; `filtered_search` replaces `exact_match_search`
+  - **NEW (2025-10-30):** `browse_entities` - Discover entities by type/confidence/search term without knowing specific names. Complements `graph_search` (browse to discover, then graph_search to explore)
 - **TIER 3** (3 tools): Deep (1-3s), analysis and insights - Use sparingly
   - Tools: `timeline_view`, `summarize_section`, `get_stats`
 
@@ -269,7 +333,7 @@ These decisions are backed by research papers and extensive testing:
 
 **Automatic Caching Points:**
 - System prompt (agent instructions)
-- Tool definitions (15 tools)
+- Tool definitions (17 tools)
 - Initial messages (document list)
 - Long tool results (>1024 tokens)
 
@@ -308,11 +372,11 @@ See `src/agent/agent_core.py:_create_messages()` for cache control block formatt
 - `src/agent/agent_core.py` - Core agent with streaming
 - `src/agent/config.py` - Agent configuration
 - `src/agent/validation.py` - Comprehensive validation
-- `src/agent/tools/` - 15 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
+- `src/agent/tools/` - 17 specialized tools (see [`user_search_pipeline.html`](user_search_pipeline.html) for details)
   - `base.py` - Base classes
   - `registry.py` - Tool registry
-  - `tier1_basic.py` - 5 fast tools (search, get_document_list, get_document_info, get_tool_help, list_available_tools)
-  - `tier2_advanced.py` - 7 quality tools (graph_search, compare_documents, explain_search_results, filtered_search, similarity_search, expand_context, assess_retrieval_confidence)
+  - `tier1_basic.py` - 6 fast tools (search, get_document_list, get_document_info, get_tool_help, list_available_tools, exact_match_search)
+  - `tier2_advanced.py` - 8 quality tools (graph_search, browse_entities, compare_documents, explain_search_results, filtered_search, similarity_search, expand_context, assess_retrieval_confidence)
   - `tier3_analysis.py` - 3 analysis tools (timeline_view, summarize_section, get_stats)
   - `token_manager.py` - Token estimation
   - `utils.py` - Shared utilities
@@ -738,16 +802,28 @@ logger.error("Errors that don't crash the program")
 
 ## Version & Status
 
-**Last Updated:** 2025-10-29
-**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + RAG Confidence Scoring ✅ + Interactive Visual Documentation ✅
-**Agent Tools:** 15 (5 basic + 7 advanced + 3 analysis)
+**Last Updated:** 2025-10-30
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + RAG Confidence Scoring ✅ + Browse Entities Tool ✅ + Interactive Visual Documentation ✅
+**Agent Tools:** 17 (6 basic + 8 advanced + 3 analysis)
 **Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Confidence Scoring + Context Assembly)
 **Visual Documentation:**
 - [`indexing_pipeline.html`](indexing_pipeline.html) - Detailed indexing process (Phase 1-5)
 - [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
 
 **Recent Updates:**
-- RAG Confidence Scoring (2025-10-29): Added 7-metric confidence scoring system (15 tools now)
+- CLI + WebApp Backend Unification (2025-10-30): Both now use identical GraphAdapter with Neo4j
+  - **Problem Fixed:** WebApp used in-memory KnowledgeGraph (JSON files), CLI used Neo4j
+  - **Solution:** Modified `backend/agent_adapter.py` to check `KG_BACKEND=neo4j` (same as CLI)
+  - **Result:** `browse_entities` and all graph tools now work identically in both interfaces
+  - **Configuration:** Set `KG_BACKEND=neo4j` in `.env` (recommended for production)
+  - **Fallback:** Automatic fallback to JSON if Neo4j connection fails
+- Browse Entities Tool (2025-10-30): Added `browse_entities` tool for entity discovery (17 tools now)
+  - New Tier 2 tool: `browse_entities` - Discover entities by type, confidence, or search term
+  - Enables exploratory queries like "list all regulations" or "show high-confidence standards about waste"
+  - Uses GraphAdapter.find_entities() for efficient indexed Neo4j queries
+  - Complements `graph_search` (browse to discover entities → graph_search to explore relationships)
+  - Full test coverage: 13 comprehensive tests covering all filter combinations and edge cases
+- RAG Confidence Scoring (2025-10-29): Added 7-metric confidence scoring system (15→16 tools)
   - New tool: `assess_retrieval_confidence` - Explicit confidence assessment
   - Automatic confidence display in search results
   - Legal compliance thresholds: HIGH (≥0.85), MEDIUM (0.70-0.84), LOW (0.50-0.69)

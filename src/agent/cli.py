@@ -222,79 +222,30 @@ class AgentCLI:
         if self.config.enable_knowledge_graph and self.config.knowledge_graph_path:
             print("Loading knowledge graph...")
             try:
-                from src.graph.models import KnowledgeGraph
-                from src.graph_retrieval import GraphEnhancedRetriever
                 from pathlib import Path
+                from src.agent.graph_loader import load_knowledge_graph
 
-                kg_path = Path(self.config.knowledge_graph_path)
-
-                # Check if path is a directory (vector_db/) or a single file
-                if kg_path.is_dir():
-                    # Prefer unified_kg.json if it exists
-                    unified_kg_path = kg_path / "unified_kg.json"
-
-                    if unified_kg_path.exists():
-                        # Load unified KG (already deduplicated with cross-doc relationships)
-                        print(f"   Loading unified knowledge graph...")
-                        knowledge_graph = KnowledgeGraph.load_json(str(unified_kg_path))
-                        print(
-                            f"   Unified KG: {len(knowledge_graph.entities)} entities, "
-                            f"{len(knowledge_graph.relationships)} relationships"
-                        )
-                    else:
-                        # Fallback: Load all *_kg.json files from directory (old behavior)
-                        kg_files = sorted(kg_path.glob("*_kg.json"))
-                        if not kg_files:
-                            raise FileNotFoundError(f"No knowledge graph files (*_kg.json) found in {kg_path}")
-
-                        print(f"   Found {len(kg_files)} knowledge graph files (unified_kg.json not found)")
-
-                        # Load and merge all KG files (naive merge without deduplication)
-                        knowledge_graph = None
-                        total_entities = 0
-                        total_relationships = 0
-
-                        for kg_file in kg_files:
-                            kg = KnowledgeGraph.load_json(str(kg_file))
-                            if knowledge_graph is None:
-                                knowledge_graph = kg
-                            else:
-                                # Merge graphs by combining entities and relationships
-                                knowledge_graph.entities.extend(kg.entities)
-                                knowledge_graph.relationships.extend(kg.relationships)
-
-                            total_entities += len(kg.entities)
-                            total_relationships += len(kg.relationships)
-                            print(f"   Loaded {kg_file.name}: {len(kg.entities)} entities, {len(kg.relationships)} relationships")
-
-                        print(
-                            f"   Total: {total_entities} entities, "
-                            f"{total_relationships} relationships (naive merge - consider building unified_kg.json)"
-                        )
-                else:
-                    # Load single file
-                    knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
-                    print(
-                        f"   Entities: {len(knowledge_graph.entities)}, "
-                        f"Relationships: {len(knowledge_graph.relationships)}"
-                    )
-
-                graph_retriever = GraphEnhancedRetriever(
-                    vector_store=vector_store, knowledge_graph=knowledge_graph
+                # Use shared loader (handles Neo4j/JSON with intelligent fallback)
+                knowledge_graph, graph_retriever = load_knowledge_graph(
+                    kg_path=Path(self.config.knowledge_graph_path),
+                    vector_store=vector_store,
+                    user_print=print  # Pass print function for CLI output
                 )
-            except FileNotFoundError as e:
-                logger.warning(f"Knowledge graph file not found: {e}")
-                print(f"   ⚠️  Knowledge graph file not found: {e}")
+
+            except (RuntimeError, FileNotFoundError) as e:
+                # Explicit Neo4j config errors or missing files
+                logger.warning(f"Failed to load knowledge graph: {e}")
+                print(f"   ⚠️  Failed to load knowledge graph: {e}")
                 print("   Continuing without knowledge graph (graph tools will be unavailable)")
                 self.config.enable_knowledge_graph = False
             except ImportError as e:
-                logger.warning(f"Knowledge graph module not available: {e}")
+                logger.warning(f"Knowledge graph dependencies missing: {e}")
                 print(f"   ⚠️  Knowledge graph module not available: {e}")
                 print("   Continuing without knowledge graph")
                 self.config.enable_knowledge_graph = False
             except Exception as e:
-                logger.warning(f"Failed to load knowledge graph: {e}")
-                print(f"   ⚠️  Knowledge graph failed to load: {e}")
+                logger.critical(f"Unexpected error loading knowledge graph: {e}", exc_info=True)
+                print(f"   ⚠️  Unexpected error loading knowledge graph: {e}")
                 print("   Continuing without knowledge graph")
                 self.config.enable_knowledge_graph = False
 
@@ -671,10 +622,11 @@ class AgentCLI:
                 print("\n⚠️  Warning: Prompt caching not supported by this model.")
                 print("   Costs will be higher than with Claude models (no 90% cache discount).")
 
-            # Reset conversation (tools need to be regenerated for new provider)
-            print("\n🔄 Resetting conversation for new model...")
-            self.agent.reset_conversation()
-            print("✅ Ready to use new model!\n")
+            # Conversation history preserved (system prompt, tools, and history sent on every API call)
+            print("\n✅ Model switched successfully!")
+            print("   💬 Conversation history preserved")
+            print("   📄 Document list preserved")
+            print("   🔧 Tool definitions will be sent to new model automatically\n")
 
         except ValueError as e:
             print(f"\n❌ Invalid model: {e}")
@@ -818,6 +770,10 @@ def main(config: AgentConfig):
 
 if __name__ == "__main__":
     """Allow running as: python -m src.agent.cli"""
+    # Load environment variables from .env
+    from dotenv import load_dotenv
+    load_dotenv()
+
     import argparse
 
     parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")
