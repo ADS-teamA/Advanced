@@ -27,6 +27,7 @@ from .config import (
     RelationshipExtractionConfig,
     GraphStorageConfig,
     GraphBackend,
+    Neo4jConfig,
 )
 from .entity_extractor import EntityExtractor
 from .relationship_extractor import RelationshipExtractor
@@ -35,6 +36,17 @@ from .kg_pipeline import KnowledgeGraphPipeline
 from .unified_kg_manager import UnifiedKnowledgeGraphManager
 from .cross_doc_detector import CrossDocumentRelationshipDetector
 from .deduplicator import EntityDeduplicator
+
+# Neo4j integration
+from .exceptions import (
+    Neo4jError,
+    Neo4jConnectionError,
+    Neo4jQueryError,
+    Neo4jTimeoutError,
+    Neo4jAuthenticationError,
+)
+from .neo4j_manager import Neo4jManager
+from .health_check import check_neo4j_health
 
 __all__ = [
     # Models
@@ -49,6 +61,7 @@ __all__ = [
     "RelationshipExtractionConfig",
     "GraphStorageConfig",
     "GraphBackend",
+    "Neo4jConfig",
     # Extractors
     "EntityExtractor",
     "RelationshipExtractor",
@@ -62,4 +75,12 @@ __all__ = [
     "UnifiedKnowledgeGraphManager",
     "CrossDocumentRelationshipDetector",
     "EntityDeduplicator",
+    # Neo4j integration
+    "Neo4jError",
+    "Neo4jConnectionError",
+    "Neo4jQueryError",
+    "Neo4jTimeoutError",
+    "Neo4jAuthenticationError",
+    "Neo4jManager",
+    "check_neo4j_health",
 ]

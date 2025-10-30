@@ -245,9 +245,10 @@ These decisions are backed by research papers and extensive testing:
     - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
     - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py`
   - Other tools: `get_document_list`, `get_document_info`, `get_tool_help`, `list_available_tools`
-- **TIER 2** (6 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
-  - Tools: `graph_search` (4 modes: entity_mentions, entity_details, relationships, multi_hop), `compare_documents`, `explain_search_results`, `filtered_search` (3 search methods), `similarity_search`, `expand_context`
+- **TIER 2** (8 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
+  - Tools: `graph_search` (4 modes: entity_mentions, entity_details, relationships, multi_hop), `browse_entities` (NEW), `compare_documents`, `explain_search_results`, `assess_retrieval_confidence`, `filtered_search` (3 search methods), `similarity_search`, `expand_context`
   - **Consolidated:** `graph_search` replaces `multi_hop_search` + `entity_tool`; `filtered_search` replaces `exact_match_search`
+  - **NEW (2025-10-30):** `browse_entities` - Discover entities by type/confidence/search term without knowing specific names. Complements `graph_search` (browse to discover, then graph_search to explore)
 - **TIER 3** (3 tools): Deep (1-3s), analysis and insights - Use sparingly
   - Tools: `timeline_view`, `summarize_section`, `get_stats`
 
@@ -738,16 +739,28 @@ logger.error("Errors that don't crash the program")
 
 ## Version & Status
 
-**Last Updated:** 2025-10-29
-**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + RAG Confidence Scoring ✅ + Interactive Visual Documentation ✅
-**Agent Tools:** 15 (5 basic + 7 advanced + 3 analysis)
+**Last Updated:** 2025-10-30
+**Status:** PHASE 1-7 COMPLETE ✅ + Query Expansion ✅ + Tool Consolidation ✅ + RAG Confidence Scoring ✅ + Browse Entities Tool ✅ + Interactive Visual Documentation ✅
+**Agent Tools:** 17 (6 basic + 8 advanced + 3 analysis)
 **Pipeline:** Full SOTA 2025 RAG (Hybrid + Reranking + Graph + Query Expansion + Confidence Scoring + Context Assembly)
 **Visual Documentation:**
 - [`indexing_pipeline.html`](indexing_pipeline.html) - Detailed indexing process (Phase 1-5)
 - [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
 
 **Recent Updates:**
-- RAG Confidence Scoring (2025-10-29): Added 7-metric confidence scoring system (15 tools now)
+- CLI + WebApp Backend Unification (2025-10-30): Both now use identical GraphAdapter with Neo4j
+  - **Problem Fixed:** WebApp used in-memory KnowledgeGraph (JSON files), CLI used Neo4j
+  - **Solution:** Modified `backend/agent_adapter.py` to check `KG_BACKEND=neo4j` (same as CLI)
+  - **Result:** `browse_entities` and all graph tools now work identically in both interfaces
+  - **Configuration:** Set `KG_BACKEND=neo4j` in `.env` (recommended for production)
+  - **Fallback:** Automatic fallback to JSON if Neo4j connection fails
+- Browse Entities Tool (2025-10-30): Added `browse_entities` tool for entity discovery (17 tools now)
+  - New Tier 2 tool: `browse_entities` - Discover entities by type, confidence, or search term
+  - Enables exploratory queries like "list all regulations" or "show high-confidence standards about waste"
+  - Uses GraphAdapter.find_entities() for efficient indexed Neo4j queries
+  - Complements `graph_search` (browse to discover entities → graph_search to explore relationships)
+  - Full test coverage: 13 comprehensive tests covering all filter combinations and edge cases
+- RAG Confidence Scoring (2025-10-29): Added 7-metric confidence scoring system (15→16 tools)
   - New tool: `assess_retrieval_confidence` - Explicit confidence assessment
   - Automatic confidence display in search results
   - Legal compliance thresholds: HIGH (≥0.85), MEDIUM (0.70-0.84), LOW (0.50-0.69)

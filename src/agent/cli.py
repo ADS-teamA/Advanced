@@ -225,22 +225,49 @@ class AgentCLI:
                 from src.graph.models import KnowledgeGraph
                 from src.graph_retrieval import GraphEnhancedRetriever
                 from pathlib import Path
+                import os
 
-                kg_path = Path(self.config.knowledge_graph_path)
+                # Check if Neo4j backend is configured
+                kg_backend = os.getenv("KG_BACKEND", "simple").lower()
 
-                # Check if path is a directory (vector_db/) or a single file
-                if kg_path.is_dir():
-                    # Prefer unified_kg.json if it exists
-                    unified_kg_path = kg_path / "unified_kg.json"
+                if kg_backend == "neo4j":
+                    # Use Neo4j via GraphAdapter
+                    print("   Using Neo4j backend...")
+                    try:
+                        from src.graph import Neo4jConfig
+                        from src.agent.graph_adapter import GraphAdapter
 
-                    if unified_kg_path.exists():
-                        # Load unified KG (already deduplicated with cross-doc relationships)
-                        print(f"   Loading unified knowledge graph...")
-                        knowledge_graph = KnowledgeGraph.load_json(str(unified_kg_path))
-                        print(
-                            f"   Unified KG: {len(knowledge_graph.entities)} entities, "
-                            f"{len(knowledge_graph.relationships)} relationships"
-                        )
+                        neo4j_config = Neo4jConfig.from_env()
+                        knowledge_graph = GraphAdapter.from_neo4j(neo4j_config)
+
+                        # Get stats for display
+                        entity_count = len(knowledge_graph.entities)
+                        rel_count = len(knowledge_graph.relationships)
+
+                        print(f"   ✓ Connected to Neo4j: {entity_count} entities, {rel_count} relationships")
+                    except Exception as e:
+                        logger.warning(f"Failed to connect to Neo4j: {e}")
+                        print(f"   ⚠️  Neo4j connection failed: {e}")
+                        print("   Falling back to JSON...")
+                        kg_backend = "simple"  # Fallback to JSON
+
+                if kg_backend != "neo4j":
+                    # Use JSON (original behavior)
+                    kg_path = Path(self.config.knowledge_graph_path)
+
+                    # Check if path is a directory (vector_db/) or a single file
+                    if kg_path.is_dir():
+                        # Prefer unified_kg.json if it exists
+                        unified_kg_path = kg_path / "unified_kg.json"
+
+                        if unified_kg_path.exists():
+                            # Load unified KG (already deduplicated with cross-doc relationships)
+                            print(f"   Loading unified knowledge graph from JSON...")
+                            knowledge_graph = KnowledgeGraph.load_json(str(unified_kg_path))
+                            print(
+                                f"   Unified KG: {len(knowledge_graph.entities)} entities, "
+                                f"{len(knowledge_graph.relationships)} relationships"
+                            )
                     else:
                         # Fallback: Load all *_kg.json files from directory (old behavior)
                         kg_files = sorted(kg_path.glob("*_kg.json"))
@@ -818,6 +845,10 @@ def main(config: AgentConfig):
 
 if __name__ == "__main__":
     """Allow running as: python -m src.agent.cli"""
+    # Load environment variables from .env
+    from dotenv import load_dotenv
+    load_dotenv()
+
     import argparse
 
     parser = argparse.ArgumentParser(description="RAG Agent CLI - Interactive document assistant")

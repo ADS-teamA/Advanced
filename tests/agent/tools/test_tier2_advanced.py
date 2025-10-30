@@ -40,6 +40,7 @@ from src.agent.tools.tier2_advanced import (
     FilteredSearchTool,  # Replaces HybridSearchWithFiltersTool
     SimilaritySearchTool,  # Replaces ChunkSimilaritySearchTool
     ExpandContextTool,  # Check if this replaces ExpandSearchContextTool
+    BrowseEntitiesTool,  # New tool for browsing entities by type/filters
 )
 from src.agent.tools.base import ToolResult
 
@@ -250,9 +251,33 @@ class TestGraphSearchTool:
 
     def test_entity_mentions_with_kg(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
         """Test entity_mentions mode with knowledge graph."""
-        # Mock KG entities dict
-        entity = Mock(id="entity1", value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0", "doc1:sec1:1"], confidence=0.9)
+        # Mock KG entities dict - use proper string values (not Mock objects)
+        entity = Mock(
+            id="entity1",
+            value="Company X",  # Real string
+            normalized_value="company x",  # Real string
+            type=Mock(value="ORGANIZATION"),  # Mock with .value attribute
+            source_chunk_ids=["doc1:sec1:0", "doc1:sec1:1"],
+            confidence=0.9
+        )
         mock_knowledge_graph.entities = {"entity1": entity}
+
+        # Mock metadata_layer3 for chunk retrieval
+        mock_vector_store.metadata_layer3 = [
+            {
+                "chunk_id": "doc1:sec1:0",
+                "document_id": "doc1",
+                "content": "Company X info in chunk 0",
+                "section_title": "Section 1",
+            },
+            {
+                "chunk_id": "doc1:sec1:1",
+                "document_id": "doc1",
+                "content": "Company X info in chunk 1",
+                "section_title": "Section 1",
+            },
+        ]
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -264,15 +289,34 @@ class TestGraphSearchTool:
 
         assert isinstance(result, ToolResult)
         assert result.success is True
+        assert isinstance(result.data, list)
         assert len(result.data) > 0
         assert result.metadata["mode"] == "entity_mentions"
         assert result.metadata["entity_value"] == "Company X"
 
-    def test_entity_mentions_with_type_filter(self, tool_dependencies, mock_knowledge_graph):
+    def test_entity_mentions_with_type_filter(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
         """Test entity_mentions with entity_type filter."""
-        mock_knowledge_graph.get_entities.return_value = [
-            Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        # Mock KG entities dict with proper string values
+        entity = Mock(
+            id="entity1",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        mock_knowledge_graph.entities = {"entity1": entity}
+
+        # Mock metadata_layer3 for chunk retrieval
+        mock_vector_store.metadata_layer3 = [
+            {
+                "chunk_id": "doc1:sec1:0",
+                "document_id": "doc1",
+                "content": "Company X info",
+                "section_title": "Section 1",
+            },
         ]
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -284,11 +328,13 @@ class TestGraphSearchTool:
         )
 
         assert result.success is True
+        assert isinstance(result.data, list)
         assert result.metadata["entity_type"] == "ORGANIZATION"
 
     def test_entity_mentions_not_found(self, tool_dependencies, mock_knowledge_graph):
         """Test entity_mentions when entity not found."""
-        mock_knowledge_graph.get_entities.return_value = []
+        # Empty entities dict - entity not found
+        mock_knowledge_graph.entities = {}
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -301,78 +347,159 @@ class TestGraphSearchTool:
         assert result.success is False
         assert "not found" in result.error.lower()
 
+    def test_find_entity_with_none_normalized_value(self, tool_dependencies, mock_knowledge_graph):
+        """Test that _find_entity handles None normalized_value without crashing (bug fix test)."""
+        # Create entity with None normalized_value (this was causing AttributeError: 'NoneType' object has no attribute 'lower')
+        entity_with_none = Mock(
+            id="entity1",
+            value="Test Entity",
+            normalized_value=None,  # This was causing the crash
+            type=Mock(value="STANDARD"),
+            confidence=0.9
+        )
+
+        # Also add entity with proper values
+        entity_normal = Mock(
+            id="entity2",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            confidence=0.85
+        )
+
+        # Entity with both values None (edge case)
+        entity_all_none = Mock(
+            id="entity3",
+            value=None,
+            normalized_value=None,
+            type=Mock(value="CLAUSE"),
+            confidence=0.7
+        )
+
+        mock_knowledge_graph.entities = {
+            "entity1": entity_with_none,
+            "entity2": entity_normal,
+            "entity3": entity_all_none
+        }
+        tool_dependencies["knowledge_graph"] = mock_knowledge_graph
+        tool = GraphSearchTool(**tool_dependencies)
+
+        # Test 1: Should find entity2 and skip entity1 (None normalized_value) and entity3 (all None)
+        found = tool._find_entity("Company")
+        assert found is not None
+        assert found.id == "entity2"
+
+        # Test 2: Should handle entity with None normalized_value but valid value
+        entity_partial = Mock(
+            id="entity4",
+            value="Standard ABC",
+            normalized_value=None,
+            type=Mock(value="STANDARD"),
+            confidence=0.95
+        )
+        mock_knowledge_graph.entities["entity4"] = entity_partial
+
+        # Should find entity4 by matching value (even though normalized_value is None)
+        found = tool._find_entity("ABC")
+        assert found is not None
+        assert found.id == "entity4"
+
+        # Test 3: Verify no crash when no entities match
+        found = tool._find_entity("NonexistentEntity")
+        assert found is None
+
     # ============================================================================
     # Mode 2: entity_details
     # ============================================================================
 
     def test_entity_details_with_relationships(self, tool_dependencies, mock_knowledge_graph):
         """Test entity_details mode with relationships."""
+        # Mock entity with proper string values
         mock_entity = Mock(
+            id="entity1",
             value="Company X",
-            type="ORGANIZATION",
-            chunk_ids=["doc1:sec1:0"],
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
             confidence=0.9
         )
-        mock_knowledge_graph.get_entities.return_value = [mock_entity]
-        mock_knowledge_graph.get_relationships.return_value = [
-            Mock(
-                source_entity=mock_entity,
-                target_entity=Mock(value="Product Y", type="PRODUCT"),
-                relationship_type="PRODUCES",
-                chunk_ids=["doc1:sec1:1"],
-                confidence=0.85
-            )
-        ]
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": mock_entity}
+
+        # Setup relationships (new GraphAdapter API)
+        mock_relationship = Mock(
+            source_entity_id="entity1",
+            target_entity_id="entity2",
+            type=Mock(value="produces"),
+            confidence=0.85
+        )
+        mock_knowledge_graph.get_relationships_for_entity = Mock(return_value=[mock_relationship])
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
         result = tool.execute(
             mode="entity_details",
             entity_value="Company X",
-            include_relationships=True,
             k=6
         )
 
         assert result.success is True
         assert "entity" in result.data
         assert "relationships" in result.data
+        # entity_details mode automatically includes relationships
         assert len(result.data["relationships"]) > 0
 
     def test_entity_details_without_relationships(self, tool_dependencies, mock_knowledge_graph):
         """Test entity_details mode without relationships."""
+        # Mock entity with proper string values
         mock_entity = Mock(
+            id="entity1",
             value="Company X",
-            type="ORGANIZATION",
-            chunk_ids=["doc1:sec1:0"],
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
             confidence=0.9
         )
-        mock_knowledge_graph.get_entities.return_value = [mock_entity]
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": mock_entity}
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
         result = tool.execute(
             mode="entity_details",
             entity_value="Company X",
-            include_relationships=False,
             k=6
         )
 
         assert result.success is True
         assert "entity" in result.data
-        assert "relationships" not in result.data or len(result.data["relationships"]) == 0
+        # entity_details always includes relationships (may be empty)
+        assert "relationships" in result.data
+        assert len(result.data["relationships"]) == 0  # No relationships mocked
 
     def test_entity_details_with_direction_filter(self, tool_dependencies, mock_knowledge_graph):
         """Test entity_details with direction filter."""
-        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
-        mock_knowledge_graph.get_entities.return_value = [mock_entity]
-        mock_knowledge_graph.get_relationships.return_value = []
+        # Mock entity with proper string values
+        mock_entity = Mock(
+            id="entity1",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": mock_entity}
+        mock_knowledge_graph.get_relationships_for_entity = Mock(return_value=[])
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
         result = tool.execute(
             mode="entity_details",
             entity_value="Company X",
-            include_relationships=True,
             direction="outgoing",
             k=6
         )
@@ -386,17 +513,30 @@ class TestGraphSearchTool:
 
     def test_relationships_mode_basic(self, tool_dependencies, mock_knowledge_graph):
         """Test relationships mode."""
-        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
-        mock_knowledge_graph.get_entities.return_value = [mock_entity]
-        mock_knowledge_graph.get_relationships.return_value = [
-            Mock(
-                source_entity=mock_entity,
-                target_entity=Mock(value="Product Y", type="PRODUCT"),
-                relationship_type="PRODUCES",
-                chunk_ids=["doc1:sec1:1"],
-                confidence=0.85
-            )
-        ]
+        # Mock entity with proper string values
+        mock_entity = Mock(
+            id="entity1",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": mock_entity}
+
+        # Setup relationships (new GraphAdapter API)
+        mock_relationship = Mock(
+            source_entity_id="entity1",
+            target_entity_id="entity2",
+            type=Mock(value="produces"),
+            confidence=0.85
+        )
+        mock_knowledge_graph.get_relationships_for_entity = Mock(return_value=[mock_relationship])
+        # Also need get_entity for target entity
+        mock_target = Mock(id="entity2", value="Product Y", type=Mock(value="PRODUCT"))
+        mock_knowledge_graph.get_entity = Mock(return_value=mock_target)
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -407,23 +547,37 @@ class TestGraphSearchTool:
         )
 
         assert result.success is True
-        assert isinstance(result.data, list)
-        assert len(result.data) > 0
+        assert isinstance(result.data, dict)
+        assert result.data["count"] > 0
+        assert len(result.data["relationships"]) > 0
         assert result.metadata["mode"] == "relationships"
 
     def test_relationships_with_type_filter(self, tool_dependencies, mock_knowledge_graph):
         """Test relationships mode with type filter."""
-        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
-        mock_knowledge_graph.get_entities.return_value = [mock_entity]
-        mock_knowledge_graph.get_relationships.return_value = [
-            Mock(
-                source_entity=mock_entity,
-                target_entity=Mock(value="Product Y", type="PRODUCT"),
-                relationship_type="PRODUCES",
-                chunk_ids=["doc1:sec1:1"],
-                confidence=0.85
-            )
-        ]
+        # Mock entity with proper string values
+        mock_entity = Mock(
+            id="entity1",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": mock_entity}
+
+        # Setup relationships (new GraphAdapter API)
+        mock_relationship = Mock(
+            source_entity_id="entity1",
+            target_entity_id="entity2",
+            type=Mock(value="produces"),
+            confidence=0.85
+        )
+        mock_knowledge_graph.get_relationships_for_entity = Mock(return_value=[mock_relationship])
+        # Also need get_entity for target entity
+        mock_target = Mock(id="entity2", value="Product Y", type=Mock(value="PRODUCT"))
+        mock_knowledge_graph.get_entity = Mock(return_value=mock_target)
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -439,9 +593,19 @@ class TestGraphSearchTool:
 
     def test_relationships_no_results(self, tool_dependencies, mock_knowledge_graph):
         """Test relationships mode when no relationships found."""
-        mock_entity = Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
-        mock_knowledge_graph.get_entities.return_value = [mock_entity]
-        mock_knowledge_graph.get_relationships.return_value = []
+        # Mock entity with proper string values
+        mock_entity = Mock(
+            id="entity1",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9
+        )
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": mock_entity}
+        mock_knowledge_graph.get_relationships_for_entity = Mock(return_value=[])
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -452,38 +616,85 @@ class TestGraphSearchTool:
         )
 
         assert result.success is True
-        assert isinstance(result.data, list)
-        assert len(result.data) == 0
+        assert isinstance(result.data, dict)
+        assert result.data["count"] == 0
+        assert len(result.data["relationships"]) == 0
 
     # ============================================================================
     # Mode 4: multi_hop
     # ============================================================================
 
-    def test_multi_hop_bfs_traversal(self, tool_dependencies, mock_knowledge_graph):
+    def test_multi_hop_bfs_traversal(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
         """Test multi-hop BFS traversal."""
-        # Setup entity chain: A -> B -> C
-        entity_a = Mock(value="Company A", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
-        entity_b = Mock(value="Company B", type="ORGANIZATION", chunk_ids=["doc1:sec1:1"], confidence=0.85)
-        entity_c = Mock(value="Company C", type="ORGANIZATION", chunk_ids=["doc1:sec1:2"], confidence=0.8)
+        # Setup entity chain: A -> B -> C with proper string values
+        entity_a = Mock(
+            id="entity_a",
+            value="Company A",
+            normalized_value="company a",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9,
+            document_id="doc1"
+        )
+        entity_b = Mock(
+            id="entity_b",
+            value="Company B",
+            normalized_value="company b",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:1"],
+            confidence=0.85,
+            document_id="doc1"
+        )
+        entity_c = Mock(
+            id="entity_c",
+            value="Company C",
+            normalized_value="company c",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:2"],
+            confidence=0.8,
+            document_id="doc1"
+        )
 
-        def mock_get_entities(value=None, entity_type=None):
-            if value == "Company A":
-                return [entity_a]
-            elif value == "Company B":
-                return [entity_b]
-            elif value == "Company C":
-                return [entity_c]
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {
+            "entity_a": entity_a,
+            "entity_b": entity_b,
+            "entity_c": entity_c
+        }
+
+        # Setup get_entity for retrieving by ID
+        def mock_get_entity(entity_id):
+            return mock_knowledge_graph.entities.get(entity_id)
+
+        mock_knowledge_graph.get_entity = Mock(side_effect=mock_get_entity)
+
+        # Setup get_outgoing_relationships for BFS traversal
+        def mock_get_outgoing_rels(entity_id):
+            if entity_id == "entity_a":
+                return [Mock(
+                    source_entity_id="entity_a",
+                    target_entity_id="entity_b",
+                    type=Mock(value="partner"),
+                    confidence=0.85
+                )]
+            elif entity_id == "entity_b":
+                return [Mock(
+                    source_entity_id="entity_b",
+                    target_entity_id="entity_c",
+                    type=Mock(value="subsidiary"),
+                    confidence=0.8
+                )]
             return []
 
-        def mock_get_relationships(entity=None, direction="both"):
-            if entity.value == "Company A":
-                return [Mock(source_entity=entity_a, target_entity=entity_b, relationship_type="PARTNER", chunk_ids=["doc1:sec1:1"], confidence=0.85)]
-            elif entity.value == "Company B":
-                return [Mock(source_entity=entity_b, target_entity=entity_c, relationship_type="SUBSIDIARY", chunk_ids=["doc1:sec1:2"], confidence=0.8)]
-            return []
+        mock_knowledge_graph.get_outgoing_relationships = Mock(side_effect=mock_get_outgoing_rels)
 
-        mock_knowledge_graph.get_entities.side_effect = mock_get_entities
-        mock_knowledge_graph.get_relationships.side_effect = mock_get_relationships
+        # Mock metadata_layer3 for chunk retrieval
+        mock_vector_store.metadata_layer3 = [
+            {"chunk_id": "doc1:sec1:0", "document_id": "doc1", "content": "Company A info"},
+            {"chunk_id": "doc1:sec1:1", "document_id": "doc1", "content": "Company B info"},
+            {"chunk_id": "doc1:sec1:2", "document_id": "doc1", "content": "Company C info"},
+        ]
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -495,16 +706,33 @@ class TestGraphSearchTool:
         )
 
         assert result.success is True
-        assert len(result.data) > 0
-        assert result.metadata["mode"] == "multi_hop"
-        assert result.metadata["max_hops"] == 2
-        assert result.metadata["actual_hops"] <= 2
+        chunks = result.data.get("chunks", [])
+        assert len(chunks) > 0
+        assert result.metadata.get("mode") == "multi_hop"
+        assert result.metadata.get("max_hops") == 2
 
-    def test_multi_hop_max_hops_validation(self, tool_dependencies, mock_knowledge_graph):
+    def test_multi_hop_max_hops_validation(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
         """Test max_hops parameter validation."""
-        mock_knowledge_graph.get_entities.return_value = [
-            Mock(value="Company X", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
+        # Mock entity with proper string values
+        entity = Mock(
+            id="entity1",
+            value="Company X",
+            normalized_value="company x",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9,
+            document_id="doc1"
+        )
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {"entity1": entity}
+        mock_knowledge_graph.get_entity = Mock(return_value=entity)
+        mock_knowledge_graph.get_outgoing_relationships = Mock(return_value=[])
+
+        # Mock metadata_layer3 for chunk retrieval
+        mock_vector_store.metadata_layer3 = [
+            {"chunk_id": "doc1:sec1:0", "document_id": "doc1", "content": "Company X info"}
         ]
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -521,26 +749,56 @@ class TestGraphSearchTool:
         assert result.success is False
         assert "validation" in result.error.lower()
 
-    def test_multi_hop_safety_limits(self, tool_dependencies, mock_knowledge_graph):
+    def test_multi_hop_safety_limits(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
         """Test multi-hop safety limits (20 entities/hop, 200 max)."""
-        # Create a large entity chain
-        entities = [Mock(value=f"Entity{i}", type="ORGANIZATION", chunk_ids=[f"doc1:sec1:{i}"], confidence=0.9) for i in range(100)]
+        # Create a large entity chain with proper string values
+        entities = {}
+        chunks = []
+        for i in range(100):
+            entity_id = f"entity_{i}"
+            entities[entity_id] = Mock(
+                id=entity_id,
+                value=f"Entity{i}",
+                normalized_value=f"entity{i}",
+                type=Mock(value="ORGANIZATION"),
+                source_chunk_ids=[f"doc1:sec1:{i}"],
+                confidence=0.9,
+                document_id="doc1"
+            )
+            chunks.append({
+                "chunk_id": f"doc1:sec1:{i}",
+                "document_id": "doc1",
+                "content": f"Entity{i} info"
+            })
 
-        def mock_get_entities(value=None, entity_type=None):
-            for entity in entities:
-                if entity.value == value:
-                    return [entity]
-            return []
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = entities
 
-        def mock_get_relationships(entity=None, direction="both"):
-            # Return many relationships
+        # Setup get_entity for retrieving by ID
+        def mock_get_entity(entity_id):
+            return entities.get(entity_id)
+
+        mock_knowledge_graph.get_entity = Mock(side_effect=mock_get_entity)
+
+        # Setup get_outgoing_relationships - return many relationships to test limits
+        def mock_get_outgoing_rels(entity_id):
+            # Return many relationships (30) to test per-hop limit
+            idx = int(entity_id.split("_")[1])
             return [
-                Mock(source_entity=entity, target_entity=entities[i], relationship_type="RELATED", chunk_ids=[f"doc1:sec1:{i}"], confidence=0.8)
-                for i in range(min(30, len(entities)))
+                Mock(
+                    source_entity_id=entity_id,
+                    target_entity_id=f"entity_{i}",
+                    type=Mock(value="related"),
+                    confidence=0.8
+                )
+                for i in range(min(idx + 1, idx + 30, 100))
             ]
 
-        mock_knowledge_graph.get_entities.side_effect = mock_get_entities
-        mock_knowledge_graph.get_relationships.side_effect = mock_get_relationships
+        mock_knowledge_graph.get_outgoing_relationships = Mock(side_effect=mock_get_outgoing_rels)
+
+        # Mock metadata_layer3 for chunk retrieval
+        mock_vector_store.metadata_layer3 = chunks
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -553,30 +811,69 @@ class TestGraphSearchTool:
 
         assert result.success is True
         # Should hit safety limits
-        assert result.metadata["total_entities_visited"] <= 200
+        traversal = result.data.get("traversal", {})
+        assert traversal.get("total_entities_discovered", 0) <= 200
 
-    def test_multi_hop_circular_reference_handling(self, tool_dependencies, mock_knowledge_graph):
+    def test_multi_hop_circular_reference_handling(self, tool_dependencies, mock_knowledge_graph, mock_vector_store):
         """Test circular reference handling in multi-hop."""
-        # Setup circular reference: A -> B -> A
-        entity_a = Mock(value="Company A", type="ORGANIZATION", chunk_ids=["doc1:sec1:0"], confidence=0.9)
-        entity_b = Mock(value="Company B", type="ORGANIZATION", chunk_ids=["doc1:sec1:1"], confidence=0.85)
+        # Setup circular reference: A -> B -> A with proper string values
+        entity_a = Mock(
+            id="entity_a",
+            value="Company A",
+            normalized_value="company a",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:0"],
+            confidence=0.9,
+            document_id="doc1"
+        )
+        entity_b = Mock(
+            id="entity_b",
+            value="Company B",
+            normalized_value="company b",
+            type=Mock(value="ORGANIZATION"),
+            source_chunk_ids=["doc1:sec1:1"],
+            confidence=0.85,
+            document_id="doc1"
+        )
 
-        def mock_get_entities(value=None, entity_type=None):
-            if value == "Company A":
-                return [entity_a]
-            elif value == "Company B":
-                return [entity_b]
+        # Setup entities dict (new GraphAdapter API)
+        mock_knowledge_graph.entities = {
+            "entity_a": entity_a,
+            "entity_b": entity_b
+        }
+
+        # Setup get_entity for retrieving by ID
+        def mock_get_entity(entity_id):
+            return mock_knowledge_graph.entities.get(entity_id)
+
+        mock_knowledge_graph.get_entity = Mock(side_effect=mock_get_entity)
+
+        # Setup get_outgoing_relationships - circular reference
+        def mock_get_outgoing_rels(entity_id):
+            if entity_id == "entity_a":
+                return [Mock(
+                    source_entity_id="entity_a",
+                    target_entity_id="entity_b",
+                    type=Mock(value="partner"),
+                    confidence=0.85
+                )]
+            elif entity_id == "entity_b":
+                return [Mock(
+                    source_entity_id="entity_b",
+                    target_entity_id="entity_a",  # Back to A (circular!)
+                    type=Mock(value="partner"),
+                    confidence=0.85
+                )]
             return []
 
-        def mock_get_relationships(entity=None, direction="both"):
-            if entity.value == "Company A":
-                return [Mock(source_entity=entity_a, target_entity=entity_b, relationship_type="PARTNER", chunk_ids=["doc1:sec1:1"], confidence=0.85)]
-            elif entity.value == "Company B":
-                return [Mock(source_entity=entity_b, target_entity=entity_a, relationship_type="PARTNER", chunk_ids=["doc1:sec1:0"], confidence=0.85)]
-            return []
+        mock_knowledge_graph.get_outgoing_relationships = Mock(side_effect=mock_get_outgoing_rels)
 
-        mock_knowledge_graph.get_entities.side_effect = mock_get_entities
-        mock_knowledge_graph.get_relationships.side_effect = mock_get_relationships
+        # Mock metadata_layer3 for chunk retrieval
+        mock_vector_store.metadata_layer3 = [
+            {"chunk_id": "doc1:sec1:0", "document_id": "doc1", "content": "Company A info"},
+            {"chunk_id": "doc1:sec1:1", "document_id": "doc1", "content": "Company B info"},
+        ]
+
         tool_dependencies["knowledge_graph"] = mock_knowledge_graph
         tool = GraphSearchTool(**tool_dependencies)
 
@@ -588,8 +885,9 @@ class TestGraphSearchTool:
         )
 
         assert result.success is True
-        # Should not infinitely loop
-        assert result.metadata["total_entities_visited"] < 10
+        # Should not infinitely loop - BFS tracks visited entities
+        traversal = result.data.get("traversal", {})
+        assert traversal.get("total_entities_discovered", 0) < 10
 
     # ============================================================================
     # General tests
@@ -1961,3 +2259,431 @@ class TestToolIntegration:
                 result = tool.execute(query="test", search_method="hybrid", k=6)
             assert result.success is False
             assert result.error is not None
+
+
+# ============================================================================
+# TEST 7: BrowseEntitiesTool (New)
+# ============================================================================
+
+
+class TestBrowseEntitiesTool:
+    """Test browse_entities tool for discovering entities without specific names."""
+
+    def test_browse_without_kg_fails(self, tool_dependencies):
+        """Test that browse_entities fails gracefully without knowledge graph."""
+        tool = BrowseEntitiesTool(**tool_dependencies)
+
+        result = tool.execute()
+
+        assert isinstance(result, ToolResult)
+        assert result.success is False
+        assert "Knowledge graph not available" in result.error
+
+    def test_browse_without_find_entities_method_fails(self, tool_dependencies):
+        """Test that browse_entities fails with non-GraphAdapter KG."""
+        # Create mock KG without find_entities method (simple KnowledgeGraph)
+        simple_kg = Mock(spec=['entities', 'relationships'])  # Explicitly specify allowed attrs
+        simple_kg.entities = {}
+        simple_kg.relationships = []
+        # find_entities method is not in spec, so hasattr will return False
+        tool_dependencies["knowledge_graph"] = simple_kg
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute()
+
+        assert result.success is False
+        assert "does not support find_entities" in result.error
+        assert "GraphAdapter" in result.error
+
+    def test_browse_all_entities(self, tool_dependencies):
+        """Test browsing all entities without filters."""
+        # Create mock GraphAdapter
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="ent1",
+                type=EntityType.STANDARD,
+                value="GRI 306",
+                normalized_value="gri 306",
+                confidence=0.95,
+                source_chunk_ids=["doc1:sec1:0", "doc1:sec2:1"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+            Entity(
+                id="ent2",
+                type=EntityType.ORGANIZATION,
+                value="GSSB",
+                normalized_value="gssb",
+                confidence=0.88,
+                source_chunk_ids=["doc1:sec1:5"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:5",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+            Entity(
+                id="ent3",
+                type=EntityType.REGULATION,
+                value="Waste Management Act",
+                normalized_value="waste management act",
+                confidence=0.82,
+                source_chunk_ids=["doc2:sec1:0"],
+                document_id="doc2",
+                first_mention_chunk_id="doc2:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(limit=20)
+
+        assert result.success is True
+        assert len(result.data) == 3
+        # Should be sorted by confidence (descending)
+        assert result.data[0]["confidence"] == 0.95
+        assert result.data[1]["confidence"] == 0.88
+        assert result.data[2]["confidence"] == 0.82
+        assert result.metadata["count"] == 3
+        assert result.metadata["sorted_by"] == "confidence (descending)"
+
+        # Verify find_entities was called with correct params
+        mock_adapter.find_entities.assert_called_once_with(
+            entity_type=None, min_confidence=0.0, value_contains=None
+        )
+
+    def test_browse_by_entity_type(self, tool_dependencies):
+        """Test browsing entities filtered by type."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="ent1",
+                type=EntityType.STANDARD,
+                value="GRI 306",
+                normalized_value="gri 306",
+                confidence=0.95,
+                source_chunk_ids=["doc1:sec1:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(entity_type="standard", limit=20)
+
+        assert result.success is True
+        assert len(result.data) == 1
+        assert result.data[0]["type"] == "standard"
+        assert result.metadata["filters"]["entity_type"] == "standard"
+        assert "type=standard" in result.metadata["filters_description"]
+
+        mock_adapter.find_entities.assert_called_once_with(
+            entity_type="standard", min_confidence=0.0, value_contains=None
+        )
+
+    def test_browse_by_search_term(self, tool_dependencies):
+        """Test browsing entities with search term filter."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="ent1",
+                type=EntityType.REGULATION,
+                value="Waste Management Act",
+                normalized_value="waste management act",
+                confidence=0.90,
+                source_chunk_ids=["doc1:sec1:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+            Entity(
+                id="ent2",
+                type=EntityType.CLAUSE,
+                value="Waste disposal requirements",
+                normalized_value="waste disposal requirements",
+                confidence=0.85,
+                source_chunk_ids=["doc1:sec2:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec2:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(search_term="waste", limit=20)
+
+        assert result.success is True
+        assert len(result.data) == 2
+        assert result.metadata["filters"]["search_term"] == "waste"
+        assert "search='waste'" in result.metadata["filters_description"]
+
+        mock_adapter.find_entities.assert_called_once_with(
+            entity_type=None, min_confidence=0.0, value_contains="waste"
+        )
+
+    def test_browse_by_min_confidence(self, tool_dependencies):
+        """Test browsing entities with minimum confidence filter."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="ent1",
+                type=EntityType.STANDARD,
+                value="GRI 306",
+                normalized_value="gri 306",
+                confidence=0.95,
+                source_chunk_ids=["doc1:sec1:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+            Entity(
+                id="ent2",
+                type=EntityType.STANDARD,
+                value="ISO 14001",
+                normalized_value="iso 14001",
+                confidence=0.88,
+                source_chunk_ids=["doc1:sec2:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec2:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(min_confidence=0.85, limit=20)
+
+        assert result.success is True
+        assert len(result.data) == 2
+        assert all(e["confidence"] >= 0.85 for e in result.data)
+        assert result.metadata["filters"]["min_confidence"] == 0.85
+        assert "confidence≥0.85" in result.metadata["filters_description"]
+
+        mock_adapter.find_entities.assert_called_once_with(
+            entity_type=None, min_confidence=0.85, value_contains=None
+        )
+
+    def test_browse_with_multiple_filters(self, tool_dependencies):
+        """Test browsing with multiple filters combined."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="ent1",
+                type=EntityType.REGULATION,
+                value="Waste Management Act 2020",
+                normalized_value="waste management act 2020",
+                confidence=0.92,
+                source_chunk_ids=["doc1:sec1:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(entity_type="regulation", search_term="waste", min_confidence=0.9, limit=10)
+
+        assert result.success is True
+        assert len(result.data) == 1
+        assert result.data[0]["type"] == "regulation"
+        assert "waste" in result.data[0]["value"].lower()
+        assert result.data[0]["confidence"] >= 0.9
+
+        # Check all filters in metadata
+        filters_desc = result.metadata["filters_description"]
+        assert "type=regulation" in filters_desc
+        assert "search='waste'" in filters_desc
+        assert "confidence≥0.9" in filters_desc
+
+        mock_adapter.find_entities.assert_called_once_with(
+            entity_type="regulation", min_confidence=0.9, value_contains="waste"
+        )
+
+    def test_browse_no_results(self, tool_dependencies):
+        """Test browsing when no entities match filters."""
+        mock_adapter = Mock()
+        mock_adapter.find_entities.return_value = []
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(entity_type="nonexistent_type", limit=20)
+
+        assert result.success is True  # No results is not an error
+        assert len(result.data) == 0
+        assert result.metadata["count"] == 0
+        assert "No entities found" in result.metadata["message"]
+        assert "type='nonexistent_type'" in result.metadata["message"]
+
+    def test_browse_respects_limit(self, tool_dependencies):
+        """Test that browse_entities respects the limit parameter."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        # Create 30 mock entities
+        mock_entities = [
+            Entity(
+                id=f"ent{i}",
+                type=EntityType.STANDARD,
+                value=f"Standard {i}",
+                normalized_value=f"standard {i}",
+                confidence=0.9 - (i * 0.01),  # Decreasing confidence
+                source_chunk_ids=[f"doc1:sec1:{i}"],
+                document_id="doc1",
+                first_mention_chunk_id=f"doc1:sec1:{i}",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            )
+            for i in range(30)
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute(limit=10)
+
+        assert result.success is True
+        assert len(result.data) == 10  # Should only return 10
+        assert result.metadata["count"] == 10
+        assert result.metadata["filters"]["limit"] == 10
+
+    def test_browse_max_limit_validation(self, tool_dependencies):
+        """Test that limit cannot exceed 50."""
+        mock_adapter = Mock()
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+
+        # Try with limit > 50 (should fail validation)
+        result = tool.execute(limit=100)
+
+        assert result.success is False
+        assert "validation" in result.error.lower() or "less than or equal to 50" in result.error.lower()
+
+    def test_browse_entity_data_format(self, tool_dependencies):
+        """Test that returned entity data has correct format."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="test-id",
+                type=EntityType.ORGANIZATION,
+                value="Test Organization",
+                normalized_value="test organization",
+                confidence=0.92,
+                source_chunk_ids=["doc1:sec1:0", "doc1:sec2:5"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={"extra": "data"},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute()
+
+        assert result.success is True
+        entity_data = result.data[0]
+
+        # Check all required fields
+        assert entity_data["id"] == "test-id"
+        assert entity_data["type"] == "organization"
+        assert entity_data["value"] == "Test Organization"
+        assert entity_data["normalized_value"] == "test organization"
+        assert entity_data["confidence"] == 0.92
+        assert entity_data["mentions"] == 2  # len(source_chunk_ids)
+        assert entity_data["document_id"] == "doc1"
+
+    def test_browse_error_handling(self, tool_dependencies):
+        """Test error handling when find_entities raises exception."""
+        mock_adapter = Mock()
+        mock_adapter.find_entities.side_effect = Exception("Neo4j connection error")
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute()
+
+        assert result.success is False
+        assert "Failed to browse entities" in result.error
+        assert "Neo4j connection error" in result.error
+
+    def test_browse_execution_time_tracking(self, tool_dependencies):
+        """Test that execution time is tracked."""
+        from src.graph.models import Entity, EntityType
+
+        mock_adapter = Mock()
+        mock_entities = [
+            Entity(
+                id="ent1",
+                type=EntityType.STANDARD,
+                value="Test",
+                normalized_value="test",
+                confidence=0.9,
+                source_chunk_ids=["doc1:sec1:0"],
+                document_id="doc1",
+                first_mention_chunk_id="doc1:sec1:0",
+                metadata={},
+                extraction_method="llm",
+                extracted_at=datetime(2024, 10, 29),
+            ),
+        ]
+
+        mock_adapter.find_entities.return_value = mock_entities
+        tool_dependencies["knowledge_graph"] = mock_adapter
+
+        tool = BrowseEntitiesTool(**tool_dependencies)
+        result = tool.execute()
+
+        assert result.success is True
+        assert result.execution_time_ms > 0
+        assert "execution_time_ms" in result.metadata
+        assert result.metadata["execution_time_ms"] > 0

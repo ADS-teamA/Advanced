@@ -748,6 +748,26 @@ class HybridVectorStore:
 
         return cls(faiss_store=faiss_store, bm25_store=bm25_store, fusion_k=config["fusion_k"])
 
+    def get_chunk_by_id(self, chunk_id: str) -> Optional[Dict]:
+        """
+        Retrieve a chunk by its ID from metadata_layer3.
+
+        Used by graph_search tool for entity_mentions mode.
+
+        Args:
+            chunk_id: The chunk ID to retrieve
+
+        Returns:
+            Dict with chunk metadata and content, or None if not found
+        """
+        # Search in FAISS metadata_layer3
+        for meta in self.faiss_store.metadata_layer3:
+            if meta.get("chunk_id") == chunk_id:
+                return meta
+
+        # Not found
+        return None
+
     def get_stats(self) -> Dict:
         """
         Get combined statistics from both stores.

@@ -306,9 +306,10 @@ class AgentConfig:
         Environment variables:
         - ANTHROPIC_API_KEY: Required
         - AGENT_MODEL: Model to use (default: claude-sonnet-4-5-20250929)
+        - AGENT_MAX_TOKENS: Max output tokens (default: 4096, Gemini max: 8192)
         - VECTOR_STORE_PATH: Path to hybrid store
         - KNOWLEDGE_GRAPH_PATH: Path to KG JSON (optional)
-        - QUERY_EXPANSION_MODEL: LLM model for query expansion (default: gpt-5-nano)
+        - QUERY_EXPANSION_MODEL: LLM model for query expansion (default: gpt-4o-mini)
 
         Args:
             **overrides: Override specific config values
@@ -333,9 +334,13 @@ class AgentConfig:
         enable_kg_str = os.getenv("ENABLE_KNOWLEDGE_GRAPH", "false").lower()
         enable_kg = enable_kg_str in ("true", "1", "yes")
 
+        # Load max_tokens from environment (NEW - for Gemini compatibility)
+        max_tokens = int(os.getenv("AGENT_MAX_TOKENS", "4096"))
+
         config = cls(
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             model=os.getenv("AGENT_MODEL", "claude-sonnet-4-5-20250929"),
+            max_tokens=max_tokens,
             vector_store_path=Path(os.getenv("VECTOR_STORE_PATH", "vector_db")),
             enable_knowledge_graph=enable_kg,
             tool_config=tool_config,
