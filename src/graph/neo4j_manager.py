@@ -23,6 +23,24 @@ from .exceptions import (
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_uri(uri: str) -> str:
+    """
+    Remove credentials from URI for safe logging.
+
+    Args:
+        uri: Neo4j URI that may contain credentials
+
+    Returns:
+        URI with password redacted
+
+    Example:
+        >>> _sanitize_uri("neo4j://user:pass@host:7687")
+        "neo4j://user:***@host:7687"
+    """
+    import re
+    return re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", uri)
+
+
 class Neo4jManager:
     """
     Manages Neo4j connections with retry logic and batch operations.
@@ -74,7 +92,7 @@ class Neo4jManager:
             # Verify connectivity immediately (fail fast)
             self._verify_connectivity()
 
-            logger.info(f"Neo4jManager initialized: {config.uri}")
+            logger.info(f"Neo4jManager initialized: {_sanitize_uri(config.uri)}")
 
         except ImportError as e:
             raise Neo4jConnectionError(

@@ -717,15 +717,14 @@ class GraphSearchTool(BaseTool):
         elif hasattr(self.vector_store, "faiss_store"):
             layer3_chunks = self.vector_store.faiss_store.metadata_layer3
 
+        # Build chunk lookup dictionary for O(1) access (avoid N+1 pattern)
+        chunk_lookup = {meta.get("chunk_id"): meta for meta in layer3_chunks if meta.get("chunk_id")}
+
         # Retrieve actual chunks
         chunks = []
         for chunk_id, score in sorted_chunks:
-            # Find chunk metadata by searching layer3_chunks
-            chunk = None
-            for meta in layer3_chunks:
-                if meta.get("chunk_id") == chunk_id:
-                    chunk = meta
-                    break
+            # Direct lookup instead of linear search
+            chunk = chunk_lookup.get(chunk_id)
 
             if chunk:
                 formatted = format_chunk_result(chunk, include_score=True)

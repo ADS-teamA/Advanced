@@ -91,12 +91,15 @@ class AgentAdapter:
                 except (ImportError, ModuleNotFoundError) as e:
                     logger.error(
                         f"Reranker dependencies missing: {e}. "
-                        f"Install with: pip install sentence-transformers"
+                        f"Install with: uv pip install sentence-transformers"
                     )
                     self.config.tool_config.enable_reranking = False
                     self.degraded_components.append({
                         "component": "reranker",
-                        "error": f"Missing dependencies: {e}"
+                        "error": f"Missing dependencies: {e}",
+                        "severity": "high",
+                        "user_message": "Search quality reduced - reranker unavailable",
+                        "action_required": "Install with: uv pip install sentence-transformers"
                     })
                 except (FileNotFoundError, ValueError) as e:
                     logger.error(
@@ -106,7 +109,10 @@ class AgentAdapter:
                     self.config.tool_config.enable_reranking = False
                     self.degraded_components.append({
                         "component": "reranker",
-                        "error": f"Configuration error: {e}"
+                        "error": f"Configuration error: {e}",
+                        "severity": "high",
+                        "user_message": "Search quality reduced - reranker misconfigured",
+                        "action_required": f"Check reranker model name '{self.config.tool_config.reranker_model}' in config"
                     })
                 except RuntimeError as e:
                     if "CUDA" in str(e) or "GPU" in str(e):
@@ -116,14 +122,18 @@ class AgentAdapter:
                         self.config.tool_config.enable_reranking = False
                         self.degraded_components.append({
                             "component": "reranker",
-                            "error": "GPU unavailable (CPU-only mode)"
+                            "error": "GPU unavailable (CPU-only mode)",
+                            "severity": "medium",
+                            "user_message": "Running on CPU only - reranker disabled for performance"
                         })
                     else:
                         logger.critical(f"Unexpected runtime error loading reranker: {e}", exc_info=True)
                         self.config.tool_config.enable_reranking = False
                         self.degraded_components.append({
                             "component": "reranker",
-                            "error": f"Runtime error: {e}"
+                            "error": f"Runtime error: {e}",
+                            "severity": "critical",
+                            "user_message": "Search quality reduced - reranker failed to initialize"
                         })
                 except Exception as e:
                     # Catch-all for truly unexpected errors
@@ -134,7 +144,9 @@ class AgentAdapter:
                     self.config.tool_config.enable_reranking = False
                     self.degraded_components.append({
                         "component": "reranker",
-                        "error": f"Unexpected error: {type(e).__name__}"
+                        "error": f"Unexpected error: {type(e).__name__}",
+                        "severity": "critical",
+                        "user_message": "Search quality reduced - reranker unavailable"
                     })
             else:
                 logger.info("Reranker set to lazy load")
@@ -145,114 +157,47 @@ class AgentAdapter:
         if self.config.enable_knowledge_graph and self.config.knowledge_graph_path:
             logger.info("Loading knowledge graph...")
             try:
-                from src.graph.models import KnowledgeGraph
-                from src.graph_retrieval import GraphEnhancedRetriever
-                import os
+                from src.agent.graph_loader import load_knowledge_graph
 
-                # Check if Neo4j backend is configured (same as CLI)
-                kg_backend = os.getenv("KG_BACKEND", "simple").lower()
-
-                if kg_backend == "neo4j":
-                    # Use Neo4j via GraphAdapter (same as CLI)
-                    logger.info("Using Neo4j backend...")
-                    try:
-                        from src.graph import Neo4jConfig
-                        from src.agent.graph_adapter import GraphAdapter
-
-                        neo4j_config = Neo4jConfig.from_env()
-                        knowledge_graph = GraphAdapter.from_neo4j(neo4j_config)
-
-                        # Get stats for display
-                        entity_count = len(knowledge_graph.entities)
-                        rel_count = len(knowledge_graph.relationships)
-
-                        logger.info(
-                            f"✓ Connected to Neo4j: {entity_count} entities, {rel_count} relationships"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to connect to Neo4j: {e}")
-                        logger.info("Falling back to JSON...")
-                        kg_backend = "simple"  # Fallback to JSON
-
-                if kg_backend != "neo4j":
-                    # Use JSON (original behavior)
-                    kg_path = self.config.knowledge_graph_path
-
-                    # Check if path is a directory (vector_db/) or a single file
-                    if kg_path.is_dir():
-                        # Prefer unified_kg.json if it exists
-                        unified_kg_path = kg_path / "unified_kg.json"
-
-                        if unified_kg_path.exists():
-                            # Load unified KG (already deduplicated with cross-doc relationships)
-                            logger.info(f"Loading unified knowledge graph from JSON...")
-                            knowledge_graph = KnowledgeGraph.load_json(str(unified_kg_path))
-                            logger.info(
-                                f"Unified KG loaded: {len(knowledge_graph.entities)} entities, "
-                                f"{len(knowledge_graph.relationships)} relationships"
-                            )
-                        else:
-                            # Fallback: Load all *_kg.json files from directory (old behavior)
-                            kg_files = sorted(kg_path.glob("*_kg.json"))
-                            if not kg_files:
-                                raise FileNotFoundError(
-                                    f"No knowledge graph files (*_kg.json or unified_kg.json) found in {kg_path}"
-                                )
-
-                            logger.info(f"Found {len(kg_files)} knowledge graph files (unified_kg.json not found)")
-
-                            # Load and merge all KG files (naive merge without deduplication)
-                            knowledge_graph = None
-                            total_entities = 0
-                            total_relationships = 0
-
-                            for kg_file in kg_files:
-                                kg = KnowledgeGraph.load_json(str(kg_file))
-                                if knowledge_graph is None:
-                                    knowledge_graph = kg
-                                else:
-                                    # Merge graphs by combining entities and relationships
-                                    knowledge_graph.entities.extend(kg.entities)
-                                    knowledge_graph.relationships.extend(kg.relationships)
-
-                                total_entities += len(kg.entities)
-                                total_relationships += len(kg.relationships)
-                                logger.debug(
-                                    f"Loaded {kg_file.name}: {len(kg.entities)} entities, "
-                                    f"{len(kg.relationships)} relationships"
-                                )
-
-                            logger.info(
-                                f"Total: {total_entities} entities, "
-                                f"{total_relationships} relationships (naive merge - consider building unified_kg.json)"
-                            )
-                    else:
-                        # Load single file
-                        knowledge_graph = KnowledgeGraph.load_json(str(self.config.knowledge_graph_path))
-
-                graph_retriever = GraphEnhancedRetriever(
-                    vector_store=vector_store, knowledge_graph=knowledge_graph
+                # Use shared loader (handles Neo4j/JSON with intelligent fallback)
+                knowledge_graph, graph_retriever = load_knowledge_graph(
+                    kg_path=self.config.knowledge_graph_path,
+                    vector_store=vector_store,
+                    user_print=None  # WebApp doesn't print to console
                 )
+
+            except RuntimeError as e:
+                # Explicit Neo4j config errors (fail-fast when KG_BACKEND=neo4j)
+                logger.error(f"Knowledge graph backend misconfigured: {e}")
+                self.config.enable_knowledge_graph = False
+                self.degraded_components.append({
+                    "component": "knowledge_graph",
+                    "error": f"Neo4j misconfiguration: {e}",
+                    "severity": "critical",
+                    "action_required": "Fix Neo4j config in .env or change KG_BACKEND=simple"
+                })
             except (ImportError, ModuleNotFoundError) as e:
                 logger.error(
                     f"Knowledge graph dependencies missing: {e}. "
-                    f"Install with: pip install networkx"
+                    f"Install with: uv pip install networkx neo4j"
                 )
                 self.config.enable_knowledge_graph = False
                 self.degraded_components.append({
                     "component": "knowledge_graph",
-                    "error": f"Missing dependencies: {e}"
+                    "error": f"Missing dependencies: {e}",
+                    "severity": "high"
                 })
             except FileNotFoundError as e:
                 logger.warning(
-                    f"Knowledge graph file not found at: {self.config.knowledge_graph_path}. "
+                    f"Knowledge graph file not found: {e}. "
                     f"Run indexing with ENABLE_KNOWLEDGE_GRAPH=true to generate it: "
                     f"uv run python run_pipeline.py data/your_docs/"
                 )
                 self.config.enable_knowledge_graph = False
                 self.degraded_components.append({
                     "component": "knowledge_graph",
-                    "error": f"File not found - run indexing to generate"
+                    "error": f"File not found - run indexing to generate",
+                    "severity": "medium"
                 })
             except (ValueError, KeyError, TypeError) as e:
                 logger.error(
@@ -276,12 +221,29 @@ class AgentAdapter:
                     "error": f"Unexpected error: {type(e).__name__}"
                 })
 
-        # Warn if running in degraded mode
+        # Warn if running in degraded mode with detailed component info
         if self.degraded_components:
             component_names = [d["component"] for d in self.degraded_components]
-            logger.warning(
-                f"⚠️ RUNNING IN DEGRADED MODE - Missing components: {', '.join(component_names)}"
-            )
+
+            # Log detailed degradation info
+            logger.warning("=" * 60)
+            logger.warning("⚠️  WARNING: RUNNING IN DEGRADED MODE")
+            logger.warning("=" * 60)
+
+            for component in self.degraded_components:
+                severity = component.get("severity", "medium")
+                symbol = "🔴" if severity == "critical" else "🟡" if severity == "high" else "🟢"
+
+                logger.warning(f"{symbol} {component['component']}: {component['error']}")
+
+                if "user_message" in component:
+                    logger.warning(f"   → {component['user_message']}")
+
+                if "action_required" in component:
+                    logger.warning(f"   → Action: {component['action_required']}")
+
+            logger.warning("=" * 60)
+            logger.warning(f"Degraded components: {', '.join(component_names)}")
             logger.warning("Some agent tools may be unavailable or produce lower-quality results.")
 
         # Initialize context assembler

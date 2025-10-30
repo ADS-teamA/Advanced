@@ -34,16 +34,17 @@ class GraphAdapter:
             ...
     """
 
-    def __init__(self, builder: Neo4jGraphBuilder):
+    def __init__(self, builder: Neo4jGraphBuilder, owns_builder: bool = False):
         """
         Initialize adapter with Neo4jGraphBuilder.
 
         Args:
             builder: Neo4jGraphBuilder instance connected to Neo4j
+            owns_builder: If True, adapter will close builder on cleanup (default: False)
         """
         self.builder = builder
-        self._entities_cache: Optional[Dict[str, Entity]] = None
-        self._relationships_cache: Optional[List[Relationship]] = None
+        self._owns_builder = owns_builder
+        self._kg_cache: Optional[Any] = None  # KnowledgeGraph object cached once
 
     @classmethod
     def from_neo4j(cls, neo4j_config: Neo4jConfig) -> "GraphAdapter":
@@ -60,7 +61,22 @@ class GraphAdapter:
             backend=GraphBackend.NEO4J, neo4j_config=neo4j_config
         )
         builder = Neo4jGraphBuilder(config)
-        return cls(builder)
+        return cls(builder, owns_builder=True)  # We created it, we own it
+
+    def _ensure_loaded(self) -> None:
+        """
+        Ensure knowledge graph is loaded from Neo4j (lazy loading).
+
+        This loads BOTH entities and relationships in a single query
+        to avoid redundant Neo4j round-trips.
+        """
+        if self._kg_cache is None:
+            logger.info("Loading knowledge graph from Neo4j...")
+            self._kg_cache = self.builder.export_to_knowledge_graph()
+            logger.info(
+                f"Loaded {len(self._kg_cache.entities)} entities and "
+                f"{len(self._kg_cache.relationships)} relationships"
+            )
 
     @property
     def entities(self) -> Dict[str, Entity]:
@@ -70,16 +86,14 @@ class GraphAdapter:
         Returns:
             Dict mapping entity_id -> Entity
 
-        Note: First access queries Neo4j and caches results.
+        Note: First access queries Neo4j for BOTH entities and relationships
+              (single query) and caches both. This prevents redundant queries
+              if both properties are accessed.
+
               Use refresh() to reload from Neo4j.
         """
-        if self._entities_cache is None:
-            logger.info("Loading entities from Neo4j...")
-            kg = self.builder.export_to_knowledge_graph()
-            self._entities_cache = {e.id: e for e in kg.entities}
-            logger.info(f"Loaded {len(self._entities_cache)} entities")
-
-        return self._entities_cache
+        self._ensure_loaded()
+        return {e.id: e for e in self._kg_cache.entities}
 
     @property
     def relationships(self) -> List[Relationship]:
@@ -89,15 +103,12 @@ class GraphAdapter:
         Returns:
             List of Relationship objects
 
-        Note: First access queries Neo4j and caches results.
+        Note: First access queries Neo4j for BOTH entities and relationships
+              (single query) and caches both. This prevents redundant queries
+              if both properties are accessed.
         """
-        if self._relationships_cache is None:
-            logger.info("Loading relationships from Neo4j...")
-            kg = self.builder.export_to_knowledge_graph()
-            self._relationships_cache = kg.relationships
-            logger.info(f"Loaded {len(self._relationships_cache)} relationships")
-
-        return self._relationships_cache
+        self._ensure_loaded()
+        return self._kg_cache.relationships
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """
@@ -207,19 +218,24 @@ class GraphAdapter:
 
         return entities
 
-    def refresh(self):
+    def refresh(self) -> None:
         """
         Clear cache and force reload from Neo4j on next access.
 
         Use this if data has changed in Neo4j and you need fresh data.
         """
-        logger.info("Clearing graph cache - will reload from Neo4j")
-        self._entities_cache = None
-        self._relationships_cache = None
+        logger.info("Clearing graph cache - will reload from Neo4j on next access")
+        self._kg_cache = None
 
-    def close(self):
-        """Close Neo4j connection."""
-        self.builder.close()
+    def close(self) -> None:
+        """
+        Close Neo4j connection if we own the builder.
+
+        Safe to call multiple times (idempotent).
+        """
+        if self._owns_builder and self.builder:
+            self.builder.close()
+            logger.info("GraphAdapter closed Neo4j connection")
 
     def __enter__(self):
         """Context manager entry."""
