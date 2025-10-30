@@ -299,14 +299,20 @@ These decisions are backed by research papers and extensive testing:
 **📊 Visual Tool Reference:** See [`user_search_pipeline.html`](user_search_pipeline.html) for interactive tool documentation with examples and use cases.
 
 **Tool Tiers (Speed/Quality Tradeoff):**
-- **TIER 1** (6 tools): Fast (100-300ms), basic retrieval - Use first
-  - Key tool: **`search`** (unified hybrid search with optional query expansion) ✅ **Query Expansion**
-    - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total (default)
-    - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total (+15-25% recall est.)
-    - `num_expands=2`: Better recall (~800ms) - original + 2 paraphrases, 3 queries total (+15-25% recall est.)
-    - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total (max quality)
-    - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
-    - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py`
+- **TIER 1** (6 tools): Fast (100-300ms baseline), basic retrieval - Use first
+  - Key tool: **`search`** (unified hybrid search with optional query expansion & graph boosting) ✅ **Query Expansion** ✅ **Graph Boost**
+    - **Query Expansion** (`num_expands`):
+      - `num_expands=0`: Fast mode (~200ms) - original query only, 1 query total (default)
+      - `num_expands=1`: Balanced mode (~500ms) - original + 1 paraphrase, 2 queries total (+15-25% recall est.)
+      - `num_expands=2`: Better recall (~800ms) - original + 2 paraphrases, 3 queries total (+15-25% recall est.)
+      - `num_expands=3-5`: Best recall (~1.2-2s) - original + 3-5 paraphrases, 4-6 queries total (max quality)
+      - Uses LLM-based paraphrasing (GPT-5 nano or Claude Haiku) to find docs with different terminology
+    - **Graph Boost** (`enable_graph_boost`):
+      - When enabled: +200-500ms overhead, +8% factual correctness on entity queries (HybridRAG 2024)
+      - Boosts chunks mentioning query-relevant entities (+30% weight) and central entities (+15% weight)
+      - Best for: entity-focused queries (organizations, standards, regulations)
+      - Graceful degradation: Falls back to hybrid search if graph unavailable
+    - Implementation: `src/agent/query_expander.py` + `src/agent/tools/tier1_basic.py` + `src/graph_retrieval.py`
   - Other tools: `get_document_list`, `get_document_info`, `get_tool_help`, `list_available_tools`, `exact_match_search`
 - **TIER 2** (8 tools): Quality (500-1000ms), advanced retrieval - Use for complex queries
   - Tools: `graph_search` (4 modes: entity_mentions, entity_details, relationships, multi_hop), `browse_entities` (NEW), `compare_documents`, `explain_search_results`, `assess_retrieval_confidence`, `filtered_search` (3 search methods), `similarity_search`, `expand_context`
@@ -811,6 +817,14 @@ logger.error("Errors that don't crash the program")
 - [`user_search_pipeline.html`](user_search_pipeline.html) - User query flow with complete tool breakdown (Phase 7)
 
 **Recent Updates:**
+- Graph Boost & Prompt Optimization (2025-10-30): Enhanced search tool with optional graph boosting + SOTA prompt engineering
+  - **Graph Boost Feature:** Optional `enable_graph_boost` parameter for `search` tool (+8% factual correctness on entity queries)
+  - **Dual Boost Strategy:** Entity mention boosting (+30%) + centrality boosting (+15%) based on HybridRAG 2024 research
+  - **Performance:** Adds +200-500ms overhead when enabled, graceful fallback to hybrid search if graph unavailable
+  - **Prompt Engineering:** Rewrote agent system prompt with Constitutional AI constraints (5 rules) and Chain-of-Thought framework
+  - **Entity/Relationship Extractors:** Enhanced with explicit reasoning steps and confidence assessment guidelines
+  - **Cleanup:** Removed 7 deprecated prompt files (hyde, query_decomposition, contextual_retrieval, summary_*.txt)
+  - **Tier Classification:** SearchTool remains TIER 1 (200-300ms baseline) with optional features extending to 400-1500ms
 - CLI + WebApp Backend Unification (2025-10-30): Both now use identical GraphAdapter with Neo4j
   - **Problem Fixed:** WebApp used in-memory KnowledgeGraph (JSON files), CLI used Neo4j
   - **Solution:** Modified `backend/agent_adapter.py` to check `KG_BACKEND=neo4j` (same as CLI)

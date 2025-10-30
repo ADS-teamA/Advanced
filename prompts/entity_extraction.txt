@@ -39,6 +39,23 @@ Extract structured entities from the following legal document text.
   }}
 ]
 
+**Chain-of-Thought Reasoning Process**:
+Before extracting, follow these steps mentally:
+1. Read the entire text carefully to understand context
+2. Identify entity boundaries (where does each entity start/end?)
+3. For each potential entity:
+   - Classify its type (standard, organization, date, etc.)
+   - Extract original text exactly as written
+   - Normalize to standard form
+   - Assess confidence based on clarity:
+     * 0.95-1.0: Unambiguous, standard terminology
+     * 0.80-0.94: Clear context, minor interpretation needed
+     * 0.60-0.79: Some ambiguity, multiple interpretations possible
+     * <0.60: Uncertain, likely exclude
+4. Filter entities with confidence < {min_confidence}
+5. Deduplicate if same entity appears multiple times
+6. Verify JSON format correctness
+
 **Instructions**:
 1. Extract ALL entities of the specified types
 2. For each entity, provide:
