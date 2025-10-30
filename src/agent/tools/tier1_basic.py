@@ -1,7 +1,8 @@
 """
 TIER 1: Basic Retrieval Tools
 
-Fast tools (100-300ms) for common retrieval tasks.
+Fast tools (100-300ms baseline) for common retrieval tasks.
+Some tools have optional features that may extend performance beyond baseline.
 These should handle 80% of user queries.
 """
 
@@ -199,7 +200,7 @@ class SearchTool(BaseTool):
     - Combine both features for complex entity queries where quality > speed
     - Check metadata.graph_boost_enabled to verify if boost was applied
     """
-    tier = 2  # Tier 2 due to optional graph boost (400-1500ms with enable_graph_boost=True or num_expands>0)
+    tier = 1  # Tier 1: Fast baseline (200-300ms). Optional features (graph_boost, num_expands) extend to 400-1500ms
     input_schema = SearchInput
     requires_reranker = True
 
