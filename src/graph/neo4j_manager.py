@@ -219,7 +219,10 @@ class Neo4jManager:
         Tests:
         1. Connectivity (can reach server)
         2. Write capability (create/delete test node)
-        3. Query performance (< 1s for basic count)
+        3. Query execution (times operation, warns if > 1000ms)
+
+        Note: Health check passes even with slow response times.
+              Check warnings[] in return dict for performance issues.
 
         Returns:
             Dict with keys:
@@ -229,6 +232,7 @@ class Neo4jManager:
             - can_query: bool
             - response_time_ms: float
             - error: str or None
+            - warnings: List[str] (empty if no warnings)
 
         Example:
             status = manager.health_check()

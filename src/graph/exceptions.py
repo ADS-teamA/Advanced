@@ -44,8 +44,14 @@ class Neo4jTimeoutError(Neo4jError):
     """
     Query execution exceeded timeout threshold.
 
-    This can be transient (server overloaded) or permanent (query too complex).
-    Retry with caution after analyzing query complexity.
+    This is treated as a PERMANENT error and will NOT be automatically retried.
+
+    Common causes:
+    - Query too complex (needs optimization)
+    - Missing indexes on frequently queried properties
+    - Server under heavy load
+
+    Action: Optimize query or increase timeout threshold in config.
     """
 
     pass
