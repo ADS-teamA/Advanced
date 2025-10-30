@@ -138,12 +138,7 @@ class SearchInput(ToolInput):
     )
     enable_graph_boost: bool = Field(
         False,
-        description=(
-            "Enable knowledge graph boosting for entity-centric queries. "
-            "Boosts chunks mentioning query entities and high-centrality concepts. "
-            "Use when: query mentions specific entities (organizations, standards, regulations). "
-            "Performance: +200-500ms overhead. Default: False (performance-first)."
-        ),
+        description="Enable knowledge graph boosting for entity-centric queries. Boosts chunks mentioning query entities (+30%) and high-centrality concepts (+15%). Use when query mentions specific entities (organizations, standards, regulations). Performance overhead: +200-500ms. Default: False (performance-first).",
     )
 
 
@@ -204,7 +199,7 @@ class SearchTool(BaseTool):
     - Combine both features for complex entity queries where quality > speed
     - Check metadata.graph_boost_enabled to verify if boost was applied
     """
-    tier = 1
+    tier = 2  # Tier 2 due to optional graph boost (400-1500ms with enable_graph_boost=True or num_expands>0)
     input_schema = SearchInput
     requires_reranker = True
 
@@ -319,10 +314,10 @@ class SearchTool(BaseTool):
         use_graph_boost = enable_graph_boost and self.graph_retriever is not None
 
         if enable_graph_boost and self.graph_retriever is None:
-            logger.warning(
+            logger.info(
                 "Graph boost requested but graph_retriever not available. "
                 "Falling back to standard hybrid search. "
-                "To enable: Run indexing with ENABLE_KNOWLEDGE_GRAPH=true"
+                "Tip: Run indexing with ENABLE_KNOWLEDGE_GRAPH=true to enable graph boosting."
             )
 
         if use_graph_boost:
@@ -332,18 +327,49 @@ class SearchTool(BaseTool):
             for idx, q in enumerate(queries, 1):
                 logger.info(f"Searching with graph boost (query {idx}/{len(queries)}): '{q}'")
 
-                # Embed query
-                query_embedding = self.embedder.embed_texts([q])
+                # Embed query (extract 1D array for graph retriever)
+                query_embedding = self.embedder.embed_texts([q])[0]
 
-                # Delegate to GraphEnhancedRetriever
-                results = self.graph_retriever.search(
-                    query=q,
-                    query_embedding=query_embedding,
-                    k=candidates_k,
-                    enable_graph_boost=True,
-                )
+                # Delegate to GraphEnhancedRetriever with error handling
+                try:
+                    results = self.graph_retriever.search(
+                        query=q,
+                        query_embedding=query_embedding,
+                        k=candidates_k,
+                        enable_graph_boost=True,
+                    )
 
-                chunks = results["layer3"]
+                    chunks = results.get("layer3", [])
+
+                    if not chunks:
+                        logger.warning(
+                            f"Graph boost returned empty results for query {idx}. "
+                            f"Falling back to standard search for this query."
+                        )
+                        # Fallback to standard hybrid search for this query
+                        results = self.vector_store.hierarchical_search(
+                            query_text=q,
+                            query_embedding=query_embedding,
+                            k_layer3=candidates_k,
+                        )
+                        chunks = results["layer3"]
+                        graph_boost_applied = False
+                    else:
+                        graph_boost_applied = True
+
+                except (KeyError, AttributeError, ValueError, TypeError) as e:
+                    logger.warning(
+                        f"Graph boost failed for query {idx} ({type(e).__name__}: {e}). "
+                        f"Falling back to standard search for this query."
+                    )
+                    # Fallback to standard hybrid search
+                    results = self.vector_store.hierarchical_search(
+                        query_text=q,
+                        query_embedding=query_embedding,
+                        k_layer3=candidates_k,
+                    )
+                    chunks = results["layer3"]
+                    graph_boost_applied = False
                 # Tag chunks with their source query for tracking
                 for chunk in chunks:
                     chunk["_source_query"] = q
@@ -355,7 +381,7 @@ class SearchTool(BaseTool):
                     {
                         "query": q,
                         "chunks_retrieved": len(chunks),
-                        "graph_boost_applied": True,
+                        "graph_boost_applied": graph_boost_applied,
                     }
                 )
 
@@ -371,8 +397,8 @@ class SearchTool(BaseTool):
             for idx, q in enumerate(queries, 1):
                 logger.info(f"Searching with query {idx}/{len(queries)}: '{q}'")
 
-                # Embed query
-                query_embedding = self.embedder.embed_texts([q])
+                # Embed query (extract 1D array)
+                query_embedding = self.embedder.embed_texts([q])[0]
 
                 # Hybrid search
                 results = self.vector_store.hierarchical_search(
@@ -393,6 +419,7 @@ class SearchTool(BaseTool):
                     {
                         "query": q,
                         "chunks_retrieved": len(chunks),
+                        "graph_boost_applied": False,
                     }
                 )
 
