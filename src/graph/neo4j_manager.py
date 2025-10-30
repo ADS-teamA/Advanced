@@ -38,7 +38,8 @@ def _sanitize_uri(uri: str) -> str:
         "neo4j://user:***@host:7687"
     """
     import re
-    return re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", uri)
+    # Use greedy match (.+) to handle passwords containing @ characters
+    return re.sub(r"://([^:]+):(.+)@", r"://\1:***@", uri)
 
 
 class Neo4jManager:

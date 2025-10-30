@@ -8,7 +8,7 @@ This allows tools to use Neo4j without code changes.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.graph import Neo4jGraphBuilder, GraphStorageConfig, GraphBackend, Neo4jConfig
 from src.graph.models import Entity, Relationship

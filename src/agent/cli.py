@@ -622,10 +622,11 @@ class AgentCLI:
                 print("\n⚠️  Warning: Prompt caching not supported by this model.")
                 print("   Costs will be higher than with Claude models (no 90% cache discount).")
 
-            # Reset conversation (tools need to be regenerated for new provider)
-            print("\n🔄 Resetting conversation for new model...")
-            self.agent.reset_conversation()
-            print("✅ Ready to use new model!\n")
+            # Conversation history preserved (system prompt, tools, and history sent on every API call)
+            print("\n✅ Model switched successfully!")
+            print("   💬 Conversation history preserved")
+            print("   📄 Document list preserved")
+            print("   🔧 Tool definitions will be sent to new model automatically\n")
 
         except ValueError as e:
             print(f"\n❌ Invalid model: {e}")

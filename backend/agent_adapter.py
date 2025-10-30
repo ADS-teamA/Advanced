@@ -17,6 +17,7 @@ from typing import AsyncGenerator, Dict, Any, Optional
 
 from src.agent.agent_core import AgentCore
 from src.agent.config import AgentConfig
+from src.agent.providers import create_provider
 from src.agent.tools.registry import get_registry
 from src.context_assembly import CitationFormat, ContextAssembler
 from src.cost_tracker import get_global_tracker, reset_global_tracker
@@ -567,14 +568,41 @@ class AgentAdapter:
 
     def switch_model(self, model: str) -> None:
         """
-        Switch to a different model.
+        Switch to a different model (UNIFIED WITH CLI).
+
+        Preserves conversation history and document list.
+        System prompt, tools, and history are sent on every API call automatically.
 
         Args:
             model: Model identifier
         """
+        old_model = self.config.model
+
+        # Update config
         self.config.model = model
-        self.agent = AgentCore(self.config)
-        logger.info(f"Switched to model: {model}")
+
+        # Create new provider (same logic as CLI)
+        new_provider = create_provider(
+            model=model,
+            anthropic_api_key=self.config.anthropic_api_key,
+            openai_api_key=self.config.openai_api_key,
+            google_api_key=self.config.google_api_key,
+        )
+
+        # Switch provider on existing agent (preserves conversation_history)
+        self.agent.provider = new_provider
+
+        # Auto-adjust streaming based on provider support (same as CLI)
+        streaming_supported = new_provider.supports_feature('streaming')
+        old_streaming = self.config.cli_config.enable_streaming
+        self.config.cli_config.enable_streaming = streaming_supported
+
+        logger.info(
+            f"Model switched: {old_model} → {model} "
+            f"(provider: {new_provider.get_provider_name()}, "
+            f"streaming: {old_streaming} → {streaming_supported}, "
+            f"history preserved: {len(self.agent.conversation_history)} messages)"
+        )
 
     def get_health_status(self) -> Dict[str, Any]:
         """
