@@ -682,6 +682,26 @@ class GetDocumentListTool(BaseTool):
                 if doc_id and doc_id not in documents_map:
                     documents_map[doc_id] = summary
 
+        # Fallback: If Layer 1 is empty (single-layer optimization), extract from Layer 3
+        if not documents_map:
+            # Try metadata_layer3 (direct FAISSVectorStore)
+            if hasattr(self.vector_store, "metadata_layer3"):
+                for meta in self.vector_store.metadata_layer3:
+                    doc_id = meta.get("document_id")
+                    if doc_id and doc_id not in documents_map:
+                        # Layer 3 doesn't have document summaries, use document title or placeholder
+                        doc_title = meta.get("document_title", doc_id)
+                        documents_map[doc_id] = f"Privacy policy for {doc_title}"
+            # Try HybridVectorStore wrapper
+            elif hasattr(self.vector_store, "faiss_store") and hasattr(
+                self.vector_store.faiss_store, "metadata_layer3"
+            ):
+                for meta in self.vector_store.faiss_store.metadata_layer3:
+                    doc_id = meta.get("document_id")
+                    if doc_id and doc_id not in documents_map:
+                        doc_title = meta.get("document_title", doc_id)
+                        documents_map[doc_id] = f"Privacy policy for {doc_title}"
+
         # Build list of document objects with id and summary
         document_list = [
             {"id": doc_id, "summary": summary} for doc_id, summary in sorted(documents_map.items())

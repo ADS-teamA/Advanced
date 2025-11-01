@@ -296,7 +296,13 @@ class BM25Index:
 
         # Rebuild BM25 index and tokenized corpus
         index.tokenized_corpus = [index._tokenize(doc) for doc in index.corpus]
-        index.bm25 = BM25Okapi(index.tokenized_corpus)
+
+        # Handle empty corpus (skip BM25 initialization to avoid division by zero)
+        if index.tokenized_corpus:
+            index.bm25 = BM25Okapi(index.tokenized_corpus)
+        else:
+            index.bm25 = None
+            logger.warning("Loaded empty BM25 index (0 documents) - BM25 model not initialized")
 
         logger.info(f"BM25 index loaded: {len(index.corpus)} documents")
 

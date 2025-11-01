@@ -163,6 +163,10 @@ class MultiLayerChunker:
         """
         Create multi-layer chunks from ExtractedDocument.
 
+        OPTIMIZATION: For documents without hierarchy (depth=1, flat structure),
+        only Layer 3 (chunks) is created to save embeddings and storage.
+        Documents with hierarchy (depth>1) use all 3 layers.
+
         Args:
             extracted_doc: ExtractedDocument from DoclingExtractorV2
 
@@ -172,20 +176,41 @@ class MultiLayerChunker:
 
         logger.info(f"Chunking document: {extracted_doc.document_id}")
 
-        # Layer 1: Document level
-        layer1_chunks = self._create_layer1_document(extracted_doc)
+        # Detect if document has hierarchy
+        has_hierarchy = extracted_doc.hierarchy_depth > 1
 
-        # Layer 2: Section level
-        layer2_chunks = self._create_layer2_sections(extracted_doc)
+        if has_hierarchy:
+            # Multi-layer indexing: Document → Sections → Chunks
+            logger.info("Document has hierarchy (depth > 1) - using 3-layer indexing")
 
-        # Layer 3: Chunk level with SAC
-        layer3_chunks = self._create_layer3_chunks(extracted_doc)
+            # Layer 1: Document level
+            layer1_chunks = self._create_layer1_document(extracted_doc)
 
-        logger.info(
-            f"Created {len(layer1_chunks)} L1, "
-            f"{len(layer2_chunks)} L2, "
-            f"{len(layer3_chunks)} L3 chunks"
-        )
+            # Layer 2: Section level
+            layer2_chunks = self._create_layer2_sections(extracted_doc)
+
+            # Layer 3: Chunk level with SAC
+            layer3_chunks = self._create_layer3_chunks(extracted_doc)
+
+            logger.info(
+                f"Created {len(layer1_chunks)} L1, "
+                f"{len(layer2_chunks)} L2, "
+                f"{len(layer3_chunks)} L3 chunks"
+            )
+        else:
+            # Single-layer indexing: Only chunks (no hierarchy)
+            logger.info("Document is flat (depth = 1) - using single-layer indexing (Layer 3 only)")
+
+            layer1_chunks = []
+            layer2_chunks = []
+
+            # Layer 3: Chunk level with SAC
+            layer3_chunks = self._create_layer3_chunks(extracted_doc)
+
+            logger.info(
+                f"Created {len(layer3_chunks)} L3 chunks "
+                f"(L1 and L2 skipped for flat document)"
+            )
 
         return {
             "layer1": layer1_chunks,

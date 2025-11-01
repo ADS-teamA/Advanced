@@ -93,7 +93,7 @@ class AnthropicProvider(BaseProvider):
         )
 
         return ProviderResponse(
-            content=response.content,
+            content=[block.model_dump() for block in response.content],  # Convert Pydantic models to dicts
             stop_reason=response.stop_reason,
             usage={
                 "input_tokens": response.usage.input_tokens,

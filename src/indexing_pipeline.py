@@ -413,7 +413,7 @@ class IndexingPipeline:
             raise FileNotFoundError(f"Document not found: {document_path}")
 
         # Validate format
-        supported_formats = [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm"]
+        supported_formats = [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".txt"]
         if document_path.suffix.lower() not in supported_formats:
             raise ValueError(
                 f"Unsupported format: {document_path.suffix}. "
@@ -619,11 +619,22 @@ class IndexingPipeline:
 
         if not skip_dense:
             logger.info("PHASE 4: Embedding Generation")
-            embeddings = {
-                "layer1": self.embedder.embed_chunks(chunks["layer1"], layer=1),
-                "layer2": self.embedder.embed_chunks(chunks["layer2"], layer=2),
-                "layer3": self.embedder.embed_chunks(chunks["layer3"], layer=3),
-            }
+
+            # Embed only non-empty layers (optimization for flat documents)
+            embeddings = {}
+            if chunks["layer1"]:
+                embeddings["layer1"] = self.embedder.embed_chunks(chunks["layer1"], layer=1)
+            else:
+                embeddings["layer1"] = None
+
+            if chunks["layer2"]:
+                embeddings["layer2"] = self.embedder.embed_chunks(chunks["layer2"], layer=2)
+            else:
+                embeddings["layer2"] = None
+
+            # Layer 3 always exists
+            embeddings["layer3"] = self.embedder.embed_chunks(chunks["layer3"], layer=3)
+
             logger.info(
                 f"Embedded: {self.embedder.dimensions}D vectors, "
                 f"{embeddings['layer3'].shape[0]} Layer 3 chunks"
@@ -818,8 +829,18 @@ class IndexingPipeline:
 
         logger.info(f"Batch indexing {len(document_paths)} documents...")
 
-        # Create combined vector store
-        vector_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
+        # Create combined vector store (HybridVectorStore or FAISSVectorStore)
+        if self.config.enable_hybrid_search:
+            from src.hybrid_search import HybridVectorStore, BM25Store
+
+            # Create empty FAISS and BM25 stores
+            faiss_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
+            bm25_store = BM25Store()
+            vector_store = HybridVectorStore(faiss_store, bm25_store)
+            logger.info("Created HybridVectorStore for batch indexing")
+        else:
+            vector_store = FAISSVectorStore(dimensions=self.embedder.dimensions)
+            logger.info("Created FAISSVectorStore for batch indexing")
 
         # Collect knowledge graphs
         knowledge_graphs = []
@@ -844,14 +865,35 @@ class IndexingPipeline:
                 doc_store = result["vector_store"]
                 doc_kg = result.get("knowledge_graph")
 
-                # Merge into combined store (by adding chunks)
-                # Note: This is simplified - production would need proper merging
-                vector_store.index_layer1 = doc_store.index_layer1
-                vector_store.index_layer2 = doc_store.index_layer2
-                vector_store.index_layer3 = doc_store.index_layer3
-                vector_store.metadata_layer1.extend(doc_store.metadata_layer1)
-                vector_store.metadata_layer2.extend(doc_store.metadata_layer2)
-                vector_store.metadata_layer3.extend(doc_store.metadata_layer3)
+                # Merge into combined store using proper merge() methods
+                from src.hybrid_search import HybridVectorStore
+
+                if isinstance(vector_store, HybridVectorStore):
+                    # HybridVectorStore: Merge both FAISS and BM25 stores
+                    if isinstance(doc_store, HybridVectorStore):
+                        # Both hybrid: merge faiss_store and bm25_store
+                        vector_store.faiss_store.merge(doc_store.faiss_store)
+                        vector_store.bm25_store.merge(doc_store.bm25_store)
+                        logger.debug("Merged HybridVectorStore into combined store")
+                    else:
+                        # doc_store is FAISSVectorStore (shouldn't happen, but handle gracefully)
+                        vector_store.faiss_store.merge(doc_store)
+                        logger.warning(
+                            "Document store is FAISSVectorStore but combined is Hybrid - "
+                            "BM25 index will be incomplete"
+                        )
+                else:
+                    # FAISSVectorStore: Simple merge
+                    if isinstance(doc_store, FAISSVectorStore):
+                        vector_store.merge(doc_store)
+                        logger.debug("Merged FAISSVectorStore into combined store")
+                    else:
+                        # doc_store is HybridVectorStore (shouldn't happen, but handle gracefully)
+                        vector_store.merge(doc_store.faiss_store)
+                        logger.warning(
+                            "Document store is HybridVectorStore but combined is FAISS - "
+                            "Hybrid features will be lost"
+                        )
 
                 # Collect knowledge graph
                 if doc_kg:
