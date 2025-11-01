@@ -48,8 +48,7 @@ def main():
 
     if not doc_files:
         raise FileNotFoundError(
-            f"No .txt files found in {source_dir}\n"
-            f"Expected privacy policy text files"
+            f"No .txt files found in {source_dir}\n" f"Expected privacy policy text files"
         )
 
     logger.info(f"Found {len(doc_files)} documents to index:")
@@ -68,7 +67,7 @@ def main():
 
     # Manually configure for benchmark
     config.enable_knowledge_graph = False  # DISABLE for benchmark (per user request)
-    config.enable_hybrid_search = True     # ENABLE for proper evaluation
+    config.enable_hybrid_search = True  # ENABLE for proper evaluation
     config.vector_store_path = output_dir  # Use benchmark_db instead of vector_db
 
     # Save indexing config for reproducibility
@@ -98,7 +97,7 @@ def main():
             "normalize": config.embedding_config.normalize,
         },
         "enable_knowledge_graph": False,  # Disabled for benchmark
-        "enable_hybrid_search": True,     # Enabled for benchmark
+        "enable_hybrid_search": True,  # Enabled for benchmark
         "enable_reranking": config.enable_reranking,
         "speed_mode": config.speed_mode,
         "vector_store_path": str(config.vector_store_path),
@@ -125,7 +124,7 @@ def main():
         pipeline.index_batch(
             document_paths=[str(f) for f in doc_files],
             output_dir=output_dir,
-            save_per_document=False  # Save only final combined store
+            save_per_document=False,  # Save only final combined store
         )
         logger.info(f"✓ Successfully indexed {len(doc_files)} documents")
     except Exception as e:

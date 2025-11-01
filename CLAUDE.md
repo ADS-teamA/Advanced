@@ -107,7 +107,7 @@ uv run mypy src/
 # Index benchmark documents (PrivacyQA dataset)
 uv run python scripts/index_benchmark_docs.py
 
-# Run full benchmark evaluation (115 QA pairs)
+# Run full benchmark evaluation (194 QA pairs)
 uv run python scripts/run_benchmark.py
 
 # Quick test with limited queries

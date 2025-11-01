@@ -37,10 +37,20 @@ def save_json_report(result: BenchmarkResult, output_dir: str) -> Path:
     # Serialize to JSON
     data = result.to_dict()
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ JSON report saved: {filepath}")
+    except (IOError, OSError) as e:
+        import time
 
-    logger.info(f"JSON report saved: {filepath}")
+        error_id = f"ERR_JSON_WRITE_{int(time.time())}"
+        logger.error(f"[{error_id}] Failed to write JSON report to {filepath}: {e}", exc_info=True)
+        raise RuntimeError(
+            f"[{error_id}] JSON report generation failed. "
+            f"Check disk space and permissions. "
+            f"Benchmark results are in memory but not saved to {filepath}"
+        ) from e
 
     return filepath
 
@@ -67,10 +77,22 @@ def save_markdown_report(result: BenchmarkResult, output_dir: str) -> Path:
     # Generate Markdown content
     md_content = _generate_markdown(result)
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(md_content)
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(md_content)
+        logger.info(f"✓ Markdown report saved: {filepath}")
+    except (IOError, OSError) as e:
+        import time
 
-    logger.info(f"Markdown report saved: {filepath}")
+        error_id = f"ERR_MD_WRITE_{int(time.time())}"
+        logger.error(
+            f"[{error_id}] Failed to write Markdown report to {filepath}: {e}", exc_info=True
+        )
+        raise RuntimeError(
+            f"[{error_id}] Markdown report generation failed. "
+            f"Check disk space and permissions. "
+            f"Benchmark results are in memory but not saved to {filepath}"
+        ) from e
 
     return filepath
 
@@ -211,7 +233,9 @@ def _generate_markdown(result: BenchmarkResult) -> str:
     # Interpretation Guide
     lines.append("## Metric Interpretation")
     lines.append("")
-    lines.append("- **Exact Match (EM)**: 1.0 if prediction exactly matches any ground truth, else 0.0")
+    lines.append(
+        "- **Exact Match (EM)**: 1.0 if prediction exactly matches any ground truth, else 0.0"
+    )
     lines.append("- **F1 Score**: Harmonic mean of precision and recall (token-level)")
     lines.append("- **Precision**: Fraction of predicted tokens that are correct")
     lines.append("- **Recall**: Fraction of ground truth tokens that were predicted")

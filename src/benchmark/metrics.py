@@ -29,7 +29,6 @@ METRIC_ABBREVIATIONS = {
     "precision": "P",
     "recall": "R",
     "embedding_similarity": "EMB",
-    "sequence_similarity": "SEQ",  # Legacy
     "combined_f1": "F1C",
     "rag_confidence": "RAG",
 }
@@ -58,15 +57,28 @@ def _get_embedder():
             _EMBEDDER = SentenceTransformer("all-MiniLM-L6-v2")
             logger.info("Embedding model loaded successfully")
 
-        except ImportError:
-            logger.error(
-                "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
-            )
-            raise
+        except ImportError as e:
+            import time
+
+            error_id = f"ERR_EMBEDDER_MISSING_{int(time.time())}"
+            logger.error(f"[{error_id}] sentence-transformers not installed", exc_info=True)
+            raise ImportError(
+                f"[{error_id}] Missing dependency: sentence-transformers\n"
+                f"Install with: pip install sentence-transformers\n"
+                f"Or disable embedding metrics in config"
+            ) from e
         except Exception as e:
-            logger.error(f"Failed to load embedding model: {e}")
-            raise
+            import time
+
+            error_id = f"ERR_EMBEDDER_LOAD_{int(time.time())}"
+            logger.error(f"[{error_id}] Failed to load all-MiniLM-L6-v2: {e}", exc_info=True)
+            raise RuntimeError(
+                f"[{error_id}] Embedding model loading failed. Possible causes:\n"
+                f"  - Network issues (model downloads from HuggingFace)\n"
+                f"  - Insufficient disk space (~100MB needed)\n"
+                f"  - CUDA/GPU compatibility issues\n"
+                f"Check logs for details."
+            ) from e
 
     return _EMBEDDER
 

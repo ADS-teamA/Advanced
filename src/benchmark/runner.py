@@ -230,9 +230,22 @@ class BenchmarkRunner:
                 components["reranker"] = CrossEncoderReranker(
                     model_name=agent_config.tool_config.reranker_model
                 )
+                logger.info(f"✓ Reranker loaded: {agent_config.tool_config.reranker_model}")
             except Exception as e:
-                logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
-                agent_config.tool_config.enable_reranking = False
+                import time
+
+                error_id = f"ERR_RERANKER_LOAD_{int(time.time())}"
+                logger.error(
+                    f"[{error_id}] Failed to load reranker model "
+                    f"'{agent_config.tool_config.reranker_model}': {e}",
+                    exc_info=True,
+                )
+                raise RuntimeError(
+                    f"[{error_id}] Reranking is enabled but model failed to load. "
+                    f"Either fix the model or set enable_reranking=False in config. "
+                    f"Cannot proceed with invalid benchmark configuration that would "
+                    f"produce incomparable results."
+                ) from e
 
         # Create context assembler
         components["context_assembler"] = ContextAssembler(citation_format=CitationFormat.INLINE)
@@ -344,8 +357,31 @@ class BenchmarkRunner:
                     f"({confidence_data.get('interpretation', 'Unknown')})"
                 )
             return rag_confidence
+        except AttributeError as e:
+            # Agent doesn't have get_latest_rag_confidence method
+            import time
+
+            error_id = f"ERR_RAG_CONF_ATTR_{int(time.time())}"
+            logger.warning(f"[{error_id}] Agent missing get_latest_rag_confidence() method: {e}")
+            return None
+        except (KeyError, TypeError, ValueError) as e:
+            # Confidence dict has unexpected structure
+            import time
+
+            error_id = f"ERR_RAG_CONF_PARSE_{int(time.time())}"
+            logger.warning(
+                f"[{error_id}] Failed to parse RAG confidence: {e}. "
+                f"Expected dict with 'overall_confidence' key."
+            )
+            return None
         except Exception as e:
-            logger.warning(f"Failed to extract RAG confidence: {e}")
+            # Unexpected error - this SHOULD be investigated
+            import time
+
+            error_id = f"ERR_RAG_CONF_UNKNOWN_{int(time.time())}"
+            logger.error(
+                f"[{error_id}] Unexpected error in RAG confidence extraction: {e}", exc_info=True
+            )
             return None
 
     def run(self) -> BenchmarkResult:

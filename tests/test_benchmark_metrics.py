@@ -133,18 +133,14 @@ class TestEmbeddingSimilarity:
         """Semantically similar text should have high similarity."""
         # "waste disposal" vs "garbage removal" - similar meaning
         sim = calculate_embedding_similarity(
-            "waste disposal requirements",
-            ["garbage removal regulations"]
+            "waste disposal requirements", ["garbage removal regulations"]
         )
         # Should be > 0.6 (semantic similarity, not exact match)
         assert sim > 0.6
 
     def test_embedding_similarity_different(self):
         """Semantically different text should have low similarity."""
-        sim = calculate_embedding_similarity(
-            "waste disposal",
-            ["quantum physics"]
-        )
+        sim = calculate_embedding_similarity("waste disposal", ["quantum physics"])
         # Should be < 0.5 (very different topics)
         assert sim < 0.5
 
@@ -155,8 +151,7 @@ class TestEmbeddingSimilarity:
     def test_embedding_similarity_multiple_refs(self):
         """Should return max similarity across references."""
         sim = calculate_embedding_similarity(
-            "waste disposal",
-            ["quantum physics", "garbage removal", "astronomy"]
+            "waste disposal", ["quantum physics", "garbage removal", "astronomy"]
         )
         # Should match "garbage removal" best (semantic similarity ~0.68)
         assert sim > 0.65
@@ -179,8 +174,7 @@ class TestCombinedF1:
         # Combined ref: {ip, address, cookies, username, photos}
         # Predicted only has 2/5 tokens -> lower F1
         combined = calculate_combined_f1(
-            "username photos",
-            ["ip address cookies", "username photos"]
+            "username photos", ["ip address cookies", "username photos"]
         )
         # Should be < 1.0 because missing some tokens from combined ref
         assert combined < 1.0

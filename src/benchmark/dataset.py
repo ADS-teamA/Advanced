@@ -47,9 +47,7 @@ class GroundTruthSnippet:
     def __post_init__(self):
         """Validate snippet."""
         if self.span_end <= self.span_start:
-            raise ValueError(
-                f"Invalid span: end ({self.span_end}) <= start ({self.span_start})"
-            )
+            raise ValueError(f"Invalid span: end ({self.span_end}) <= start ({self.span_start})")
         if not self.answer.strip():
             raise ValueError("Answer text cannot be empty")
 
@@ -133,8 +131,7 @@ class BenchmarkDataset:
 
         if not json_path.exists():
             raise FileNotFoundError(
-                f"Dataset file not found: {json_path}\n"
-                f"Expected path: {json_path.absolute()}"
+                f"Dataset file not found: {json_path}\n" f"Expected path: {json_path.absolute()}"
             )
 
         logger.info(f"Loading dataset from {json_path}")
@@ -227,9 +224,7 @@ class BenchmarkDataset:
             if query.query_id == query_id:
                 return query
 
-        raise ValueError(
-            f"Query ID {query_id} not found. Valid IDs: 1-{len(self.queries)}"
-        )
+        raise ValueError(f"Query ID {query_id} not found. Valid IDs: 1-{len(self.queries)}")
 
     def get_statistics(self) -> Dict[str, Any]:
         """

@@ -59,10 +59,10 @@ class BenchmarkConfig:
         # Default metrics (LegalBench-RAG standard + extras)
         if self.metrics is None:
             self.metrics = [
-                "exact_match",      # EM (binary)
-                "f1_score",         # Token-level F1
-                "precision",        # Token precision
-                "recall",           # Token recall
+                "exact_match",  # EM (binary)
+                "f1_score",  # Token-level F1
+                "precision",  # Token precision
+                "recall",  # Token recall
             ]
 
         # Validate paths exist
@@ -125,8 +125,11 @@ class BenchmarkConfig:
             "dataset_path": os.getenv("BENCHMARK_DATASET", "benchmark_dataset/privacy_qa.json"),
             "vector_store_path": os.getenv("BENCHMARK_VECTOR_STORE", "benchmark_db"),
             "k": int(os.getenv("BENCHMARK_K", "5")),
-            "max_queries": int(os.getenv("BENCHMARK_MAX_QUERIES"))
-                if os.getenv("BENCHMARK_MAX_QUERIES") else None,
+            "max_queries": (
+                int(os.getenv("BENCHMARK_MAX_QUERIES"))
+                if os.getenv("BENCHMARK_MAX_QUERIES")
+                else None
+            ),
             "debug_mode": os.getenv("BENCHMARK_DEBUG", "false").lower() == "true",
             "enable_reranking": os.getenv("BENCHMARK_RERANKING", "true").lower() == "true",
             "enable_hybrid_search": os.getenv("BENCHMARK_HYBRID_SEARCH", "true").lower() == "true",

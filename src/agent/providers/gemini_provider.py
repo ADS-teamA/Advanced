@@ -45,7 +45,7 @@ class GeminiProvider(BaseProvider):
             raise ValueError("Gemini API key is required")
 
         if not api_key.startswith("AIza"):
-            logger.warning(f"Unusual API key format (expected AIza prefix): {api_key[:10]}...")
+            logger.warning("Unusual API key format (expected AIza prefix)")
 
         # Validate model name
         if "gemini" not in model.lower():
