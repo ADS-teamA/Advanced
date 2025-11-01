@@ -17,15 +17,26 @@ import json
 class EntityType(Enum):
     """Types of entities extracted from legal documents."""
 
-    STANDARD = "standard"  # GRI 306, GRI 303, ISO 14001
-    ORGANIZATION = "organization"  # GSSB, Global Reporting Initiative
-    DATE = "date"  # 2018-07-01, 1 July 2018
-    CLAUSE = "clause"  # Disclosure 306-3, Section 8.2
-    TOPIC = "topic"  # waste, effluents, spills, water
-    PERSON = "person"  # Optional: authors, signatories
-    LOCATION = "location"  # Optional: jurisdictions
-    REGULATION = "regulation"  # GDPR, CCPA, etc.
-    CONTRACT = "contract"  # Specific contracts (NDAs, MSAs)
+    STANDARD = "standard"
+    ORGANIZATION = "organization"
+    DATE = "date"
+    CLAUSE = "clause"
+    TOPIC = "topic"
+    PERSON = "person"
+    LOCATION = "location"
+    REGULATION = "regulation"
+    CONTRACT = "contract"
+
+    # ---- Nuclear/legal domain additions ----
+    PERMIT = "permit"  # Formal authorization (e.g., §9 stages)
+    LEGAL_PROVISION = "legal_provision"  # § / article / clause in an instrument
+    REACTOR = "reactor"  # Nuclear reactor unit (type, power, etc.)
+    FACILITY = "facility"  # Site or installation hosting the reactor/systems
+    SYSTEM = "system"  # Plant/system level (I&C, cooling, protection, etc.)
+    SAFETY_FUNCTION = "safety_function"  # E.g., shutdown, heat removal, confinement
+    FUEL_TYPE = "fuel_type"  # E.g., IRT‑4M, enrichment, cladding
+    EMERGENCY_CLASSIFICATION = "emergency_classification"  # Event class (incident/accident)
+    LIABILITY_REGIME = "liability_regime"  # Operator liability & insurance framework
 
 
 class RelationshipType(Enum):
@@ -38,7 +49,7 @@ class RelationshipType(Enum):
     REFERENCED_BY = "referenced_by"  # Document B → Document A
 
     # Organizational relationships
-    ISSUED_BY = "issued_by"  # Standard → Organization
+    ISSUED_BY = "issued_by"  # Standard/Permit → Organization
     DEVELOPED_BY = "developed_by"  # Standard → Organization
     PUBLISHED_BY = "published_by"  # Document → Organization
 
@@ -59,6 +70,21 @@ class RelationshipType(Enum):
     # Provenance (entity → chunk)
     MENTIONED_IN = "mentioned_in"  # Entity → Chunk
     DEFINED_IN = "defined_in"  # Entity → Chunk (first occurrence)
+
+    # ---- Nuclear/legal domain additions ----
+    REGULATED_BY = "regulated_by"  # Facility/Reactor/System → Regulation/Provision
+    REQUIRES_PERMIT_STAGE = "requires_permit_stage"  # Legal provision → Permit (stage)
+    OPERATED_BY = "operated_by"  # Facility/Reactor → Organization (operator)
+    HAS_SYSTEM = "has_system"  # Facility/Reactor → System
+    PERFORMS_FUNCTION = "performs_function"  # System → Safety function
+    USES_FUEL = "uses_fuel"  # Reactor → Fuel type
+    SUBJECT_TO_LIABILITY = "subject_to_liability"  # Facility/Operator → Liability regime
+
+    # Short provenance/citation links
+    CITES_PROVISION = "cites_provision"  # Document/SAR → Legal provision (§…)
+    DERIVED_FROM = "derived_from"  # Data/Assessment → Source entity/chunk
+    VERSION_OF = "version_of"  # Document version → Canonical document
+
 
 
 @dataclass
