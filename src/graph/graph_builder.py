@@ -402,6 +402,9 @@ class Neo4jGraphBuilder(GraphBuilder):
             self.neo4j_dedup = None
             logger.info("Deduplication disabled")
 
+        # Initialize ID aliases dict for relationship remapping
+        self._id_aliases: Dict[str, str] = {}
+
         logger.info(
             f"Initialized Neo4jGraphBuilder (uri={self.neo4j_config.uri}, "
             f"health check: {health['response_time_ms']:.0f}ms)"
@@ -447,6 +450,11 @@ class Neo4jGraphBuilder(GraphBuilder):
         if self.neo4j_dedup:
             logger.info(f"Adding {len(entities)} entities with deduplication...")
             stats = self.neo4j_dedup.add_entities_with_dedup(entities)
+
+            # Store ID aliases for relationship remapping
+            self._id_aliases = stats.get("id_aliases", {})
+            if self._id_aliases:
+                logger.info(f"Stored {len(self._id_aliases)} ID aliases for relationship remapping")
 
             logger.info(
                 f"Deduplication complete: "
@@ -530,12 +538,12 @@ class Neo4jGraphBuilder(GraphBuilder):
             for i in range(0, len(rels_list), batch_size):
                 batch = rels_list[i : i + batch_size]
 
-                # Convert batch to list of dicts
+                # Convert batch to list of dicts with ID remapping
                 rels_data = [
                     {
                         "id": r.id,
-                        "source_id": r.source_entity_id,
-                        "target_id": r.target_entity_id,
+                        "source_id": self._id_aliases.get(r.source_entity_id, r.source_entity_id),
+                        "target_id": self._id_aliases.get(r.target_entity_id, r.target_entity_id),
                         "confidence": r.confidence,
                         "source_chunk_id": r.source_chunk_id,
                         "evidence_text": r.evidence_text,

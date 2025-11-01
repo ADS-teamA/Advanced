@@ -98,13 +98,16 @@ def mock_embedder():
     """Create mock EmbeddingGenerator."""
     embedder = Mock()
 
-    # Mock embed_single to return normalized random vectors
-    def embed_single(text):
-        np.random.seed(hash(text) % (2**32))
-        vec = np.random.randn(768)
-        return vec / np.linalg.norm(vec)  # Normalized
+    # Mock embed_texts to return normalized random vectors (batch API)
+    def embed_texts(texts):
+        results = []
+        for text in texts:
+            np.random.seed(hash(text) % (2**32))
+            vec = np.random.randn(768)
+            results.append(vec / np.linalg.norm(vec))  # Normalized
+        return results
 
-    embedder.embed_single = Mock(side_effect=embed_single)
+    embedder.embed_texts = Mock(side_effect=embed_texts)
     return embedder
 
 

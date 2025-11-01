@@ -153,9 +153,9 @@ class EntitySimilarityDetector:
             self.stats["cache_hits"] += 1
             return self._embedding_cache[text]
 
-        # Generate embedding
+        # Generate embedding (use batch API with single item)
         self.stats["cache_misses"] += 1
-        embedding = self.embedder.embed_single(text)
+        embedding = self.embedder.embed_texts([text])[0]
 
         # Validate embedding before normalization
         if embedding is None or not isinstance(embedding, np.ndarray):

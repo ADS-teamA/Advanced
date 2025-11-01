@@ -280,7 +280,7 @@ Entity 1: {
 
 **Built-in Acronym Dictionary:**
 
-The system includes 26 common acronyms for legal/sustainability domains:
+The system includes 29 common acronyms for legal/sustainability domains:
 
 - **Standards:** GRI, GSSB, SASB, TCFD, CDP, SBTi, ISO, IEC
 - **Regulations:** GDPR, CCPA, HIPAA, SOX, FCPA
@@ -975,7 +975,7 @@ logger.error("Errors that don't crash the program")
   - **3-Layer Strategy:** Layer 1 (exact match, <1ms) → Layer 2 (semantic similarity, 50-200ms) → Layer 3 (acronym expansion, 100-500ms)
   - **APOC Optimization:** Uses `apoc.coll.union` when available, automatic fallback to pure Cypher
   - **Property Merging:** MAX confidence, UNION chunks, deep metadata merge with `merged_from` tracking
-  - **Built-in Acronyms:** 26 legal/sustainability acronyms (GRI, ISO, GDPR, etc.) + custom acronym support
+  - **Built-in Acronyms:** 29 legal/sustainability acronyms (GRI, ISO, GDPR, OSHA, HSE, etc.) + custom acronym support
   - **Configuration:** Fully configurable via `.env` (all layers optional)
   - **Recommended Mode:** Layer 1 + Layer 3 (production balanced mode) - 98% precision, 85% recall
   - **Components:** 5 new files (`neo4j_deduplicator.py`, `similarity_detector.py`, `acronym_expander.py`, enhanced `deduplicator.py`, updated `config.py`)

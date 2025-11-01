@@ -126,6 +126,7 @@ class Neo4jDeduplicator:
             - entities_merged: Number of duplicates merged
             - entities_failed: Number of failed operations
             - merge_details: List of merge operations
+            - id_aliases: Dict mapping duplicate entity IDs to canonical IDs
 
         Example:
             >>> entities = entity_extractor.extract_from_chunks(chunks)
@@ -137,7 +138,18 @@ class Neo4jDeduplicator:
             "entities_failed": 0,
             "entities_unknown": 0,
             "merge_details": [],
+            "id_aliases": {},  # Maps duplicate_id → canonical_id
         }
+
+        # Build entity lookup by (type, normalized_value) for ID mapping
+        entity_lookup: Dict[tuple, str] = {}  # (type, normalized_value) → entity.id
+        for entity in entities:
+            key = (entity.type.value, entity.normalized_value)
+            if key not in entity_lookup:
+                entity_lookup[key] = entity.id  # First occurrence is canonical
+            else:
+                # This is a duplicate - map its ID to the canonical ID
+                stats["id_aliases"][entity.id] = entity_lookup[key]
 
         # Process in batches
         for i in range(0, len(entities), batch_size):
@@ -225,6 +237,7 @@ class Neo4jDeduplicator:
               e.document_id = entity.document_id,
               e.section_path = entity.section_path,
               e.extraction_method = entity.extraction_method,
+              e.metadata = entity.metadata,
               e.merged_from = [],
               e.created_at = datetime(),
               e._is_new = true
@@ -232,6 +245,11 @@ class Neo4jDeduplicator:
               e.source_chunk_ids = apoc.coll.union(e.source_chunk_ids, entity.source_chunk_ids),
               e.confidence = CASE WHEN entity.confidence > e.confidence THEN entity.confidence ELSE e.confidence END,
               e.merged_from = apoc.coll.union(e.merged_from, [entity.id]),
+              e.metadata = CASE
+                WHEN entity.metadata IS NOT NULL
+                THEN apoc.map.merge(e.metadata, entity.metadata)
+                ELSE e.metadata
+              END,
               e.updated_at = datetime(),
               e._is_new = false
             RETURN
@@ -304,13 +322,16 @@ class Neo4jDeduplicator:
               e.document_id = entity.document_id,
               e.section_path = entity.section_path,
               e.extraction_method = entity.extraction_method,
+              e.metadata = entity.metadata,
               e.merged_from = [],
               e.created_at = datetime(),
               e._is_new = true
             ON MATCH SET
-              e.source_chunk_ids = [x IN (e.source_chunk_ids + entity.source_chunk_ids) | x],
+              e.source_chunk_ids = reduce(acc = [], chunk IN e.source_chunk_ids + entity.source_chunk_ids |
+                CASE WHEN chunk IN acc THEN acc ELSE acc + [chunk] END),
               e.confidence = CASE WHEN entity.confidence > e.confidence THEN entity.confidence ELSE e.confidence END,
               e.merged_from = CASE WHEN NOT entity.id IN e.merged_from THEN e.merged_from + [entity.id] ELSE e.merged_from END,
+              e.metadata = coalesce(e.metadata, {}) + coalesce(entity.metadata, {}),
               e.updated_at = datetime(),
               e._is_new = false
             RETURN
@@ -348,6 +369,7 @@ class Neo4jDeduplicator:
             "document_id": entity.document_id,
             "section_path": entity.section_path,
             "extraction_method": entity.extraction_method,
+            "metadata": entity.metadata or {},
         }
 
     def _check_apoc(self) -> bool:
