@@ -22,6 +22,18 @@ logger = logging.getLogger(__name__)
 # Lazy-loaded embedding model for semantic similarity
 _EMBEDDER = None
 
+# Metric name abbreviations for display
+METRIC_ABBREVIATIONS = {
+    "exact_match": "EM",
+    "f1_score": "F1",
+    "precision": "P",
+    "recall": "R",
+    "embedding_similarity": "EMB",
+    "sequence_similarity": "SEQ",  # Legacy
+    "combined_f1": "F1C",
+    "rag_confidence": "RAG",
+}
+
 
 def _get_embedder():
     """
@@ -474,17 +486,7 @@ def format_metrics(metrics: Dict[str, float], precision: int = 4) -> str:
     """
     parts = []
     for name, score in sorted(metrics.items()):
-        # Short abbreviations
-        abbrev = {
-            "exact_match": "EM",
-            "f1_score": "F1",
-            "precision": "P",
-            "recall": "R",
-            "embedding_similarity": "EMB",  # Embedding-based semantic similarity
-            "sequence_similarity": "SEQ",  # Legacy (if still used)
-            "combined_f1": "F1C",  # Combined F1 (concatenated GT answers)
-        }.get(name, name.upper())
-
+        abbrev = METRIC_ABBREVIATIONS.get(name, name.upper())
         parts.append(f"{abbrev}: {score:.{precision}f}")
 
     return " | ".join(parts)

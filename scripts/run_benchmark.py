@@ -21,11 +21,63 @@ from pathlib import Path
 
 from src.benchmark import BenchmarkConfig, BenchmarkRunner
 from src.benchmark.report import generate_reports
+from src.benchmark.metrics import METRIC_ABBREVIATIONS
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def print_summary(result, config: BenchmarkConfig) -> None:
+    """Print benchmark result summary."""
+    # Define metric display labels
+    metric_labels = {
+        "exact_match": "Exact Match (EM)",
+        "f1_score": "F1 Score",
+        "precision": "Precision",
+        "recall": "Recall",
+        "embedding_similarity": "Embedding Similarity",
+        "combined_f1": "Combined F1",
+        "rag_confidence": "RAG Confidence",
+    }
+
+    print("\n" + "=" * 80)
+    print("BENCHMARK SUMMARY")
+    print("=" * 80)
+    print(f"Dataset:       {result.dataset_name}")
+    print(f"Total Queries: {result.total_queries}")
+    print(f"Total Time:    {result.total_time_seconds:.1f}s")
+    print(f"Total Cost:    ${result.total_cost_usd:.4f}")
+    print("\nAggregate Metrics:")
+
+    for metric_name, score in sorted(result.aggregate_metrics.items()):
+        label = metric_labels.get(metric_name, metric_name.replace("_", " ").title())
+        print(f"  {label:25s}: {score:.4f}")
+
+    print("\nReports saved to:")
+    print(f"  {Path(config.output_dir).absolute()}")
+    print("=" * 80 + "\n")
+
+
+def print_configuration(config: BenchmarkConfig) -> None:
+    """Print benchmark configuration in a clean format."""
+    config_items = [
+        ("Dataset", config.dataset_path),
+        ("Vector Store", config.vector_store_path),
+        ("Max Queries", config.max_queries if config.max_queries else "all (194)"),
+        ("Retrieval k", config.k),
+        ("Reranking", "enabled" if config.enable_reranking else "disabled"),
+        ("Graph Boost", "enabled" if config.enable_graph_boost else "disabled"),
+        ("Agent Model", config.agent_model),
+        ("Output Dir", config.output_dir),
+        ("Debug Mode", config.debug_mode),
+        ("Fail Fast", config.fail_fast),
+    ]
+
+    logger.info("\nConfiguration:")
+    for label, value in config_items:
+        logger.info(f"  {label}: {value}")
 
 
 def parse_args():
@@ -135,19 +187,7 @@ def main():
         sys.exit(1)
 
     # Print configuration
-    logger.info("\nConfiguration:")
-    logger.info(f"  Dataset: {config.dataset_path}")
-    logger.info(f"  Vector Store: {config.vector_store_path}")
-    logger.info(
-        f"  Max Queries: {config.max_queries if config.max_queries else 'all (194)'}"
-    )
-    logger.info(f"  Retrieval k: {config.k}")
-    logger.info(f"  Reranking: {'enabled' if config.enable_reranking else 'disabled'}")
-    logger.info(f"  Graph Boost: {'enabled' if config.enable_graph_boost else 'disabled'}")
-    logger.info(f"  Agent Model: {config.agent_model}")
-    logger.info(f"  Output Dir: {config.output_dir}")
-    logger.info(f"  Debug Mode: {config.debug_mode}")
-    logger.info(f"  Fail Fast: {config.fail_fast}")
+    print_configuration(config)
 
     # Initialize runner
     try:
@@ -185,25 +225,7 @@ def main():
         sys.exit(1)
 
     # Print summary
-    print("\n" + "=" * 80)
-    print("BENCHMARK SUMMARY")
-    print("=" * 80)
-    print(f"Dataset:       {result.dataset_name}")
-    print(f"Total Queries: {result.total_queries}")
-    print(f"Total Time:    {result.total_time_seconds:.1f}s")
-    print(f"Total Cost:    ${result.total_cost_usd:.4f}")
-    print("\nAggregate Metrics:")
-    for metric_name, score in sorted(result.aggregate_metrics.items()):
-        metric_label = {
-            "exact_match": "Exact Match (EM)",
-            "f1_score": "F1 Score",
-            "precision": "Precision",
-            "recall": "Recall",
-        }.get(metric_name, metric_name.replace("_", " ").title())
-        print(f"  {metric_label:20s}: {score:.4f}")
-    print("\nReports saved to:")
-    print(f"  {Path(config.output_dir).absolute()}")
-    print("=" * 80 + "\n")
+    print_summary(result, config)
 
     logger.info("Benchmark evaluation complete!")
 

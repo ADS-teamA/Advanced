@@ -184,68 +184,77 @@ class BenchmarkRunner:
         agent_config.tool_config.enable_reranking = self.config.enable_reranking
         agent_config.tool_config.enable_graph_boost = self.config.enable_graph_boost
 
-        # Initialize pipeline components (required for tool registry)
+        # Initialize pipeline components
+        components = self._initialize_pipeline_components(agent_config)
+
+        # Initialize tool registry
+        self._initialize_tool_registry(components, agent_config.tool_config)
+
+        # Create and configure agent
+        agent = AgentCore(agent_config)
+
+        # Append benchmark-specific prompt
+        benchmark_prompt = load_prompt("agent_benchmark_prompt")
+        agent.config.system_prompt = f"{agent.config.system_prompt}\n\n---\n\n{benchmark_prompt}"
+        logger.info("Benchmark system prompt appended to agent prompt")
+
+        # Initialize with documents
+        agent.initialize_with_documents()
+
+        logger.info(
+            f"Agent initialized: {agent_config.model}, k={self.config.k}, "
+            f"reranking={'enabled' if self.config.enable_reranking else 'disabled'}"
+        )
+
+        return agent
+
+    def _initialize_pipeline_components(self, agent_config: AgentConfig) -> Dict[str, Any]:
+        """Initialize embedder, reranker, and context assembler."""
         from ..embedding_generator import EmbeddingGenerator, EmbeddingConfig
         from ..reranker import CrossEncoderReranker
         from ..context_assembly import ContextAssembler, CitationFormat
-        from ..agent.tools.registry import get_registry
+
+        components = {}
 
         # Create embedder
         logger.info(f"Initializing embedder: {agent_config.embedding_model}")
-        embedder = EmbeddingGenerator(
+        components["embedder"] = EmbeddingGenerator(
             EmbeddingConfig(model=agent_config.embedding_model, batch_size=100, normalize=True)
         )
 
-        # Create reranker (if enabled)
-        reranker = None
+        # Create reranker if enabled
+        components["reranker"] = None
         if self.config.enable_reranking:
             logger.info(f"Initializing reranker: {agent_config.tool_config.reranker_model}")
             try:
-                reranker = CrossEncoderReranker(model_name=agent_config.tool_config.reranker_model)
+                components["reranker"] = CrossEncoderReranker(
+                    model_name=agent_config.tool_config.reranker_model
+                )
             except Exception as e:
                 logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
                 agent_config.tool_config.enable_reranking = False
 
         # Create context assembler
-        context_assembler = ContextAssembler(citation_format=CitationFormat.INLINE)
+        components["context_assembler"] = ContextAssembler(citation_format=CitationFormat.INLINE)
 
-        # Initialize tool registry BEFORE creating AgentCore
+        return components
+
+    def _initialize_tool_registry(self, components: Dict[str, Any], tool_config: Any) -> None:
+        """Initialize tool registry with pipeline components."""
+        from ..agent.tools.registry import get_registry
+
         logger.info("Initializing tool registry...")
         registry = get_registry()
         registry.initialize_tools(
             vector_store=self.vector_store,
-            embedder=embedder,
-            reranker=reranker,
+            embedder=components["embedder"],
+            reranker=components["reranker"],
             graph_retriever=None,  # No graph for benchmark
             knowledge_graph=None,  # No graph for benchmark
-            context_assembler=context_assembler,
-            config=agent_config.tool_config,
+            context_assembler=components["context_assembler"],
+            config=tool_config,
         )
-
         logger.info(f"Tool registry initialized: {len(registry)} tools available")
-
-        # Create agent core (registry already initialized with tools)
-        agent = AgentCore(agent_config)
-
-        # Load and append benchmark prompt to agent prompt (preserve tool selection strategy)
-        benchmark_prompt = load_prompt("agent_benchmark_prompt")
-        agent.config.system_prompt = (
-            f"{agent.config.system_prompt}\n\n" f"---\n\n" f"{benchmark_prompt}"
-        )
-        logger.info(
-            "Benchmark system prompt appended to agent prompt (loaded from prompts/agent_benchmark_prompt.txt)"
-        )
-
-        # Initialize with documents (loads document list into context)
-        agent.initialize_with_documents()
-
-        logger.info(
-            f"Agent initialized: {agent_config.model}, "
-            f"k={self.config.k}, "
-            f"reranking={'enabled' if self.config.enable_reranking else 'disabled'}"
-        )
-
-        return agent
 
     def _evaluate_query(self, query_example: QueryExample) -> QueryResult:
         """
@@ -266,76 +275,78 @@ class BenchmarkRunner:
         # Reset conversation for independent query
         self.agent.reset_conversation()
 
-        # Track cost before query
+        # Track cost and time
         tracker = get_global_tracker()
         cost_before = tracker.get_total_cost()
-
-        # Measure time
         start_time = time.time()
 
-        try:
-            # Get agent response (non-streaming for consistency)
-            response_text = self.agent.process_message(query_text, stream=False)
+        # Get agent response
+        response_text = self._get_agent_response(query_example)
 
-        except Exception as e:
-            error_msg = f"Agent failed for query {query_example.query_id}: {e}"
-
-            if self.config.fail_fast:
-                # Stop entire benchmark
-                raise RuntimeError(error_msg) from e
-            else:
-                # Log and continue with empty answer
-                logger.error(error_msg)
-                response_text = ""
-
-        # Calculate elapsed time
+        # Calculate metrics
         elapsed_ms = (time.time() - start_time) * 1000
+        query_cost = tracker.get_total_cost() - cost_before
 
-        # Calculate cost for this query
-        cost_after = tracker.get_total_cost()
-        query_cost = cost_after - cost_before
-
-        # Extract answer from <ANSWER></ANSWER> tags
-        import re
-
-        answer_match = re.search(r"<ANSWER>(.*?)</ANSWER>", response_text, re.DOTALL)
-        if answer_match:
-            extracted_answer = answer_match.group(1).strip()
-            logger.debug(f"Extracted answer from tags: {extracted_answer[:100]}...")
-        else:
-            # Fallback: use full response if tags not found
-            extracted_answer = response_text
-            logger.warning(
-                f"No <ANSWER> tags found for query {query_example.query_id}, using full response"
-            )
-
-        # Compute metrics using extracted answer
+        # Extract answer and compute metrics
+        extracted_answer = self._extract_answer(response_text, query_example.query_id)
         metrics = compute_all_metrics(extracted_answer, expected_answers)
 
-        # Extract RAG confidence from last tool call (if available)
-        rag_confidence = None
-        try:
-            confidence_data = self.agent.get_latest_rag_confidence()
-            if confidence_data:
-                rag_confidence = confidence_data.get("overall_confidence")
-                if self.config.debug_mode:
-                    logger.debug(
-                        f"RAG Confidence: {rag_confidence:.3f} "
-                        f"({confidence_data.get('interpretation', 'Unknown')})"
-                    )
-        except Exception as e:
-            logger.warning(f"Failed to extract RAG confidence: {e}")
+        # Extract RAG confidence if available
+        rag_confidence = self._extract_rag_confidence()
 
         return QueryResult(
             query_id=query_example.query_id,
             query=query_text,
-            predicted_answer=extracted_answer,  # Use extracted answer, not full response
+            predicted_answer=extracted_answer,
             ground_truth_answers=expected_answers,
             metrics=metrics,
             retrieval_time_ms=elapsed_ms,
             cost_usd=query_cost,
             rag_confidence=rag_confidence,
         )
+
+    def _get_agent_response(self, query_example: QueryExample) -> str:
+        """Get agent response, handling errors based on fail_fast setting."""
+        try:
+            return self.agent.process_message(query_example.query, stream=False)
+        except Exception as e:
+            error_msg = f"Agent failed for query {query_example.query_id}: {e}"
+            if self.config.fail_fast:
+                raise RuntimeError(error_msg) from e
+            logger.error(error_msg)
+            return ""
+
+    def _extract_answer(self, response_text: str, query_id: int) -> str:
+        """Extract answer from response tags or use full response as fallback."""
+        import re
+
+        answer_match = re.search(r"<ANSWER>(.*?)</ANSWER>", response_text, re.DOTALL)
+        if answer_match:
+            answer = answer_match.group(1).strip()
+            logger.debug(f"Extracted answer from tags: {answer[:100]}...")
+            return answer
+
+        # Fallback: use full response if tags not found
+        logger.warning(f"No <ANSWER> tags found for query {query_id}, using full response")
+        return response_text
+
+    def _extract_rag_confidence(self) -> Optional[float]:
+        """Extract RAG confidence score from agent if available."""
+        try:
+            confidence_data = self.agent.get_latest_rag_confidence()
+            if not confidence_data:
+                return None
+
+            rag_confidence = confidence_data.get("overall_confidence")
+            if self.config.debug_mode and rag_confidence is not None:
+                logger.debug(
+                    f"RAG Confidence: {rag_confidence:.3f} "
+                    f"({confidence_data.get('interpretation', 'Unknown')})"
+                )
+            return rag_confidence
+        except Exception as e:
+            logger.warning(f"Failed to extract RAG confidence: {e}")
+            return None
 
     def run(self) -> BenchmarkResult:
         """

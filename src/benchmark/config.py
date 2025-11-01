@@ -6,7 +6,7 @@ Follows existing SUJBOT2 config pattern with Pydantic dataclasses.
 
 import os
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, List
 
@@ -146,35 +146,4 @@ class BenchmarkConfig:
         Returns:
             Dict with all config values
         """
-        return {
-            # Dataset paths
-            "dataset_path": self.dataset_path,
-            "documents_dir": self.documents_dir,
-            "vector_store_path": self.vector_store_path,
-
-            # Retrieval parameters
-            "k": self.k,
-            "enable_reranking": self.enable_reranking,
-            "enable_graph_boost": self.enable_graph_boost,
-            "enable_hybrid_search": self.enable_hybrid_search,
-
-            # Execution control
-            "max_queries": self.max_queries,
-            "debug_mode": self.debug_mode,
-            "fail_fast": self.fail_fast,
-            "rate_limit_delay": self.rate_limit_delay,
-
-            # Agent settings
-            "agent_model": self.agent_model,
-            "agent_temperature": self.agent_temperature,
-            "enable_prompt_caching": self.enable_prompt_caching,
-
-            # Metrics
-            "metrics": self.metrics,
-
-            # Output
-            "output_dir": self.output_dir,
-            "save_markdown": self.save_markdown,
-            "save_json": self.save_json,
-            "save_per_query": self.save_per_query,
-        }
+        return asdict(self)
