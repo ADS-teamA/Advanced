@@ -6,7 +6,7 @@ Catches variants like "GRI 306" vs "Global Reporting Initiative 306".
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -145,6 +145,9 @@ class EntitySimilarityDetector:
 
         Returns:
             Normalized embedding vector
+
+        Raises:
+            ValueError: If embedder returns invalid result (None, NaN, Inf, or zero vector)
         """
         if self.cache_enabled and text in self._embedding_cache:
             self.stats["cache_hits"] += 1
@@ -154,10 +157,28 @@ class EntitySimilarityDetector:
         self.stats["cache_misses"] += 1
         embedding = self.embedder.embed_single(text)
 
+        # Validate embedding before normalization
+        if embedding is None or not isinstance(embedding, np.ndarray):
+            raise ValueError(
+                f"Embedder returned invalid result: {type(embedding).__name__}. "
+                f"Expected numpy array for text: {text[:50]}..."
+            )
+
+        if np.any(np.isnan(embedding)):
+            raise ValueError(f"Embedder returned NaN values for text: {text[:50]}...")
+
+        if np.any(np.isinf(embedding)):
+            raise ValueError(f"Embedder returned Inf values for text: {text[:50]}...")
+
         # Normalize for cosine similarity
         norm = np.linalg.norm(embedding)
-        if norm > 0:
-            embedding = embedding / norm
+        if norm == 0:
+            raise ValueError(
+                f"Embedder returned zero vector for text: {text[:50]}... "
+                f"Cannot compute similarity with zero-length vector."
+            )
+
+        embedding = embedding / norm
 
         # Cache if enabled
         if self.cache_enabled:
@@ -165,12 +186,12 @@ class EntitySimilarityDetector:
 
         return embedding
 
-    def get_cache_stats(self) -> Dict[str, int]:
+    def get_cache_stats(self) -> Dict[str, Union[int, float]]:
         """
         Get cache statistics.
 
         Returns:
-            Dict with cache_hits, cache_misses, hit_rate
+            Dict with cache_hits, cache_misses, hit_rate (hit_rate is float)
         """
         total = self.stats["cache_hits"] + self.stats["cache_misses"]
         hit_rate = self.stats["cache_hits"] / total if total > 0 else 0.0
@@ -182,7 +203,7 @@ class EntitySimilarityDetector:
             "hit_rate": hit_rate,
         }
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive statistics."""
         cache_stats = self.get_cache_stats()
         return {

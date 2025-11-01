@@ -181,6 +181,23 @@ class EntityDeduplicationConfig:
     apoc_enabled: bool = True  # Try APOC, fallback to Cypher
     create_uniqueness_constraints: bool = True
 
+    def __post_init__(self) -> None:
+        """Validate configuration values after initialization."""
+        if not (0.0 <= self.similarity_threshold <= 1.0):
+            raise ValueError(
+                f"similarity_threshold must be in [0.0, 1.0], got {self.similarity_threshold}"
+            )
+
+        if not (0.0 <= self.acronym_fuzzy_threshold <= 1.0):
+            raise ValueError(
+                f"acronym_fuzzy_threshold must be in [0.0, 1.0], got {self.acronym_fuzzy_threshold}"
+            )
+
+        if self.embedding_batch_size <= 0:
+            raise ValueError(
+                f"embedding_batch_size must be positive, got {self.embedding_batch_size}"
+            )
+
     @classmethod
     def from_env(cls) -> "EntityDeduplicationConfig":
         """Load deduplication config from environment variables."""

@@ -131,10 +131,11 @@ class Neo4jDeduplicator:
             >>> entities = entity_extractor.extract_from_chunks(chunks)
             >>> stats = dedup.add_entities_with_dedup(entities)
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "entities_added": 0,
             "entities_merged": 0,
             "entities_failed": 0,
+            "entities_unknown": 0,
             "merge_details": [],
         }
 
@@ -146,9 +147,10 @@ class Neo4jDeduplicator:
                 batch_stats = self._process_batch_with_dedup(batch)
 
                 # Accumulate stats
-                stats["entities_added"] += batch_stats["entities_added"]
-                stats["entities_merged"] += batch_stats["entities_merged"]
-                stats["entities_failed"] += batch_stats["entities_failed"]
+                stats["entities_added"] += batch_stats.get("entities_added", 0)
+                stats["entities_merged"] += batch_stats.get("entities_merged", 0)
+                stats["entities_failed"] += batch_stats.get("entities_failed", 0)
+                stats["entities_unknown"] += batch_stats.get("entities_unknown", 0)
                 stats["merge_details"].extend(batch_stats.get("merge_details", []))
 
             except Exception as e:
@@ -159,7 +161,8 @@ class Neo4jDeduplicator:
             f"Deduplication complete: "
             f"added={stats['entities_added']}, "
             f"merged={stats['entities_merged']}, "
-            f"failed={stats['entities_failed']}"
+            f"failed={stats['entities_failed']}, "
+            f"unknown={stats['entities_unknown']}"
         )
 
         return stats
@@ -223,28 +226,33 @@ class Neo4jDeduplicator:
               e.section_path = entity.section_path,
               e.extraction_method = entity.extraction_method,
               e.merged_from = [],
-              e.created_at = datetime()
+              e.created_at = datetime(),
+              e._is_new = true
             ON MATCH SET
               e.source_chunk_ids = apoc.coll.union(e.source_chunk_ids, entity.source_chunk_ids),
               e.confidence = CASE WHEN entity.confidence > e.confidence THEN entity.confidence ELSE e.confidence END,
               e.merged_from = apoc.coll.union(e.merged_from, [entity.id]),
-              e.updated_at = datetime()
-            WITH e, entity,
-                 CASE WHEN e.created_at = datetime() THEN 1 ELSE 0 END as is_new
+              e.updated_at = datetime(),
+              e._is_new = false
             RETURN
-              SUM(is_new) as created_count,
-              SUM(1 - is_new) as merged_count,
+              SUM(CASE WHEN e._is_new THEN 1 ELSE 0 END) as created_count,
+              SUM(CASE WHEN NOT e._is_new THEN 1 ELSE 0 END) as merged_count,
               COUNT(*) as total_count
             """,
             {"entities": entities_data},
         )
 
         if not result or len(result) == 0:
-            logger.warning("APOC merge returned no results")
+            logger.error(
+                f"Neo4j APOC merge returned empty result for batch of {len(batch)} entities. "
+                f"Database state unknown - this may indicate constraint violation, "
+                f"transaction rollback, or query timeout. Manual verification recommended."
+            )
             return {
                 "entities_added": 0,
                 "entities_merged": 0,
-                "entities_failed": len(batch),
+                "entities_failed": 0,
+                "entities_unknown": len(batch),
                 "merge_details": [],
             }
 
@@ -256,6 +264,7 @@ class Neo4jDeduplicator:
             "entities_added": created,
             "entities_merged": merged,
             "entities_failed": 0,
+            "entities_unknown": 0,
             "merge_details": [],
         }
 
@@ -271,10 +280,11 @@ class Neo4jDeduplicator:
         Returns:
             Statistics dict
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "entities_added": 0,
             "entities_merged": 0,
             "entities_failed": 0,
+            "entities_unknown": 0,
             "merge_details": [],
         }
 
@@ -295,17 +305,17 @@ class Neo4jDeduplicator:
               e.section_path = entity.section_path,
               e.extraction_method = entity.extraction_method,
               e.merged_from = [],
-              e.created_at = datetime()
+              e.created_at = datetime(),
+              e._is_new = true
             ON MATCH SET
               e.source_chunk_ids = [x IN (e.source_chunk_ids + entity.source_chunk_ids) | x],
               e.confidence = CASE WHEN entity.confidence > e.confidence THEN entity.confidence ELSE e.confidence END,
               e.merged_from = CASE WHEN NOT entity.id IN e.merged_from THEN e.merged_from + [entity.id] ELSE e.merged_from END,
-              e.updated_at = datetime()
-            WITH e,
-                 CASE WHEN exists(e.created_at) AND e.created_at >= datetime() - duration('PT2S') THEN 1 ELSE 0 END as is_new
+              e.updated_at = datetime(),
+              e._is_new = false
             RETURN
-              SUM(is_new) as created_count,
-              SUM(1 - is_new) as merged_count
+              SUM(CASE WHEN e._is_new THEN 1 ELSE 0 END) as created_count,
+              SUM(CASE WHEN NOT e._is_new THEN 1 ELSE 0 END) as merged_count
             """,
             {"entities": entities_data},
         )
@@ -346,6 +356,9 @@ class Neo4jDeduplicator:
 
         Returns:
             True if APOC is available, False otherwise
+
+        Raises:
+            Exception: Re-raises authentication and connection errors
         """
         try:
             result = self.manager.execute("RETURN apoc.version() as version")
@@ -355,6 +368,25 @@ class Neo4jDeduplicator:
                 return True
             return False
 
-        except Exception:
-            logger.info("APOC not available, will use pure Cypher")
-            return False
+        except Exception as e:
+            error_msg = str(e).lower()
+
+            # Categorize errors properly to avoid masking real problems
+            if "apoc" in error_msg or "procedure" in error_msg or "function" in error_msg:
+                # APOC not installed or not enabled
+                logger.info("APOC not available, will use pure Cypher fallback")
+                return False
+            elif "auth" in error_msg or "credential" in error_msg or "password" in error_msg:
+                # Authentication failure - don't mask this!
+                logger.error(f"Neo4j authentication failed during APOC check: {e}")
+                raise
+            elif "timeout" in error_msg or "connection" in error_msg or "refused" in error_msg:
+                # Connection failure - don't mask this!
+                logger.error(f"Neo4j connection failed during APOC check: {e}")
+                raise
+            else:
+                # Unknown error - log warning but assume APOC unavailable
+                logger.warning(
+                    f"APOC check failed with unexpected error (assuming unavailable): {e}"
+                )
+                return False
