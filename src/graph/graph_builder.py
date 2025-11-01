@@ -10,12 +10,11 @@ Provides multiple backend implementations:
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
-from .models import Entity, Relationship, KnowledgeGraph, EntityType, RelationshipType
 from .config import GraphStorageConfig, Neo4jConfig
-
+from .models import Entity, EntityType, KnowledgeGraph, Relationship, RelationshipType
 
 logger = logging.getLogger(__name__)
 
@@ -311,12 +310,8 @@ class SimpleGraphBuilder(GraphBuilder):
         # Phase 2: Merge relationships with entity ID remapping
         for rel in other.relationships.values():
             # Remap source entity ID if deduplicated
-            source_id = stats["entity_id_remapping"].get(
-                rel.source_entity_id, rel.source_entity_id
-            )
-            target_id = stats["entity_id_remapping"].get(
-                rel.target_entity_id, rel.target_entity_id
-            )
+            source_id = stats["entity_id_remapping"].get(rel.source_entity_id, rel.source_entity_id)
+            target_id = stats["entity_id_remapping"].get(rel.target_entity_id, rel.target_entity_id)
 
             # Update relationship entity IDs
             rel.source_entity_id = source_id
@@ -383,6 +378,33 @@ class Neo4jGraphBuilder(GraphBuilder):
         if self.neo4j_config.create_indexes:
             self._create_indexes()
 
+        # Initialize deduplication if enabled
+        from .config import EntityDeduplicationConfig
+
+        dedup_config = self.config.deduplication_config or EntityDeduplicationConfig()
+
+        if dedup_config.enabled:
+            from .neo4j_deduplicator import Neo4jDeduplicator
+
+            self.neo4j_dedup = Neo4jDeduplicator(self.manager, dedup_config)
+
+            # Create uniqueness constraints for deduplication
+            if dedup_config.create_uniqueness_constraints:
+                self.neo4j_dedup.create_uniqueness_constraints()
+
+            logger.info(
+                f"Deduplication enabled: "
+                f"exact={dedup_config.exact_match_enabled}, "
+                f"embeddings={dedup_config.use_embeddings}, "
+                f"acronyms={dedup_config.use_acronym_expansion}"
+            )
+        else:
+            self.neo4j_dedup = None
+            logger.info("Deduplication disabled")
+
+        # Initialize ID aliases dict for relationship remapping
+        self._id_aliases: Dict[str, str] = {}
+
         logger.info(
             f"Initialized Neo4jGraphBuilder (uri={self.neo4j_config.uri}, "
             f"health check: {health['response_time_ms']:.0f}ms)"
@@ -412,9 +434,38 @@ class Neo4jGraphBuilder(GraphBuilder):
         """
         Add entities to Neo4j as nodes using batch operations.
 
+        When deduplication is enabled, uses Neo4jDeduplicator for incremental
+        duplicate detection and property merging.
+
+        When deduplication is disabled, falls back to basic batch insertion.
+
         Processes entities in batches of 1000 for optimal performance.
         Uses UNWIND for bulk insertion (10-20x faster than individual inserts).
         """
+        if not entities:
+            logger.warning("No entities to add")
+            return
+
+        # Use deduplication if enabled
+        if self.neo4j_dedup:
+            logger.info(f"Adding {len(entities)} entities with deduplication...")
+            stats = self.neo4j_dedup.add_entities_with_dedup(entities)
+
+            # Store ID aliases for relationship remapping
+            self._id_aliases = stats.get("id_aliases", {})
+            if self._id_aliases:
+                logger.info(f"Stored {len(self._id_aliases)} ID aliases for relationship remapping")
+
+            logger.info(
+                f"Deduplication complete: "
+                f"added={stats['entities_added']}, "
+                f"merged={stats['entities_merged']}, "
+                f"failed={stats['entities_failed']}"
+            )
+            return
+
+        # Fallback: Basic batch insertion without deduplication
+        logger.info(f"Adding {len(entities)} entities without deduplication...")
         batch_size = 1000
         total_added = 0
 
@@ -450,13 +501,16 @@ class Neo4jGraphBuilder(GraphBuilder):
             )
 
             # Safely extract count from result (Bug #1 fix)
-            batch_count = result[0].get("count", len(batch)) if result and len(result) > 0 else len(batch)
+            batch_count = (
+                result[0].get("count", len(batch)) if result and len(result) > 0 else len(batch)
+            )
             total_added += batch_count
 
             logger.debug(f"Batch {i//batch_size + 1}: Added {batch_count} entities")
 
         # Bug #2 fix: Use math.ceil for correct batch count
         import math
+
         actual_batches = math.ceil(len(entities) / batch_size)
         logger.info(f"Added {total_added} entities to Neo4j (in {actual_batches} batches)")
 
@@ -484,12 +538,12 @@ class Neo4jGraphBuilder(GraphBuilder):
             for i in range(0, len(rels_list), batch_size):
                 batch = rels_list[i : i + batch_size]
 
-                # Convert batch to list of dicts
+                # Convert batch to list of dicts with ID remapping
                 rels_data = [
                     {
                         "id": r.id,
-                        "source_id": r.source_entity_id,
-                        "target_id": r.target_entity_id,
+                        "source_id": self._id_aliases.get(r.source_entity_id, r.source_entity_id),
+                        "target_id": self._id_aliases.get(r.target_entity_id, r.target_entity_id),
                         "confidence": r.confidence,
                         "source_chunk_id": r.source_chunk_id,
                         "evidence_text": r.evidence_text,
@@ -532,7 +586,9 @@ class Neo4jGraphBuilder(GraphBuilder):
                         )
 
                 # Safely extract count from result (Bug #1 fix)
-                batch_count = result[0].get("count", len(batch)) if result and len(result) > 0 else len(batch)
+                batch_count = (
+                    result[0].get("count", len(batch)) if result and len(result) > 0 else len(batch)
+                )
                 total_added += batch_count
 
                 logger.debug(
@@ -541,16 +597,13 @@ class Neo4jGraphBuilder(GraphBuilder):
 
         # Bug #3 fix: Use math.ceil for correct batch count
         import math
+
         total_batches = sum(math.ceil(len(rels) / batch_size) for rels in rels_by_type.values())
-        logger.info(
-            f"Added {total_added} relationships to Neo4j (in {total_batches} batches)"
-        )
+        logger.info(f"Added {total_added} relationships to Neo4j (in {total_batches} batches)")
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Get entity by ID from Neo4j."""
-        result = self.manager.execute(
-            "MATCH (e:Entity {id: $id}) RETURN e", {"id": entity_id}
-        )
+        result = self.manager.execute("MATCH (e:Entity {id: $id}) RETURN e", {"id": entity_id})
 
         if not result:
             return None
