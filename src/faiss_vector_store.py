@@ -103,8 +103,9 @@ class FAISSVectorStore:
 
     def _add_layer(self, layer: int, chunks: List, embeddings: np.ndarray):
         """Add chunks and embeddings to a specific layer."""
-        if not chunks or embeddings.size == 0:
-            logger.warning(f"Layer {layer}: No chunks to add")
+        # Skip empty layers (optimization for flat documents)
+        if not chunks or embeddings is None or embeddings.size == 0:
+            logger.info(f"Layer {layer}: Skipped (empty layer)")
             return
 
         # Select index and metadata

@@ -15,14 +15,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _load_agent_system_prompt() -> str:
-    """Load agent system prompt from prompts/ directory."""
+def _load_agent_base_prompt() -> str:
+    """
+    Load base agent prompt from prompts/ directory.
+
+    This loads the universal RAG search strategist instructions.
+    Task-specific prompts (chat, benchmark) should be appended separately.
+    """
     try:
         from .prompt_loader import load_prompt
 
-        return load_prompt("agent_system_prompt")
+        return load_prompt("base_agent_prompt")
     except Exception as e:
-        logger.error(f"Failed to load agent system prompt: {e}")
+        logger.error(f"Failed to load base agent prompt: {e}")
         # Fallback to minimal prompt
         return "You are a RAG-powered assistant for legal and technical documents."
 
@@ -223,8 +228,9 @@ class AgentConfig:
     cli_config: CLIConfig = field(default_factory=CLIConfig)
 
     # === System Prompt ===
-    # Loaded from prompts/agent_system_prompt.txt
-    system_prompt: str = field(default_factory=lambda: _load_agent_system_prompt())
+    # Loaded from prompts/base_agent_prompt.txt (universal RAG instructions)
+    # Task-specific prompts (chat/benchmark) should be appended by the caller
+    system_prompt: str = field(default_factory=lambda: _load_agent_base_prompt())
 
     def validate(self) -> None:
         """

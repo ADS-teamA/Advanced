@@ -410,7 +410,11 @@ class DoclingExtractorV2:
         doc_id = document_id or source_path.stem
         logger.info(f"Starting extraction of {source_path.name}")
 
-        # Convert document
+        # Special handling for plain text files (bypass Docling)
+        if source_path.suffix.lower() == ".txt":
+            return self._extract_plain_text(source_path, doc_id, start_time)
+
+        # Convert document (PDF, DOCX, etc.)
         result = self.converter.convert(str(source_path))
         docling_doc: DoclingDocument = result.document
 
@@ -816,6 +820,151 @@ class DoclingExtractorV2:
             logger.error(f"Failed to generate document summary: {e}")
             return ""
 
+    def _extract_plain_text(
+        self, source_path: Path, doc_id: str, start_time: datetime
+    ) -> ExtractedDocument:
+        """
+        Extract plain text file (simple extraction without Docling).
+
+        Creates a single-section document with no hierarchy.
+
+        Args:
+            source_path: Path to .txt file
+            doc_id: Document identifier
+            start_time: Extraction start time
+
+        Returns:
+            ExtractedDocument with single section containing all text
+        """
+        logger.info("Extracting plain text file (no hierarchy detection)")
+
+        # Read text file
+        with open(source_path, 'r', encoding='utf-8') as f:
+            full_text = normalize_unicode(f.read())
+
+        # Split large text into sections to avoid embedding token limits
+        # OpenAI embedding model limit: 8192 tokens (~6000 chars)
+        # Use 5000 chars per section for safety margin
+        MAX_SECTION_CHARS = 5000
+
+        sections = []
+        if len(full_text) <= MAX_SECTION_CHARS:
+            # Small file: single section
+            sections.append(
+                DocumentSection(
+                    section_id=f"{doc_id}_section_0",
+                    title=source_path.stem,
+                    content=full_text,
+                    level=1,
+                    depth=1,
+                    parent_id=None,
+                    children_ids=[],
+                    ancestors=[],
+                    path=source_path.stem,
+                    page_number=1,
+                    char_start=0,
+                    char_end=len(full_text),
+                    content_length=len(full_text),
+                    summary="",
+                )
+            )
+        else:
+            # Large file: split into multiple sections by lines
+            # (privacy policies often don't have double newlines)
+            lines = full_text.split('\n')
+            current_section_text = []
+            current_section_length = 0
+            section_idx = 0
+            char_position = 0
+
+            for line in lines:
+                line_len = len(line) + 1  # +1 for \n separator
+
+                if current_section_length + line_len > MAX_SECTION_CHARS and current_section_text:
+                    # Save current section
+                    section_content = '\n'.join(current_section_text)
+                    sections.append(
+                        DocumentSection(
+                            section_id=f"{doc_id}_section_{section_idx}",
+                            title=f"{source_path.stem} (Part {section_idx + 1})",
+                            content=section_content,
+                            level=1,
+                            depth=1,
+                            parent_id=None,
+                            children_ids=[],
+                            ancestors=[],
+                            path=f"{source_path.stem} > Part {section_idx + 1}",
+                            page_number=section_idx + 1,
+                            char_start=char_position,
+                            char_end=char_position + len(section_content),
+                            content_length=len(section_content),
+                            summary="",
+                        )
+                    )
+                    char_position += len(section_content) + 1
+                    section_idx += 1
+                    current_section_text = []
+                    current_section_length = 0
+
+                current_section_text.append(line)
+                current_section_length += line_len
+
+            # Add final section
+            if current_section_text:
+                section_content = '\n'.join(current_section_text)
+                sections.append(
+                    DocumentSection(
+                        section_id=f"{doc_id}_section_{section_idx}",
+                        title=f"{source_path.stem} (Part {section_idx + 1})",
+                        content=section_content,
+                        level=1,
+                        depth=1,
+                        parent_id=None,
+                        children_ids=[],
+                        ancestors=[],
+                        path=f"{source_path.stem} > Part {section_idx + 1}",
+                        page_number=section_idx + 1,
+                        char_start=char_position,
+                        char_end=char_position + len(section_content),
+                        content_length=len(section_content),
+                        summary="",
+                    )
+                )
+
+        # Generate document summary if enabled
+        doc_summary = ""
+        if self.config.generate_summaries:
+            logger.info("Generating document summary...")
+            doc_summary = self._generate_document_summary(sections)
+
+            # Set section summaries (use document summary for all sections)
+            for section in sections:
+                section.summary = doc_summary
+
+        # Calculate extraction time
+        extraction_time = (datetime.now() - start_time).total_seconds()
+
+        logger.info(f"Extraction complete: {len(full_text)} chars, {len(sections)} sections, {extraction_time:.1f}s")
+
+        return ExtractedDocument(
+            document_id=doc_id,
+            source_path=str(source_path),
+            extraction_time=extraction_time,
+            full_text=full_text,
+            markdown=full_text,  # Plain text, no markdown formatting
+            json_content={},  # No structured JSON for plain text
+            sections=sections,
+            hierarchy_depth=1,
+            num_roots=len(sections),  # Each section is a root (no hierarchy)
+            tables=[],  # No tables in plain text
+            num_pages=len(sections),  # One "page" per section
+            num_sections=len(sections),
+            num_tables=0,
+            total_chars=len(full_text),
+            document_summary=doc_summary,
+            title=source_path.stem,
+        )
+
     def get_supported_formats(self) -> List[str]:
         """Get list of supported file formats."""
-        return [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm"]
+        return [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".txt"]

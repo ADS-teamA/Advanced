@@ -280,6 +280,16 @@ class AgentCLI:
         # Create agent
         self.agent = AgentCore(self.config)
 
+        # Append chat-specific prompt to agent prompt (base prompt already loaded)
+        from .prompt_loader import load_prompt
+        chat_prompt = load_prompt("agent_chat_prompt")
+        self.agent.config.system_prompt = (
+            f"{self.agent.config.system_prompt}\n\n"
+            f"---\n\n"
+            f"{chat_prompt}"
+        )
+        logger.info("Chat prompt appended to base agent prompt (loaded from prompts/agent_chat_prompt.txt)")
+
         # Auto-adjust streaming based on provider support
         # (OpenAI models have streaming disabled by default, Claude models have it enabled)
         streaming_supported = self.agent.provider.supports_feature('streaming')
