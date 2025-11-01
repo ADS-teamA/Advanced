@@ -2746,7 +2746,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; is my reminder data saved anywhere?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         798,
                         1789
@@ -2759,7 +2759,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; is my task schedule being tracked?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         426,
                         531
@@ -2767,7 +2767,7 @@
                     "answer": " Personal Information: When registering for TickTick, we collect personal information such as your name.\n"
                 },
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         798,
                         1006
@@ -2780,7 +2780,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; can it view my real name?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         426,
                         531
@@ -2793,7 +2793,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; can i delete my personally identifying information?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         2600,
                         2833
@@ -2806,7 +2806,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; what information do you take from me.",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         426,
                         1006
@@ -2819,7 +2819,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; is my data shared with others?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2832,7 +2832,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; would there be a way to see what data you collect?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         368,
                         798
@@ -2840,7 +2840,7 @@
                     "answer": "When using TickTick, we ask certain information from you:\n Personal Information: When registering for TickTick, we collect personal information such as your name.\nUsers who contact us via email, the email addresses and information you submitted voluntarily will also be collected.\n Non-Personal Information: It includes but is not limited to your devices configuration, the package ID and version of the application that you use.\n"
                 },
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         2422,
                         2524
@@ -2853,7 +2853,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; does the app share information with any third parties?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2866,7 +2866,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; will my data be shared with third party entities?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2879,7 +2879,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; are my ideas uploaded to any servers?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         798,
                         1789
@@ -2892,7 +2892,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; who will have access to the info i enter into the application?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2905,7 +2905,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; will the application make money off of the info i enter in the app?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2918,7 +2918,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; who has access to whatever i create using this?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1789
@@ -2931,7 +2931,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; do third parties have access to my data?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2944,7 +2944,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; who all has access to my data?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -2957,7 +2957,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; does this app capture my ip address?",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         368,
                         426
@@ -2965,7 +2965,7 @@
                     "answer": "When using TickTick, we ask certain information from you:\n"
                 },
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         649,
                         798
@@ -2978,7 +2978,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; what data do they take",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         426,
                         1006
@@ -2991,7 +2991,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; what information is shared",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1789
@@ -3004,7 +3004,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; who sees my data",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1116
@@ -3017,7 +3017,7 @@
             "query": "Consider \"TickTick: To Do List with Reminder, Day Planner\"'s privacy policy; is there a way to opt out of data sharing",
             "snippets": [
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1006,
                         1789
@@ -3025,7 +3025,7 @@
                     "answer": "Your information will not be shared with others and is only used internally for the purposes described below:\nto provide our services or information you request, and to process and complete any transactions; to respond to your emails, submissions, questions, comments, requests, and complaints and provide customer service; to analyze usage and trends with anonymous user data, and to improve the quality of our service and user experience; to send you confirmations, updates, security alerts, and support and administrative messages and otherwise facilitate your use of, and our administration and operation of, our services; You are welcome to ask for our confirmation whenever you feel concerned about how your personal information is being processed, where and for what purpose.\n"
                 },
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         1920,
                         2073
@@ -3033,7 +3033,7 @@
                     "answer": "Users can disable cookies in their own browser settings, but please note that you may not be able to access certain features on our Website as a result.\n"
                 },
                 {
-                    "file_path": "privacy_qa/TickTick: To Do List with Reminder, Day Planner.txt",
+                    "file_path": "privacy_qa/TickTick - To Do List with Reminder, Day Planner.txt",
                     "span": [
                         2600,
                         2719
