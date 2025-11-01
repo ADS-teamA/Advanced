@@ -110,14 +110,14 @@ class BenchmarkResult:
             "query_results": [qr.to_dict() for qr in self.query_results],
             "total_time_seconds": round(self.total_time_seconds, 2),
             "total_cost_usd": round(self.total_cost_usd, 6),
-            "avg_time_per_query_ms": round(
-                (self.total_time_seconds * 1000) / self.total_queries, 2
-            )
-            if self.total_queries > 0
-            else 0,
-            "cost_per_query_usd": round(self.total_cost_usd / self.total_queries, 6)
-            if self.total_queries > 0
-            else 0,
+            "avg_time_per_query_ms": (
+                round((self.total_time_seconds * 1000) / self.total_queries, 2)
+                if self.total_queries > 0
+                else 0
+            ),
+            "cost_per_query_usd": (
+                round(self.total_cost_usd / self.total_queries, 6) if self.total_queries > 0 else 0
+            ),
             "config": self.config,
             "timestamp": self.timestamp,
         }
@@ -148,8 +148,10 @@ class BenchmarkRunner:
 
         # Print dataset statistics
         stats = self.dataset.get_statistics()
-        logger.info(f"Dataset statistics: {stats['total_queries']} queries, "
-                   f"{stats['unique_source_documents']} source documents")
+        logger.info(
+            f"Dataset statistics: {stats['total_queries']} queries, "
+            f"{stats['unique_source_documents']} source documents"
+        )
 
         # Load vector store
         logger.info(f"Loading vector store from {config.vector_store_path}")
@@ -191,9 +193,7 @@ class BenchmarkRunner:
         # Create embedder
         logger.info(f"Initializing embedder: {agent_config.embedding_model}")
         embedder = EmbeddingGenerator(
-            EmbeddingConfig(
-                model=agent_config.embedding_model, batch_size=100, normalize=True
-            )
+            EmbeddingConfig(model=agent_config.embedding_model, batch_size=100, normalize=True)
         )
 
         # Create reranker (if enabled)
@@ -201,9 +201,7 @@ class BenchmarkRunner:
         if self.config.enable_reranking:
             logger.info(f"Initializing reranker: {agent_config.tool_config.reranker_model}")
             try:
-                reranker = CrossEncoderReranker(
-                    model_name=agent_config.tool_config.reranker_model
-                )
+                reranker = CrossEncoderReranker(model_name=agent_config.tool_config.reranker_model)
             except Exception as e:
                 logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
                 agent_config.tool_config.enable_reranking = False
@@ -232,11 +230,11 @@ class BenchmarkRunner:
         # Load and append benchmark prompt to agent prompt (preserve tool selection strategy)
         benchmark_prompt = load_prompt("agent_benchmark_prompt")
         agent.config.system_prompt = (
-            f"{agent.config.system_prompt}\n\n"
-            f"---\n\n"
-            f"{benchmark_prompt}"
+            f"{agent.config.system_prompt}\n\n" f"---\n\n" f"{benchmark_prompt}"
         )
-        logger.info("Benchmark system prompt appended to agent prompt (loaded from prompts/agent_benchmark_prompt.txt)")
+        logger.info(
+            "Benchmark system prompt appended to agent prompt (loaded from prompts/agent_benchmark_prompt.txt)"
+        )
 
         # Initialize with documents (loads document list into context)
         agent.initialize_with_documents()
@@ -299,14 +297,17 @@ class BenchmarkRunner:
 
         # Extract answer from <ANSWER></ANSWER> tags
         import re
-        answer_match = re.search(r'<ANSWER>(.*?)</ANSWER>', response_text, re.DOTALL)
+
+        answer_match = re.search(r"<ANSWER>(.*?)</ANSWER>", response_text, re.DOTALL)
         if answer_match:
             extracted_answer = answer_match.group(1).strip()
             logger.debug(f"Extracted answer from tags: {extracted_answer[:100]}...")
         else:
             # Fallback: use full response if tags not found
             extracted_answer = response_text
-            logger.warning(f"No <ANSWER> tags found for query {query_example.query_id}, using full response")
+            logger.warning(
+                f"No <ANSWER> tags found for query {query_example.query_id}, using full response"
+            )
 
         # Compute metrics using extracted answer
         metrics = compute_all_metrics(extracted_answer, expected_answers)
@@ -375,10 +376,12 @@ class BenchmarkRunner:
                 query_results.append(result)
 
                 # Update progress bar with metrics
-                progress_bar.set_postfix({
-                    "EM": f"{result.metrics.get('exact_match', 0):.2f}",
-                    "F1": f"{result.metrics.get('f1_score', 0):.2f}",
-                })
+                progress_bar.set_postfix(
+                    {
+                        "EM": f"{result.metrics.get('exact_match', 0):.2f}",
+                        "F1": f"{result.metrics.get('f1_score', 0):.2f}",
+                    }
+                )
 
                 # Log per-query results in debug mode
                 if self.config.debug_mode:

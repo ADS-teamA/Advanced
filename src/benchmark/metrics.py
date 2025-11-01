@@ -43,7 +43,7 @@ def _get_embedder():
             from sentence_transformers import SentenceTransformer
 
             logger.info("Loading embedding model for semantic similarity: all-MiniLM-L6-v2")
-            _EMBEDDER = SentenceTransformer('all-MiniLM-L6-v2')
+            _EMBEDDER = SentenceTransformer("all-MiniLM-L6-v2")
             logger.info("Embedding model loaded successfully")
 
         except ImportError:
@@ -83,10 +83,10 @@ def normalize_text(text: str) -> str:
     text = text.lower()
 
     # Remove punctuation (keep only alphanumeric and spaces)
-    text = re.sub(r'[^\w\s]', ' ', text)
+    text = re.sub(r"[^\w\s]", " ", text)
 
     # Collapse multiple spaces
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r"\s+", " ", text)
 
     # Strip
     return text.strip()
@@ -324,7 +324,9 @@ def calculate_embedding_similarity(predicted: str, references: List[str]) -> flo
             continue
 
         # Embed reference answer
-        ref_embedding = embedder.encode(ref_norm, convert_to_tensor=False, normalize_embeddings=True)
+        ref_embedding = embedder.encode(
+            ref_norm, convert_to_tensor=False, normalize_embeddings=True
+        )
 
         # Cosine similarity (embeddings are already normalized, so just dot product)
         # For normalized vectors: cos_sim = A · B
@@ -479,7 +481,7 @@ def format_metrics(metrics: Dict[str, float], precision: int = 4) -> str:
             "precision": "P",
             "recall": "R",
             "embedding_similarity": "EMB",  # Embedding-based semantic similarity
-            "sequence_similarity": "SEQ",   # Legacy (if still used)
+            "sequence_similarity": "SEQ",  # Legacy (if still used)
             "combined_f1": "F1C",  # Combined F1 (concatenated GT answers)
         }.get(name, name.upper())
 

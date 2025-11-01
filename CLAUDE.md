@@ -102,6 +102,24 @@ uv run isort src/ tests/ --profile black
 uv run mypy src/
 ```
 
+**Benchmark Evaluation:**
+```bash
+# Index benchmark documents (PrivacyQA dataset)
+uv run python scripts/index_benchmark_docs.py
+
+# Run full benchmark evaluation (115 QA pairs)
+uv run python scripts/run_benchmark.py
+
+# Quick test with limited queries
+uv run python scripts/run_benchmark.py --max-queries 5
+
+# Disable reranking for faster evaluation
+uv run python scripts/run_benchmark.py --disable-reranking
+
+# Custom output directory
+uv run python scripts/run_benchmark.py --output-dir benchmark_results/custom
+```
+
 ### Neo4j Knowledge Graph (Optional Production Setup)
 
 **When to Use:**
